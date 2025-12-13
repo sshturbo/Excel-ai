@@ -14,8 +14,20 @@ export function ConnectExcel() {
   return window['go']['main']['App']['ConnectExcel']();
 }
 
+export function CreateChart(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['CreateChart'](arg1, arg2, arg3, arg4);
+}
+
 export function CreateNewSheet(arg1) {
   return window['go']['main']['App']['CreateNewSheet'](arg1);
+}
+
+export function CreateNewWorkbook() {
+  return window['go']['main']['App']['CreateNewWorkbook']();
+}
+
+export function CreatePivotTable(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['CreatePivotTable'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function DeleteConversation(arg1) {
@@ -24,6 +36,10 @@ export function DeleteConversation(arg1) {
 
 export function DeleteLastMessages(arg1) {
   return window['go']['main']['App']['DeleteLastMessages'](arg1);
+}
+
+export function EndUndoBatch() {
+  return window['go']['main']['App']['EndUndoBatch']();
 }
 
 export function GetActiveSelection() {
@@ -76,6 +92,10 @@ export function SetExcelContext(arg1, arg2) {
 
 export function SetModel(arg1) {
   return window['go']['main']['App']['SetModel'](arg1);
+}
+
+export function StartUndoBatch() {
+  return window['go']['main']['App']['StartUndoBatch']();
 }
 
 export function UndoLastChange() {

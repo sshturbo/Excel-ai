@@ -440,8 +440,8 @@ func (c *Client) InsertNewSheet(workbookName, sheetName string) error {
 	})
 }
 
-// getSheetInternal obtém uma referência para uma aba específica (chamado internamente na thread COM)
-func (c *Client) getSheetInternal(workbookName, sheetName string) (*ole.IDispatch, error) {
+// getWorkbookInternal obtém uma referência para uma pasta de trabalho (chamado internamente na thread COM)
+func (c *Client) getWorkbookInternal(workbookName string) (*ole.IDispatch, error) {
 	workbooks, err := oleutil.GetProperty(c.excelApp, "Workbooks")
 	if err != nil {
 		return nil, err
@@ -452,7 +452,15 @@ func (c *Client) getSheetInternal(workbookName, sheetName string) (*ole.IDispatc
 	if err != nil {
 		return nil, fmt.Errorf("pasta de trabalho '%s' não encontrada: %w", workbookName, err)
 	}
-	wbDisp := wb.ToIDispatch()
+	return wb.ToIDispatch(), nil
+}
+
+// getSheetInternal obtém uma referência para uma aba específica (chamado internamente na thread COM)
+func (c *Client) getSheetInternal(workbookName, sheetName string) (*ole.IDispatch, error) {
+	wbDisp, err := c.getWorkbookInternal(workbookName)
+	if err != nil {
+		return nil, err
+	}
 	defer wbDisp.Release()
 
 	sheets, err := oleutil.GetProperty(wbDisp, "Sheets")
@@ -467,6 +475,159 @@ func (c *Client) getSheetInternal(workbookName, sheetName string) (*ole.IDispatc
 	}
 
 	return sheet.ToIDispatch(), nil
+}
+
+// CreateNewWorkbook cria uma nova pasta de trabalho
+func (c *Client) CreateNewWorkbook() (string, error) {
+	return runOnCOMThreadWithResult(c, func() (string, error) {
+		workbooks, err := oleutil.GetProperty(c.excelApp, "Workbooks")
+		if err != nil {
+			return "", err
+		}
+		defer workbooks.ToIDispatch().Release()
+
+		wb, err := oleutil.CallMethod(workbooks.ToIDispatch(), "Add")
+		if err != nil {
+			return "", err
+		}
+		wbDisp := wb.ToIDispatch()
+		defer wbDisp.Release()
+
+		name, _ := oleutil.GetProperty(wbDisp, "Name")
+		return name.ToString(), nil
+	})
+}
+
+// CreateChart cria um gráfico a partir de um range
+func (c *Client) CreateChart(workbookName, sheetName, rangeAddress, chartType, title string) error {
+	return c.runOnCOMThread(func() error {
+		sheetDisp, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheetDisp.Release()
+
+		// Selecionar dados
+		sourceRange, err := oleutil.GetProperty(sheetDisp, "Range", rangeAddress)
+		if err != nil {
+			return fmt.Errorf("range inválido: %w", err)
+		}
+		sourceRangeDisp := sourceRange.ToIDispatch()
+		defer sourceRangeDisp.Release()
+
+		// Criar gráfico (Shapes.AddChart2)
+		shapes, err := oleutil.GetProperty(sheetDisp, "Shapes")
+		if err != nil {
+			return err
+		}
+		shapesDisp := shapes.ToIDispatch()
+		defer shapesDisp.Release()
+
+		// 201 = xlColumnClustered (padrão)
+		// -1 = Style default
+		chartShape, err := oleutil.CallMethod(shapesDisp, "AddChart2", -1, 201)
+		if err != nil {
+			// Fallback para AddChart (Excel antigo)
+			chartObjects, err := oleutil.GetProperty(sheetDisp, "ChartObjects")
+			if err != nil {
+				return fmt.Errorf("falha ao criar gráfico: %w", err)
+			}
+			chartObjectsDisp := chartObjects.ToIDispatch()
+			defer chartObjectsDisp.Release()
+
+			chartShape, err = oleutil.CallMethod(chartObjectsDisp, "Add", 10, 10, 300, 200)
+			if err != nil {
+				return fmt.Errorf("falha ao criar gráfico: %w", err)
+			}
+		}
+		chartShapeDisp := chartShape.ToIDispatch()
+		defer chartShapeDisp.Release()
+
+		chart, err := oleutil.GetProperty(chartShapeDisp, "Chart")
+		if err != nil {
+			return err
+		}
+		chartDisp := chart.ToIDispatch()
+		defer chartDisp.Release()
+
+		// Definir dados
+		oleutil.CallMethod(chartDisp, "SetSourceData", sourceRangeDisp)
+
+		// Definir título
+		if title != "" {
+			oleutil.PutProperty(chartDisp, "HasTitle", true)
+			chartTitle, err := oleutil.GetProperty(chartDisp, "ChartTitle")
+			if err == nil {
+				oleutil.PutProperty(chartTitle.ToIDispatch(), "Text", title)
+				chartTitle.ToIDispatch().Release()
+			}
+		}
+
+		return nil
+	})
+}
+
+// CreatePivotTable cria uma tabela dinâmica
+func (c *Client) CreatePivotTable(workbookName, sourceSheet, sourceRange, destSheet, destCell, tableName string) error {
+	return c.runOnCOMThread(func() error {
+		wbDisp, err := c.getWorkbookInternal(workbookName)
+		if err != nil {
+			return err
+		}
+		defer wbDisp.Release()
+
+		// Source Data Range
+		srcSheetDisp, err := c.getSheetInternal(workbookName, sourceSheet)
+		if err != nil {
+			return err
+		}
+		defer srcSheetDisp.Release()
+
+		srcRange, err := oleutil.GetProperty(srcSheetDisp, "Range", sourceRange)
+		if err != nil {
+			return fmt.Errorf("range de origem inválido: %w", err)
+		}
+		srcRangeDisp := srcRange.ToIDispatch()
+		defer srcRangeDisp.Release()
+
+		// Destination Range
+		destSheetDisp, err := c.getSheetInternal(workbookName, destSheet)
+		if err != nil {
+			return err
+		}
+		defer destSheetDisp.Release()
+
+		destRange, err := oleutil.GetProperty(destSheetDisp, "Range", destCell)
+		if err != nil {
+			return fmt.Errorf("célula de destino inválida: %w", err)
+		}
+		destRangeDisp := destRange.ToIDispatch()
+		defer destRangeDisp.Release()
+
+		// PivotCaches.Create
+		pivotCaches, err := oleutil.GetProperty(wbDisp, "PivotCaches")
+		if err != nil {
+			return err
+		}
+		pivotCachesDisp := pivotCaches.ToIDispatch()
+		defer pivotCachesDisp.Release()
+
+		// xlDatabase = 1
+		pivotCache, err := oleutil.CallMethod(pivotCachesDisp, "Create", 1, srcRangeDisp, 6) // 6 = xlPivotTableVersion14
+		if err != nil {
+			return fmt.Errorf("falha ao criar PivotCache: %w", err)
+		}
+		pivotCacheDisp := pivotCache.ToIDispatch()
+		defer pivotCacheDisp.Release()
+
+		// CreatePivotTable
+		_, err = oleutil.CallMethod(pivotCacheDisp, "CreatePivotTable", destRangeDisp, tableName)
+		if err != nil {
+			return fmt.Errorf("falha ao criar Tabela Dinâmica: %w", err)
+		}
+
+		return nil
+	})
 }
 
 // GetActiveWorkbookAndSheet retorna o nome da pasta e aba ativa

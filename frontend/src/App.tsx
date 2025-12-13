@@ -37,7 +37,13 @@ import {
     ApplyFormula,
     UpdateExcelCell,
     UndoLastChange,
-    DeleteLastMessages
+    DeleteLastMessages,
+    StartUndoBatch,
+    EndUndoBatch,
+    CreateNewWorkbook,
+    CreateNewSheet,
+    CreateChart,
+    CreatePivotTable
 } from "../wailsjs/go/main/App"
 import { EventsOn } from "../wailsjs/runtime/runtime"
 
@@ -345,9 +351,15 @@ export default function App() {
                 const newMsgs = [...prev]
                 const lastIndex = newMsgs.length - 1
                 if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
+                    // Clean streaming content
+                    let cleanContent = streamingContent.replace(/:::excel-action\s*([\s\S]*?)\s*:::/g, '')
+                    // Also hide incomplete action block at the end to avoid flickering
+                    cleanContent = cleanContent.replace(/:::excel-action[\s\S]*$/, '')
+                    cleanContent = cleanContent.trim()
+
                     // Only update if content is different to avoid loops
-                    if (newMsgs[lastIndex].content !== streamingContent) {
-                        newMsgs[lastIndex] = { ...newMsgs[lastIndex], content: streamingContent }
+                    if (newMsgs[lastIndex].content !== cleanContent) {
+                        newMsgs[lastIndex] = { ...newMsgs[lastIndex], content: cleanContent }
                     }
                 }
                 return newMsgs
@@ -371,6 +383,10 @@ export default function App() {
             
             let actionsExecuted = 0
             
+            if (matches.length > 0 && !askBeforeApply) {
+                await StartUndoBatch()
+            }
+
             for (const match of matches) {
                 try {
                     const jsonStr = match[1]
@@ -390,10 +406,63 @@ export default function App() {
                             )
                             actionsExecuted++
                         }
+                    } else if (action.op === 'create-workbook') {
+                        if (askBeforeApply) {
+                            setPendingActions(prev => [...prev, action])
+                        } else {
+                            const name = await CreateNewWorkbook()
+                            toast.success(`Nova pasta de trabalho criada: ${name}`)
+                            actionsExecuted++
+                            // Refresh workbooks list
+                            const result = await RefreshWorkbooks()
+                            if (result.workbooks) setWorkbooks(result.workbooks)
+                        }
+                    } else if (action.op === 'create-sheet') {
+                        if (askBeforeApply) {
+                            setPendingActions(prev => [...prev, action])
+                        } else {
+                            await CreateNewSheet(action.name)
+                            toast.success(`Nova aba criada: ${action.name}`)
+                            actionsExecuted++
+                            // Refresh workbooks list
+                            const result = await RefreshWorkbooks()
+                            if (result.workbooks) setWorkbooks(result.workbooks)
+                        }
+                    } else if (action.op === 'create-chart') {
+                        if (askBeforeApply) {
+                            setPendingActions(prev => [...prev, action])
+                        } else {
+                            await CreateChart(
+                                action.sheet || '',
+                                action.range,
+                                action.chartType || 'column',
+                                action.title || ''
+                            )
+                            toast.success('Gráfico criado!')
+                            actionsExecuted++
+                        }
+                    } else if (action.op === 'create-pivot') {
+                        if (askBeforeApply) {
+                            setPendingActions(prev => [...prev, action])
+                        } else {
+                            await CreatePivotTable(
+                                action.sourceSheet || '',
+                                action.sourceRange,
+                                action.destSheet || '',
+                                action.destCell,
+                                action.tableName || 'PivotTable1'
+                            )
+                            toast.success('Tabela dinâmica criada!')
+                            actionsExecuted++
+                        }
                     }
                 } catch (e) {
                     console.error("Failed to execute Excel action", e)
                 }
+            }
+
+            if (matches.length > 0 && !askBeforeApply) {
+                await EndUndoBatch()
             }
 
             if (actionsExecuted > 0) {
@@ -508,22 +577,61 @@ export default function App() {
 
     const handleApplyActions = async () => {
         let executed = 0
+        let errors = 0
+        
+        const toastId = toast.loading('Aplicando alterações...')
+
+        if (pendingActions.length > 0) {
+            await StartUndoBatch()
+        }
+
         for (const action of pendingActions) {
             try {
-                await UpdateExcelCell(
-                    action.workbook || '', 
-                    action.sheet || '', 
-                    action.cell, 
-                    action.value
-                )
+                if (action.op === 'write') {
+                    await UpdateExcelCell(
+                        action.workbook || '', 
+                        action.sheet || '', 
+                        action.cell, 
+                        action.value
+                    )
+                } else if (action.op === 'create-workbook') {
+                    await CreateNewWorkbook()
+                } else if (action.op === 'create-sheet') {
+                    await CreateNewSheet(action.name)
+                } else if (action.op === 'create-chart') {
+                    await CreateChart(
+                        action.sheet || '',
+                        action.range,
+                        action.chartType || 'column',
+                        action.title || ''
+                    )
+                } else if (action.op === 'create-pivot') {
+                    await CreatePivotTable(
+                        action.sourceSheet || '',
+                        action.sourceRange,
+                        action.destSheet || '',
+                        action.destCell,
+                        action.tableName || 'PivotTable1'
+                    )
+                }
                 executed++
             } catch (e) {
-                console.error(e)
+                console.error("Erro ao aplicar ação:", action, e)
+                errors++
             }
         }
+
+        if (pendingActions.length > 0) {
+            await EndUndoBatch()
+        }
         
+        toast.dismiss(toastId)
+
         if (executed > 0) {
             toast.success(`${executed} alterações aplicadas!`)
+            if (errors > 0) {
+                toast.warning(`${errors} falharam. Verifique o console.`)
+            }
             setPendingActions([])
             
             // Update the last assistant message to show the Undo button
@@ -548,6 +656,8 @@ export default function App() {
                 const preview = await GetPreviewData(selectedWorkbook, selectedSheet)
                 setPreviewData(preview)
             }
+        } else if (errors > 0) {
+            toast.error(`Falha ao aplicar alterações. ${errors} erros encontrados.`)
         }
     }
 
@@ -619,10 +729,17 @@ export default function App() {
         try {
             const messages = await LoadConversation(convId)
             if (messages && messages.length > 0) {
-                const loadedMessages: Message[] = messages.map((m) => ({
-                    role: m.role as 'user' | 'assistant',
-                    content: m.content
-                }))
+                const loadedMessages: Message[] = messages.map((m) => {
+                    let content = m.content
+                    // Clean Excel action blocks from assistant messages
+                    if (m.role === 'assistant') {
+                        content = content.replace(/:::excel-action\s*([\s\S]*?)\s*:::/g, '').trim()
+                    }
+                    return {
+                        role: m.role as 'user' | 'assistant',
+                        content: content
+                    }
+                })
                 setMessages(loadedMessages)
                 toast.success('Conversa carregada!')
             } else {

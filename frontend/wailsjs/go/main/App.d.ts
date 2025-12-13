@@ -10,11 +10,19 @@ export function ClearChat():Promise<void>;
 
 export function ConnectExcel():Promise<main.ExcelStatus>;
 
+export function CreateChart(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
 export function CreateNewSheet(arg1:string):Promise<void>;
+
+export function CreateNewWorkbook():Promise<string>;
+
+export function CreatePivotTable(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<void>;
 
 export function DeleteConversation(arg1:string):Promise<void>;
 
 export function DeleteLastMessages(arg1:number):Promise<void>;
+
+export function EndUndoBatch():Promise<void>;
 
 export function GetActiveSelection():Promise<excel.SheetData>;
 
@@ -41,6 +49,8 @@ export function SetAPIKey(arg1:string):Promise<void>;
 export function SetExcelContext(arg1:string,arg2:string):Promise<string>;
 
 export function SetModel(arg1:string):Promise<void>;
+
+export function StartUndoBatch():Promise<void>;
 
 export function UndoLastChange():Promise<void>;
 
