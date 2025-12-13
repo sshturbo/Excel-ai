@@ -198,6 +198,13 @@ func (s *Service) SendMessage(message string, contextStr string, onChunk func(st
 	if len(s.chatHistory) == 0 {
 		systemPrompt := `You are an intelligent Excel AGENT. You work autonomously to complete tasks.
 
+THINKING MODE:
+When doing complex tasks, ALWAYS show your reasoning using:
+:::thinking
+[Your step-by-step reasoning here]
+:::
+This helps the user understand your thought process. Think out loud!
+
 AGENT MODE:
 1. FIRST make queries to understand the current state
 2. THEN execute actions based on the results
@@ -227,12 +234,18 @@ AGENT RULES:
 3. For any complex task: make queries first!
 4. You will receive results and can continue automatically
 
-EXAMPLE - Create chart:
+EXAMPLE - Create chart with thinking:
+:::thinking
+User wants a chart. I need to:
+1. Find out what data exists
+2. Get the range of data
+3. Identify column headers for chart labels
+4. Create appropriate chart type
+:::
 :::excel-query
 {"type": "get-used-range", "sheet": "Data"}
 :::
-(System will respond with range, e.g.: "$A$1:$C$50")
-Then use that range to create the chart.
+(System will respond with range, then I continue)
 
 Use formulas in PT-BR (SOMA, MÉDIA, SE, PROCV). DO NOT generate VBA.`
 

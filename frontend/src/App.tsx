@@ -255,6 +255,73 @@ export default function App() {
         },
     }), [])
 
+    // Função para renderizar conteúdo com suporte a :::thinking blocks
+    const renderMessageContent = (content: string) => {
+        const thinkingRegex = /:::thinking\s*([\s\S]*?)\s*:::/g
+        const parts: JSX.Element[] = []
+        let lastIndex = 0
+        let match
+        let key = 0
+
+        while ((match = thinkingRegex.exec(content)) !== null) {
+            // Adiciona texto antes do bloco thinking
+            if (match.index > lastIndex) {
+                const textBefore = content.slice(lastIndex, match.index)
+                if (textBefore.trim()) {
+                    parts.push(
+                        <ReactMarkdown key={key++} remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                            {textBefore}
+                        </ReactMarkdown>
+                    )
+                }
+            }
+
+            // Adiciona o bloco thinking
+            const thinkingContent = match[1].trim()
+            parts.push(
+                <div key={key++} className="my-3 p-3 bg-muted/50 border border-primary/20 rounded-lg">
+                    <div className="flex items-center gap-2 text-sm font-medium text-primary mb-2">
+                        <span className="animate-pulse">🤔</span>
+                        <span>Pensando...</span>
+                    </div>
+                    <div className="pl-4 border-l-2 border-primary/30 space-y-1">
+                        {thinkingContent.split('\n').filter(line => line.trim()).map((line, i) => (
+                            <div key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                                <span className="text-primary/60">•</span>
+                                <span>{line.trim()}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )
+
+            lastIndex = match.index + match[0].length
+        }
+
+        // Adiciona texto restante após o último bloco thinking
+        if (lastIndex < content.length) {
+            const textAfter = content.slice(lastIndex)
+            if (textAfter.trim()) {
+                parts.push(
+                    <ReactMarkdown key={key++} remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                        {textAfter}
+                    </ReactMarkdown>
+                )
+            }
+        }
+
+        // Se não houver thinking blocks, renderiza normalmente
+        if (parts.length === 0) {
+            return (
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                    {content}
+                </ReactMarkdown>
+            )
+        }
+
+        return <>{parts}</>
+    }
+
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, [messages])
@@ -1356,12 +1423,7 @@ export default function App() {
                                                     {msg.role === 'assistant' ? (
                                                         <div className="text-sm relative">
                                                             {msg.content ? (
-                                                                <ReactMarkdown
-                                                                    remarkPlugins={[remarkGfm]}
-                                                                    components={markdownComponents}
-                                                                >
-                                                                    {msg.content}
-                                                                </ReactMarkdown>
+                                                                renderMessageContent(msg.content)
                                                             ) : (
                                                                 <div className="flex items-center gap-1.5 h-6">
                                                                     <div className="w-2 h-2 bg-foreground/40 rounded-full animate-[bounce_1s_infinite_-0.3s]"></div>
