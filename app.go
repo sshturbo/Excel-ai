@@ -209,6 +209,14 @@ func (a *App) ClearChat() {
 	a.chatService.ClearChat()
 }
 
+// SendErrorFeedback envia erro para a IA corrigir
+func (a *App) SendErrorFeedback(errorMessage string) (string, error) {
+	return a.chatService.SendErrorFeedback(errorMessage, func(chunk string) error {
+		runtime.EventsEmit(a.ctx, "chat:chunk", chunk)
+		return nil
+	})
+}
+
 // DeleteLastMessages remove mensagens
 func (a *App) DeleteLastMessages(count int) error {
 	return a.chatService.DeleteLastMessages(count)

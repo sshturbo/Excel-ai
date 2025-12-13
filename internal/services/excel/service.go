@@ -4,6 +4,7 @@ import (
 	"excel-ai/internal/dto"
 	"excel-ai/pkg/excel"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -23,6 +24,14 @@ func NewService() *Service {
 	return &Service{
 		undoStack: []dto.UndoAction{},
 	}
+}
+
+// getFirstSheet retorna a primeira aba quando currentSheet contém múltiplas abas
+func (s *Service) getFirstSheet() string {
+	if strings.Contains(s.currentSheet, ",") {
+		return strings.TrimSpace(strings.Split(s.currentSheet, ",")[0])
+	}
+	return s.currentSheet
 }
 
 func (s *Service) Connect() (*dto.ExcelStatus, error) {
@@ -75,39 +84,83 @@ func (s *Service) SetContext(workbook, sheet string) (string, error) {
 		return "", fmt.Errorf("não conectado ao Excel")
 	}
 
-	data, err := s.client.GetSheetData(workbook, sheet, 50) // Ler primeiras 50 linhas para contexto
-	if err != nil {
-		return "", err
+	// Suporte a múltiplas abas separadas por vírgula
+	sheets := strings.Split(sheet, ",")
+	var contextStr string
+	totalRows := 0
+
+	// Limitar linhas por aba quando há múltiplas abas
+	maxRowsPerSheet := 30
+	if len(sheets) > 1 {
+		maxRowsPerSheet = 20 // Reduzir quando há múltiplas abas
 	}
 
-	s.currentWorkbook = workbook
-	s.currentSheet = sheet
-
-	// Construir representação em string para a IA
-	contextStr := fmt.Sprintf("Planilha: %s\nAba: %s\n\nDados (amostra):\n", workbook, sheet)
-
-	// Cabeçalhos
-	for i, h := range data.Headers {
-		if i > 0 {
-			contextStr += " | "
+	for i, sheetName := range sheets {
+		sheetName = strings.TrimSpace(sheetName)
+		if sheetName == "" {
+			continue
 		}
-		contextStr += h
-	}
-	contextStr += "\n"
 
-	// Linhas
-	for _, row := range data.Rows {
-		for i, cell := range row {
-			if i > 0 {
+		data, err := s.client.GetSheetData(workbook, sheetName, maxRowsPerSheet)
+		if err != nil {
+			return "", fmt.Errorf("erro ao ler aba %s: %w", sheetName, err)
+		}
+
+		if i == 0 {
+			s.currentWorkbook = workbook
+			s.currentSheet = sheetName
+		}
+
+		// Construir representação em string para a IA
+		if i > 0 {
+			contextStr += "\n---\n\n"
+		}
+		contextStr += fmt.Sprintf("=== ABA: %s ===\n\n", sheetName)
+
+		// Cabeçalhos
+		for j, h := range data.Headers {
+			if j > 0 {
 				contextStr += " | "
 			}
-			contextStr += cell.Text
+			// Truncar cabeçalhos muito longos
+			if len(h) > 50 {
+				h = h[:47] + "..."
+			}
+			contextStr += h
 		}
 		contextStr += "\n"
+
+		// Linhas
+		for _, row := range data.Rows {
+			for j, cell := range row {
+				if j > 0 {
+					contextStr += " | "
+				}
+				// Truncar células muito longas
+				cellText := cell.Text
+				if len(cellText) > 100 {
+					cellText = cellText[:97] + "..."
+				}
+				contextStr += cellText
+			}
+			contextStr += "\n"
+		}
+
+		totalRows += len(data.Rows)
 	}
 
-	s.contextStr = contextStr
-	return fmt.Sprintf("Contexto carregado: %s - %s (%d linhas)", workbook, sheet, len(data.Rows)), nil
+	// Limitar tamanho total do contexto (aproximadamente 4000 tokens = ~16000 caracteres)
+	maxContextLen := 12000
+	if len(contextStr) > maxContextLen {
+		contextStr = contextStr[:maxContextLen] + "\n\n[... contexto truncado para economizar tokens ...]"
+	}
+
+	s.contextStr = fmt.Sprintf("Planilha: %s\nAbas selecionadas: %s\n\nDados:\n%s", workbook, sheet, contextStr)
+
+	if len(sheets) > 1 {
+		return fmt.Sprintf("Contexto carregado: %s - %d abas (%d linhas total)", workbook, len(sheets), totalRows), nil
+	}
+	return fmt.Sprintf("Contexto carregado: %s - %s (%d linhas)", workbook, sheets[0], totalRows), nil
 }
 
 func (s *Service) GetContextString() string {
@@ -176,7 +229,18 @@ func (s *Service) UpdateCell(workbook, sheet, cell, value string) error {
 		workbook = s.currentWorkbook
 	}
 	if sheet == "" {
-		sheet = s.currentSheet
+		sheet = s.getFirstSheet()
+	}
+
+	// Se ainda não tiver workbook, tentar obter o ativo
+	if workbook == "" {
+		activeWb, activeSheet, err := s.client.GetActiveWorkbookAndSheet()
+		if err == nil {
+			workbook = activeWb
+			if sheet == "" {
+				sheet = activeSheet
+			}
+		}
 	}
 
 	if workbook == "" || sheet == "" {
@@ -287,7 +351,7 @@ func (s *Service) CreateChart(sheet, rangeAddr, chartType, title string) error {
 		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
 	}
 	if sheet == "" {
-		sheet = s.currentSheet
+		sheet = s.getFirstSheet()
 	}
 	return s.client.CreateChart(s.currentWorkbook, sheet, rangeAddr, chartType, title)
 }
@@ -296,16 +360,39 @@ func (s *Service) CreatePivotTable(sourceSheet, sourceRange, destSheet, destCell
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	fmt.Printf("[DEBUG] CreatePivotTable chamado:\n")
+	fmt.Printf("  sourceSheet: %s\n", sourceSheet)
+	fmt.Printf("  sourceRange: %s\n", sourceRange)
+	fmt.Printf("  destSheet: %s\n", destSheet)
+	fmt.Printf("  destCell: %s\n", destCell)
+	fmt.Printf("  tableName: %s\n", tableName)
+	fmt.Printf("  currentWorkbook: %s\n", s.currentWorkbook)
+
 	if s.client == nil {
 		return fmt.Errorf("excel não conectado")
 	}
-	if s.currentWorkbook == "" {
-		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+
+	// Se não tiver workbook selecionado, tentar obter o ativo
+	workbook := s.currentWorkbook
+	if workbook == "" {
+		activeWb, _, err := s.client.GetActiveWorkbookAndSheet()
+		if err != nil {
+			return fmt.Errorf("nenhuma pasta de trabalho selecionada e não foi possível obter a ativa: %w", err)
+		}
+		workbook = activeWb
+		fmt.Printf("  workbook (ativo): %s\n", workbook)
 	}
+
 	if sourceSheet == "" {
-		sourceSheet = s.currentSheet
+		sourceSheet = s.getFirstSheet()
+		fmt.Printf("  sourceSheet (fallback): %s\n", sourceSheet)
 	}
-	return s.client.CreatePivotTable(s.currentWorkbook, sourceSheet, sourceRange, destSheet, destCell, tableName)
+
+	err := s.client.CreatePivotTable(workbook, sourceSheet, sourceRange, destSheet, destCell, tableName)
+	if err != nil {
+		fmt.Printf("[DEBUG] Erro ao criar PivotTable: %v\n", err)
+	}
+	return err
 }
 
 func (s *Service) WriteToExcel(row, col int, value interface{}) error {
@@ -316,11 +403,12 @@ func (s *Service) WriteToExcel(row, col int, value interface{}) error {
 		return fmt.Errorf("não conectado ao Excel")
 	}
 
-	if s.currentWorkbook == "" || s.currentSheet == "" {
+	sheet := s.getFirstSheet()
+	if s.currentWorkbook == "" || sheet == "" {
 		return fmt.Errorf("nenhuma planilha selecionada")
 	}
 
-	return s.client.WriteCell(s.currentWorkbook, s.currentSheet, row, col, value)
+	return s.client.WriteCell(s.currentWorkbook, sheet, row, col, value)
 }
 
 func (s *Service) ApplyFormula(row, col int, formula string) error {
@@ -330,10 +418,11 @@ func (s *Service) ApplyFormula(row, col int, formula string) error {
 	if s.client == nil {
 		return fmt.Errorf("excel não conectado")
 	}
-	if s.currentWorkbook == "" || s.currentSheet == "" {
+	sheet := s.getFirstSheet()
+	if s.currentWorkbook == "" || sheet == "" {
 		return fmt.Errorf("nenhuma planilha selecionada")
 	}
-	return s.client.ApplyFormula(s.currentWorkbook, s.currentSheet, row, col, formula)
+	return s.client.ApplyFormula(s.currentWorkbook, sheet, row, col, formula)
 }
 
 func (s *Service) Close() {

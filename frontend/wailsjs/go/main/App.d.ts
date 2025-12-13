@@ -42,6 +42,8 @@ export function NewConversation():Promise<string>;
 
 export function RefreshWorkbooks():Promise<dto.ExcelStatus>;
 
+export function SendErrorFeedback(arg1:string):Promise<string>;
+
 export function SendMessage(arg1:string):Promise<string>;
 
 export function SetAPIKey(arg1:string):Promise<void>;

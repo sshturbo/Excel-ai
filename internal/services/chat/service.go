@@ -167,13 +167,28 @@ func (s *Service) SendMessage(message string, contextStr string, onChunk func(st
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Add context if it's the first message or context changed
-	// For simplicity, we append context to the system message or the first user message
-	// Here we just ensure the history has the context if needed.
-	// Actually, let's just append the user message.
+	// Gerar ID de conversa se não existir
+	if s.currentConvID == "" {
+		s.currentConvID = storage.GenerateID()
+	}
 
-	// If context is provided, we might want to prepend it to the user message or as a system message.
-	// Let's prepend to user message for now if it's not empty.
+	// Garantir que temos um system prompt se o histórico estiver vazio
+	if len(s.chatHistory) == 0 {
+		systemPrompt := `Assistente Excel. Para modificar planilhas, use:
+:::excel-action
+{"op": "write", "cell": "A1", "value": "valor"}
+:::
+
+Ops: write (célula), create-workbook, create-sheet (name), create-chart (range, chartType, title), create-pivot (sourceSheet, sourceRange, destSheet, destCell, tableName).
+Use fórmulas em PT-BR (SOMA, MÉDIA, SE, PROCV). NÃO gere VBA.`
+
+		s.chatHistory = append(s.chatHistory, ai.Message{
+			Role:    "system",
+			Content: systemPrompt,
+		})
+	}
+
+	// Se context for fornecido, adiciona como mensagem do usuário
 	fullContent := message
 	if contextStr != "" {
 		fullContent = fmt.Sprintf("Contexto do Excel:\n%s\n\nPergunta do usuário: %s", contextStr, message)
@@ -198,6 +213,37 @@ func (s *Service) SendMessage(message string, contextStr string, onChunk func(st
 	})
 
 	go s.saveCurrentConversation(contextStr)
+
+	return response, nil
+}
+
+// SendErrorFeedback envia um erro de execução para a IA e pede uma correção
+func (s *Service) SendErrorFeedback(errorMessage string, onChunk func(string) error) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Adiciona mensagem de erro como feedback
+	feedbackMsg := fmt.Sprintf("ERRO NA EXECUÇÃO: %s\n\nPor favor, corrija o comando. Se precisar criar uma aba primeiro, use create-sheet antes de create-pivot.", errorMessage)
+
+	s.chatHistory = append(s.chatHistory, ai.Message{
+		Role:    "user",
+		Content: feedbackMsg,
+	})
+
+	// Call AI para obter correção
+	response, err := s.client.ChatStream(s.chatHistory, onChunk)
+	if err != nil {
+		// Remove mensagem de erro on failure
+		s.chatHistory = s.chatHistory[:len(s.chatHistory)-1]
+		return "", err
+	}
+
+	s.chatHistory = append(s.chatHistory, ai.Message{
+		Role:    "assistant",
+		Content: response,
+	})
+
+	go s.saveCurrentConversation("")
 
 	return response, nil
 }

@@ -611,12 +611,75 @@ func (c *Client) CreatePivotTable(workbookName, sourceSheet, sourceRange, destSh
 		// Source Data Range
 		srcSheetDisp, err := c.getSheetInternal(workbookName, sourceSheet)
 		if err != nil {
-			return err
+			return fmt.Errorf("a aba de origem '%s' não existe. Verifique o nome da aba e tente novamente", sourceSheet)
 		}
 		defer srcSheetDisp.Release()
 
-		srcRange, err := oleutil.GetProperty(srcSheetDisp, "Range", sourceRange)
+		expandedSourceRange := strings.TrimSpace(sourceRange)
+		// Suporta placeholders simples usados pela IA, ex: A1:F{{lastRow}} ou colunas A:F.
+		if strings.Contains(expandedSourceRange, "{{") {
+			// Determinar última linha usada via UsedRange
+			usedRange, uErr := oleutil.GetProperty(srcSheetDisp, "UsedRange")
+			if uErr != nil {
+				return fmt.Errorf("não foi possível determinar a última linha usada da aba '%s': %w", sourceSheet, uErr)
+			}
+			usedRangeDisp := usedRange.ToIDispatch()
+			defer usedRangeDisp.Release()
+
+			urRows, uErr := oleutil.GetProperty(usedRangeDisp, "Rows")
+			if uErr != nil {
+				return fmt.Errorf("não foi possível ler linhas do UsedRange: %w", uErr)
+			}
+			urRowsDisp := urRows.ToIDispatch()
+			defer urRowsDisp.Release()
+
+			countVar, _ := oleutil.GetProperty(urRowsDisp, "Count")
+			startRowVar, _ := oleutil.GetProperty(usedRangeDisp, "Row")
+			lastRow := int(startRowVar.Val) + int(countVar.Val) - 1
+			if lastRow < 1 {
+				lastRow = 1
+			}
+
+			expandedSourceRange = strings.ReplaceAll(expandedSourceRange, "{{lastRow}}", fmt.Sprintf("%d", lastRow))
+		}
+
+		// Se a IA mandar apenas colunas (ex: A:F), expande para A1:F<lastRow>.
+		if !strings.Contains(expandedSourceRange, ":") {
+			// nada
+		} else {
+			parts := strings.Split(expandedSourceRange, ":")
+			if len(parts) == 2 && strings.IndexFunc(parts[0], func(r rune) bool { return r >= '0' && r <= '9' }) == -1 && strings.IndexFunc(parts[1], func(r rune) bool { return r >= '0' && r <= '9' }) == -1 {
+				startCol := strings.ToUpper(strings.TrimSpace(parts[0]))
+				endCol := strings.ToUpper(strings.TrimSpace(parts[1]))
+				// Determina última linha usada (se ainda não determinou)
+				usedRange, uErr := oleutil.GetProperty(srcSheetDisp, "UsedRange")
+				if uErr == nil {
+					usedRangeDisp := usedRange.ToIDispatch()
+					defer usedRangeDisp.Release()
+					urRows, _ := oleutil.GetProperty(usedRangeDisp, "Rows")
+					urRowsDisp := urRows.ToIDispatch()
+					defer urRowsDisp.Release()
+					countVar, _ := oleutil.GetProperty(urRowsDisp, "Count")
+					startRowVar, _ := oleutil.GetProperty(usedRangeDisp, "Row")
+					lastRow := int(startRowVar.Val) + int(countVar.Val) - 1
+					if lastRow < 2 {
+						lastRow = 2
+					}
+					expandedSourceRange = fmt.Sprintf("%s1:%s%d", startCol, endCol, lastRow)
+				}
+			}
+		}
+
+		// Se ainda sobrou placeholder, devolve erro explícito para a IA corrigir.
+		if strings.Contains(expandedSourceRange, "{{") {
+			return fmt.Errorf("range de origem inválido: contém placeholder não resolvido ('%s'). Envie um intervalo real, por exemplo 'A1:F2000' ou 'A:F'", expandedSourceRange)
+		}
+
+		srcRange, err := oleutil.GetProperty(srcSheetDisp, "Range", expandedSourceRange)
 		if err != nil {
+			if expandedSourceRange != sourceRange {
+				return fmt.Errorf("range de origem inválido: '%s' (expandido de '%s'): %w", expandedSourceRange, sourceRange, err)
+			}
 			return fmt.Errorf("range de origem inválido: %w", err)
 		}
 		srcRangeDisp := srcRange.ToIDispatch()
@@ -625,7 +688,7 @@ func (c *Client) CreatePivotTable(workbookName, sourceSheet, sourceRange, destSh
 		// Destination Range
 		destSheetDisp, err := c.getSheetInternal(workbookName, destSheet)
 		if err != nil {
-			return err
+			return fmt.Errorf("a aba de destino '%s' não existe. Você precisa criar a aba primeiro usando create-sheet antes de criar a Tabela Dinâmica", destSheet)
 		}
 		defer destSheetDisp.Release()
 

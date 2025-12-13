@@ -322,6 +322,8 @@ func (c *Client) ChatStream(messages []Message, onChunk func(string) error) (str
 	req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
 	req.Header.Set("HTTP-Referer", "https://excel-ai-app.local")
 	req.Header.Set("X-Title", "Excel-AI")
+	// Evita reutilização de conexão após streaming (reduz risco de bytes pendentes em keep-alive).
+	req.Close = true
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

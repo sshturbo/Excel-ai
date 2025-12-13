@@ -78,6 +78,10 @@ export function RefreshWorkbooks() {
   return window['go']['main']['App']['RefreshWorkbooks']();
 }
 
+export function SendErrorFeedback(arg1) {
+  return window['go']['main']['App']['SendErrorFeedback'](arg1);
+}
+
 export function SendMessage(arg1) {
   return window['go']['main']['App']['SendMessage'](arg1);
 }

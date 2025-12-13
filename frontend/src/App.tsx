@@ -43,7 +43,8 @@ import {
     CreateNewWorkbook,
     CreateNewSheet,
     CreateChart,
-    CreatePivotTable
+    CreatePivotTable,
+    SendErrorFeedback
 } from "../wailsjs/go/main/App"
 import { EventsOn } from "../wailsjs/runtime/runtime"
 
@@ -102,7 +103,7 @@ export default function App() {
     const [connected, setConnected] = useState(false)
     const [workbooks, setWorkbooks] = useState<Workbook[]>([])
     const [selectedWorkbook, setSelectedWorkbook] = useState<string | null>(null)
-    const [selectedSheet, setSelectedSheet] = useState<string | null>(null)
+    const [selectedSheets, setSelectedSheets] = useState<string[]>([])
     const [messages, setMessages] = useState<Message[]>([])
     const [inputMessage, setInputMessage] = useState('')
     const [isLoading, setIsLoading] = useState(false)
@@ -261,6 +262,7 @@ export default function App() {
         if (hasWailsRuntime) {
             handleConnect()
             loadConfig()
+            loadConversations()
         } else {
             console.warn('Wails runtime não detectado. Rodando fora do app (Vite puro).')
         }
@@ -299,18 +301,49 @@ export default function App() {
     }
 
     const handleSelectSheet = async (wbName: string, sheetName: string) => {
-        setSelectedWorkbook(wbName)
-        setSelectedSheet(sheetName)
+        // Toggle sheet selection (multi-select)
+        const isSelected = selectedWorkbook === wbName && selectedSheets.includes(sheetName)
+        
+        if (selectedWorkbook !== wbName) {
+            // Mudou de workbook, reset selection
+            setSelectedWorkbook(wbName)
+            setSelectedSheets([sheetName])
+        } else if (isSelected) {
+            // Deselect sheet
+            const newSheets = selectedSheets.filter(s => s !== sheetName)
+            setSelectedSheets(newSheets)
+            if (newSheets.length === 0) {
+                setContextLoaded('')
+                setPreviewData(null)
+                return
+            }
+        } else {
+            // Add sheet to selection
+            setSelectedSheets([...selectedSheets, sheetName])
+        }
+
+        const sheetsToLoad = isSelected 
+            ? selectedSheets.filter(s => s !== sheetName)
+            : selectedWorkbook === wbName 
+                ? [...selectedSheets, sheetName]
+                : [sheetName]
+
+        if (sheetsToLoad.length === 0) return
+
         setContextLoaded('')
         setPreviewData(null)
 
         try {
-            await SetExcelContext(wbName, sheetName)
-            const data = await GetPreviewData(wbName, sheetName)
+            // Load context for all selected sheets
+            await SetExcelContext(wbName, sheetsToLoad.join(','))
+            
+            // Get preview for first selected sheet
+            const data = await GetPreviewData(wbName, sheetsToLoad[0])
             if (data) {
                 setPreviewData(data)
-                setContextLoaded(`${sheetName} (${data.totalRows} linhas)`)
-                toast.success(`Contexto carregado: ${sheetName}`)
+                const sheetNames = sheetsToLoad.join(', ')
+                setContextLoaded(`${sheetNames} (${sheetsToLoad.length} aba${sheetsToLoad.length > 1 ? 's' : ''})`)
+                toast.success(`Contexto carregado: ${sheetsToLoad.length} aba(s)`)
                 prepareChartData(data)
             }
         } catch (err) {
@@ -369,6 +402,148 @@ export default function App() {
         }
     }, [streamingContent, isLoading])
 
+    // Função auxiliar para executar ações do Excel
+    const executeExcelAction = async (action: any): Promise<{ success: boolean; error?: string }> => {
+        try {
+            if (action.op === 'write') {
+                await UpdateExcelCell(
+                    action.workbook || '', 
+                    action.sheet || '', 
+                    action.cell, 
+                    action.value
+                )
+            } else if (action.op === 'create-workbook') {
+                const name = await CreateNewWorkbook()
+                toast.success(`Nova pasta de trabalho criada: ${name}`)
+                const result = await RefreshWorkbooks()
+                if (result.workbooks) setWorkbooks(result.workbooks)
+            } else if (action.op === 'create-sheet') {
+                await CreateNewSheet(action.name)
+                toast.success(`Nova aba criada: ${action.name}`)
+                const result = await RefreshWorkbooks()
+                if (result.workbooks) setWorkbooks(result.workbooks)
+            } else if (action.op === 'create-chart') {
+                await CreateChart(
+                    action.sheet || '',
+                    action.range,
+                    action.chartType || 'column',
+                    action.title || ''
+                )
+                toast.success('Gráfico criado!')
+            } else if (action.op === 'create-pivot') {
+                console.log('[DEBUG] create-pivot:', action)
+                await CreatePivotTable(
+                    action.sourceSheet || '',
+                    action.sourceRange,
+                    action.destSheet || '',
+                    action.destCell,
+                    action.tableName || 'PivotTable1'
+                )
+                toast.success('Tabela dinâmica criada!')
+            }
+            return { success: true }
+        } catch (e: any) {
+            const errorMsg = e?.message || String(e)
+            console.error("Erro na ação Excel:", errorMsg)
+            return { success: false, error: errorMsg }
+        }
+    }
+
+    // Função para processar resposta da IA e executar ações
+    const processAIResponse = async (response: string, maxRetries: number = 2): Promise<{ displayContent: string; actionsExecuted: number }> => {
+        const actionRegex = /:::excel-action\s*([\s\S]*?)\s*:::/g
+        let matches = [...response.matchAll(actionRegex)]
+        let actionsExecuted = 0
+        let currentResponse = response
+        let retryCount = 0
+        let undoBatchStarted = false
+
+        while (matches.length > 0 && retryCount <= maxRetries) {
+            if (!askBeforeApply && retryCount === 0) {
+                await StartUndoBatch()
+                undoBatchStarted = true
+            }
+
+            let hasError = false
+            let errorMessage = ''
+
+            for (const match of matches) {
+                try {
+                    const jsonStr = match[1]
+                    const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim()
+                    const action = JSON.parse(cleanJson)
+
+                    if (askBeforeApply) {
+                        setPendingActions(prev => [...prev, action])
+                    } else {
+                        const result = await executeExcelAction(action)
+                        if (result.success) {
+                            actionsExecuted++
+                        } else {
+                            hasError = true
+                            errorMessage = result.error || 'Erro desconhecido'
+                            toast.warning(`Erro: ${errorMessage}. Solicitando correção...`)
+                            break // Para no primeiro erro para pedir correção
+                        }
+                    }
+                } catch (e: any) {
+                    console.error("Erro ao parsear ação", e)
+                    hasError = true
+                    errorMessage = `Erro ao processar comando: ${e?.message || e}`
+                    break
+                }
+            }
+
+            // Se houve erro, envia feedback para a IA
+            if (hasError && retryCount < maxRetries) {
+                retryCount++
+                console.log(`[DEBUG] Enviando erro para IA (tentativa ${retryCount}):`, errorMessage)
+                
+                setStreamingContent('')
+                toast.info(`Solicitando correção à IA (tentativa ${retryCount})...`)
+                
+                try {
+                    const correctedResponse = await SendErrorFeedback(errorMessage)
+                    currentResponse = correctedResponse
+                    matches = [...correctedResponse.matchAll(actionRegex)]
+                    
+                    // Atualiza mensagem com a nova resposta
+                    const newDisplayContent = correctedResponse.replace(actionRegex, '').trim()
+                    setMessages(prev => {
+                        const newMsgs = [...prev]
+                        const lastIndex = newMsgs.length - 1
+                        if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
+                            newMsgs[lastIndex] = { 
+                                ...newMsgs[lastIndex], 
+                                content: newDisplayContent
+                            }
+                        }
+                        return newMsgs
+                    })
+                } catch (feedbackErr) {
+                    console.error("Erro ao enviar feedback:", feedbackErr)
+                    const msg = feedbackErr instanceof Error ? feedbackErr.message : String(feedbackErr)
+                    toast.error('Erro ao solicitar correção à IA: ' + msg)
+                    break
+                }
+            } else {
+                break
+            }
+        }
+
+        // Sempre finalize o lote se tiver sido iniciado, mesmo que nenhuma ação tenha sido aplicada.
+        if (!askBeforeApply && undoBatchStarted) {
+            try {
+                await EndUndoBatch()
+            } catch (e) {
+                console.warn('Falha ao finalizar lote de Undo:', e)
+            }
+        }
+
+        const displayContent = currentResponse.replace(actionRegex, '').trim()
+        return { displayContent, actionsExecuted }
+    }
+
     const processMessage = async (text: string) => {
         setIsLoading(true)
         setStreamingContent('')
@@ -379,107 +554,18 @@ export default function App() {
         try {
             const response = await SendMessage(text)
             
-            // Check for Excel Actions (Global regex)
-            const actionRegex = /:::excel-action\s*([\s\S]*?)\s*:::/g
-            const matches = [...response.matchAll(actionRegex)]
-            
-            let actionsExecuted = 0
-            
-            if (matches.length > 0 && !askBeforeApply) {
-                await StartUndoBatch()
-            }
-
-            for (const match of matches) {
-                try {
-                    const jsonStr = match[1]
-                    // Sanitize potential markdown code blocks
-                    const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim()
-                    const action = JSON.parse(cleanJson)
-                    
-                    if (action.op === 'write') {
-                        if (askBeforeApply) {
-                            setPendingActions(prev => [...prev, action])
-                        } else {
-                            await UpdateExcelCell(
-                                action.workbook || '', 
-                                action.sheet || '', 
-                                action.cell, 
-                                action.value
-                            )
-                            actionsExecuted++
-                        }
-                    } else if (action.op === 'create-workbook') {
-                        if (askBeforeApply) {
-                            setPendingActions(prev => [...prev, action])
-                        } else {
-                            const name = await CreateNewWorkbook()
-                            toast.success(`Nova pasta de trabalho criada: ${name}`)
-                            actionsExecuted++
-                            // Refresh workbooks list
-                            const result = await RefreshWorkbooks()
-                            if (result.workbooks) setWorkbooks(result.workbooks)
-                        }
-                    } else if (action.op === 'create-sheet') {
-                        if (askBeforeApply) {
-                            setPendingActions(prev => [...prev, action])
-                        } else {
-                            await CreateNewSheet(action.name)
-                            toast.success(`Nova aba criada: ${action.name}`)
-                            actionsExecuted++
-                            // Refresh workbooks list
-                            const result = await RefreshWorkbooks()
-                            if (result.workbooks) setWorkbooks(result.workbooks)
-                        }
-                    } else if (action.op === 'create-chart') {
-                        if (askBeforeApply) {
-                            setPendingActions(prev => [...prev, action])
-                        } else {
-                            await CreateChart(
-                                action.sheet || '',
-                                action.range,
-                                action.chartType || 'column',
-                                action.title || ''
-                            )
-                            toast.success('Gráfico criado!')
-                            actionsExecuted++
-                        }
-                    } else if (action.op === 'create-pivot') {
-                        if (askBeforeApply) {
-                            setPendingActions(prev => [...prev, action])
-                        } else {
-                            await CreatePivotTable(
-                                action.sourceSheet || '',
-                                action.sourceRange,
-                                action.destSheet || '',
-                                action.destCell,
-                                action.tableName || 'PivotTable1'
-                            )
-                            toast.success('Tabela dinâmica criada!')
-                            actionsExecuted++
-                        }
-                    }
-                } catch (e) {
-                    console.error("Failed to execute Excel action", e)
-                }
-            }
-
-            if (matches.length > 0 && !askBeforeApply) {
-                await EndUndoBatch()
-            }
+            const { displayContent, actionsExecuted } = await processAIResponse(response)
 
             if (actionsExecuted > 0) {
                 toast.success(`${actionsExecuted} alterações aplicadas!`)
-                // Refresh context if we have a selected sheet
-                if (selectedWorkbook && selectedSheet) {
-                     const contextMsg = await SetExcelContext(selectedWorkbook, selectedSheet)
+                // Refresh context if we have selected sheets
+                if (selectedWorkbook && selectedSheets.length > 0) {
+                     const contextMsg = await SetExcelContext(selectedWorkbook, selectedSheets.join(','))
                      setContextLoaded(contextMsg)
-                     const preview = await GetPreviewData(selectedWorkbook, selectedSheet)
+                     const preview = await GetPreviewData(selectedWorkbook, selectedSheets[0])
                      setPreviewData(preview)
                 }
             }
-
-            // Remove all action blocks from the displayed message
-            const displayContent = response.replace(actionRegex, '').trim()
 
             setMessages(prev => {
                 const newMsgs = [...prev]
@@ -608,6 +694,13 @@ export default function App() {
                         action.title || ''
                     )
                 } else if (action.op === 'create-pivot') {
+                    console.log('[DEBUG] Criando pivot table:', {
+                        sourceSheet: action.sourceSheet,
+                        sourceRange: action.sourceRange,
+                        destSheet: action.destSheet,
+                        destCell: action.destCell,
+                        tableName: action.tableName
+                    })
                     await CreatePivotTable(
                         action.sourceSheet || '',
                         action.sourceRange,
@@ -617,8 +710,10 @@ export default function App() {
                     )
                 }
                 executed++
-            } catch (e) {
-                console.error("Erro ao aplicar ação:", action, e)
+            } catch (e: any) {
+                console.error("Erro ao aplicar ação:", action)
+                console.error("Detalhes do erro:", e?.message || e)
+                toast.error(`Erro: ${e?.message || 'Falha na operação'}`)
                 errors++
             }
         }
@@ -652,10 +747,10 @@ export default function App() {
                 return newMsgs
             })
 
-            if (selectedWorkbook && selectedSheet) {
-                const contextMsg = await SetExcelContext(selectedWorkbook, selectedSheet)
+            if (selectedWorkbook && selectedSheets.length > 0) {
+                const contextMsg = await SetExcelContext(selectedWorkbook, selectedSheets.join(','))
                 setContextLoaded(contextMsg)
-                const preview = await GetPreviewData(selectedWorkbook, selectedSheet)
+                const preview = await GetPreviewData(selectedWorkbook, selectedSheets[0])
                 setPreviewData(preview)
             }
         } else if (errors > 0) {
@@ -672,8 +767,8 @@ export default function App() {
         try {
             await UndoLastChange()
             toast.success('Alteração desfeita!')
-            if (selectedWorkbook && selectedSheet) {
-                const preview = await GetPreviewData(selectedWorkbook, selectedSheet)
+            if (selectedWorkbook && selectedSheets.length > 0) {
+                const preview = await GetPreviewData(selectedWorkbook, selectedSheets[0])
                 setPreviewData(preview)
             }
         } catch (err) {
@@ -698,7 +793,7 @@ export default function App() {
             setContextLoaded('')
             setPreviewData(null)
             setSelectedWorkbook(null)
-            setSelectedSheet(null)
+            setSelectedSheets([])
             
             // Recarregar histórico de conversas
             const list = await ListConversations()
@@ -721,9 +816,14 @@ export default function App() {
     const loadConversations = async () => {
         try {
             const list = await ListConversations()
-            if (list) setConversations(list)
+            console.log('[DEBUG] Conversas carregadas:', list)
+            if (list && list.length > 0) {
+                setConversations(list)
+            } else {
+                setConversations([])
+            }
         } catch (err) {
-            console.error(err)
+            console.error('Erro ao carregar conversas:', err)
         }
     }
 
@@ -838,22 +938,28 @@ export default function App() {
                                     </button>
                                     {expandedWorkbook === wb.name && (
                                         <div className="bg-background/40 border-t border-border max-h-40 overflow-y-auto">
-                                            {wb.sheets?.map((sheet: string) => (
-                                                <button
-                                                    key={sheet}
-                                                    onClick={() => handleSelectSheet(wb.name, sheet)}
-                                                    className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-muted/60 transition-colors border-l-2 ${selectedSheet === sheet && selectedWorkbook === wb.name
-                                                        ? 'border-l-primary bg-muted/60'
-                                                        : 'border-transparent'
-                                                        }`}
-                                                >
-                                                    <span className="opacity-70">📄</span>
-                                                    <span className="flex-1 text-left">{sheet}</span>
-                                                    {selectedSheet === sheet && selectedWorkbook === wb.name && (
-                                                        <span className="text-emerald-500">✓</span>
-                                                    )}
-                                                </button>
-                                            ))}
+                                            <div className="px-4 py-1 text-xs text-muted-foreground border-b border-border">
+                                                💡 Clique para selecionar múltiplas abas
+                                            </div>
+                                            {wb.sheets?.map((sheet: string) => {
+                                                const isSelected = selectedWorkbook === wb.name && selectedSheets.includes(sheet)
+                                                return (
+                                                    <button
+                                                        key={sheet}
+                                                        onClick={() => handleSelectSheet(wb.name, sheet)}
+                                                        className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-muted/60 transition-colors border-l-2 ${isSelected
+                                                            ? 'border-l-primary bg-muted/60'
+                                                            : 'border-transparent'
+                                                            }`}
+                                                    >
+                                                        <span className="opacity-70">{isSelected ? '☑️' : '📄'}</span>
+                                                        <span className="flex-1 text-left">{sheet}</span>
+                                                        {isSelected && (
+                                                            <span className="text-emerald-500">✓</span>
+                                                        )}
+                                                    </button>
+                                                )
+                                            })}
                                         </div>
                                     )}
                                 </div>
@@ -1013,15 +1119,15 @@ export default function App() {
                                     <Card className="w-full max-w-md bg-card/60">
                                         <CardHeader>
                                             <CardTitle className="flex items-center gap-2">
-                                                <span className="text-2xl">{selectedSheet ? '📊' : '🤖'}</span>
-                                                <span>{selectedSheet ? `Planilha: ${selectedSheet}` : 'Excel-AI pronto'}</span>
+                                                <span className="text-2xl">{selectedSheets.length > 0 ? '📊' : '🤖'}</span>
+                                                <span>{selectedSheets.length > 0 ? `${selectedSheets.length} aba(s) selecionada(s)` : 'Excel-AI pronto'}</span>
                                             </CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                            {selectedSheet ? (
+                                            {selectedSheets.length > 0 ? (
                                                 <div className="space-y-3">
                                                     <p className="text-sm text-muted-foreground">
-                                                        ✅ Planilha <strong className="text-primary">{selectedSheet}</strong> carregada!
+                                                        ✅ Abas carregadas: <strong className="text-primary">{selectedSheets.join(', ')}</strong>
                                                     </p>
                                                     <p className="text-sm text-muted-foreground">
                                                         Faça perguntas como:
