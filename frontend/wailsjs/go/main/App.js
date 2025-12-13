@@ -106,6 +106,10 @@ export function StartUndoBatch() {
   return window['go']['main']['App']['StartUndoBatch']();
 }
 
+export function SwitchProvider(arg1) {
+  return window['go']['main']['App']['SwitchProvider'](arg1);
+}
+
 export function UndoLastChange() {
   return window['go']['main']['App']['UndoLastChange']();
 }

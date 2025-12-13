@@ -90,6 +90,11 @@ func (c *Client) GetBaseURL() string {
 	return c.config.BaseURL
 }
 
+// GetAPIKey retorna a API key configurada
+func (c *Client) GetAPIKey() string {
+	return c.config.APIKey
+}
+
 // Chat envia mensagens para a IA e retorna a resposta
 func (c *Client) Chat(messages []Message) (string, error) {
 	if c.config.APIKey == "" {
@@ -338,6 +343,11 @@ func (c *Client) ChatStream(messages []Message, onChunk func(string) error) (str
 		// Tratamento amigável para erro de política de dados em modelos gratuitos
 		if strings.Contains(errorMsg, "No endpoints found matching your data policy") {
 			return "", fmt.Errorf("Para usar modelos gratuitos, você precisa habilitar a coleta de dados no OpenRouter.\nAcesse: https://openrouter.ai/settings/privacy")
+		}
+
+		// Tratamento amigável para erro de autenticação
+		if resp.StatusCode == 401 || strings.Contains(errorMsg, "Unauthorized") || strings.Contains(errorMsg, "cookie auth") {
+			return "", fmt.Errorf("API Key inválida ou não autorizada. Verifique:\n1. A chave está correta para o provedor selecionado\n2. Se mudou de Groq para OpenRouter (ou vice-versa), atualize a API Key")
 		}
 
 		return "", fmt.Errorf("erro na API: %s - %s", resp.Status, errorMsg)

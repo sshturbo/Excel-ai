@@ -36,18 +36,31 @@ type ConversationSummary struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// ProviderConfig armazena configurações específicas de um provedor
+type ProviderConfig struct {
+	APIKey  string `json:"apiKey,omitempty"`
+	Model   string `json:"model,omitempty"`
+	BaseURL string `json:"baseUrl,omitempty"`
+}
+
 // Config armazena configurações do app
 type Config struct {
-	APIKey         string `json:"apiKey,omitempty"`
-	Model          string `json:"model"`
-	Provider       string `json:"provider,omitempty"` // "openrouter", "groq", "custom"
-	BaseURL        string `json:"baseUrl,omitempty"`  // URL base para custom/groq
-	MaxRowsContext int    `json:"maxRowsContext"`     // Máximo de linhas enviadas para IA
-	MaxRowsPreview int    `json:"maxRowsPreview"`     // Máximo de linhas no preview
-	IncludeHeaders bool   `json:"includeHeaders"`     // Incluir cabeçalhos no contexto
-	DetailLevel    string `json:"detailLevel"`        // "minimal", "normal", "detailed"
-	CustomPrompt   string `json:"customPrompt"`       // Prompt personalizado adicional
-	Language       string `json:"language"`           // Idioma das respostas
+	// Configurações atuais (provider selecionado)
+	Provider string `json:"provider,omitempty"` // "openrouter", "groq", "custom"
+	APIKey   string `json:"apiKey,omitempty"`   // API key do provider atual
+	Model    string `json:"model"`              // Modelo do provider atual
+	BaseURL  string `json:"baseUrl,omitempty"`  // URL base do provider atual
+
+	// Configurações salvas por provedor
+	ProviderConfigs map[string]ProviderConfig `json:"providerConfigs,omitempty"`
+
+	// Configurações gerais
+	MaxRowsContext int    `json:"maxRowsContext"` // Máximo de linhas enviadas para IA
+	MaxRowsPreview int    `json:"maxRowsPreview"` // Máximo de linhas no preview
+	IncludeHeaders bool   `json:"includeHeaders"` // Incluir cabeçalhos no contexto
+	DetailLevel    string `json:"detailLevel"`    // "minimal", "normal", "detailed"
+	CustomPrompt   string `json:"customPrompt"`   // Prompt personalizado adicional
+	Language       string `json:"language"`       // Idioma das respostas
 	LastUsedWb     string `json:"lastUsedWorkbook,omitempty"`
 }
 
@@ -284,14 +297,15 @@ func (s *Storage) LoadConfig() (*Config, error) {
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return &Config{
-				Provider:       "openrouter",
-				BaseURL:        "https://openrouter.ai/api/v1",
-				Model:          "openai/gpt-4o-mini",
-				MaxRowsContext: 50,
-				MaxRowsPreview: 100,
-				IncludeHeaders: true,
-				DetailLevel:    "normal",
-				Language:       "pt-BR",
+				Provider:        "openrouter",
+				BaseURL:         "https://openrouter.ai/api/v1",
+				Model:           "openai/gpt-4o-mini",
+				ProviderConfigs: make(map[string]ProviderConfig),
+				MaxRowsContext:  50,
+				MaxRowsPreview:  100,
+				IncludeHeaders:  true,
+				DetailLevel:     "normal",
+				Language:        "pt-BR",
 			}, nil
 		}
 		return nil, err
@@ -302,7 +316,85 @@ func (s *Storage) LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
+	// Inicializar mapa se não existir
+	if cfg.ProviderConfigs == nil {
+		cfg.ProviderConfigs = make(map[string]ProviderConfig)
+	}
+
 	return &cfg, nil
+}
+
+// GetProviderConfig retorna configurações de um provedor específico
+func (s *Storage) GetProviderConfig(providerName string) (*ProviderConfig, error) {
+	cfg, err := s.LoadConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	if providerCfg, exists := cfg.ProviderConfigs[providerName]; exists {
+		return &providerCfg, nil
+	}
+
+	return nil, nil // Não existe configuração para este provedor
+}
+
+// SetProviderConfig salva configurações de um provedor específico
+func (s *Storage) SetProviderConfig(providerName string, apiKey, model, baseURL string) error {
+	cfg, err := s.LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	if cfg.ProviderConfigs == nil {
+		cfg.ProviderConfigs = make(map[string]ProviderConfig)
+	}
+
+	cfg.ProviderConfigs[providerName] = ProviderConfig{
+		APIKey:  apiKey,
+		Model:   model,
+		BaseURL: baseURL,
+	}
+
+	return s.SaveConfig(cfg)
+}
+
+// SwitchProvider muda para outro provedor, carregando suas configurações salvas
+func (s *Storage) SwitchProvider(providerName string) (*Config, error) {
+	cfg, err := s.LoadConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	// Atualizar provider atual
+	cfg.Provider = providerName
+
+	// Carregar configurações salvas deste provedor
+	if providerCfg, exists := cfg.ProviderConfigs[providerName]; exists {
+		cfg.APIKey = providerCfg.APIKey
+		cfg.Model = providerCfg.Model
+		cfg.BaseURL = providerCfg.BaseURL
+	} else {
+		// Sem configuração salva, limpar credenciais e usar defaults
+		cfg.APIKey = ""
+		cfg.Model = ""
+
+		// Definir BaseURL padrão por provedor
+		switch providerName {
+		case "groq":
+			cfg.BaseURL = "https://api.groq.com/openai/v1"
+		case "openrouter":
+			cfg.BaseURL = "https://openrouter.ai/api/v1"
+		default:
+			cfg.BaseURL = ""
+		}
+	}
+
+	// Salvar a mudança
+	if err := s.SaveConfig(cfg); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
 }
 
 // truncateString trunca uma string para o tamanho máximo

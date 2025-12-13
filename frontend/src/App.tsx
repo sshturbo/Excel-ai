@@ -393,6 +393,12 @@ export default function App() {
                     cleanContent = cleanContent.replace(/:::excel-action[\s\S]*$/, '')
                     cleanContent = cleanContent.trim()
 
+                    // Se o conteúdo limpo está vazio mas há blocos de ação, mostrar status
+                    const hasActions = /:::excel-action/.test(streamingContent)
+                    if (!cleanContent && hasActions) {
+                        cleanContent = '⏳ Executando ações no Excel...'
+                    }
+
                     // Only update if content is different to avoid loops
                     if (newMsgs[lastIndex].content !== cleanContent) {
                         newMsgs[lastIndex] = { ...newMsgs[lastIndex], content: cleanContent }
@@ -597,9 +603,15 @@ export default function App() {
                 const newMsgs = [...prev]
                 const lastIndex = newMsgs.length - 1
                 if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
+                    // Se não há conteúdo de texto mas houve ações, mostrar mensagem de sucesso
+                    let finalContent = displayContent
+                    if (!finalContent && actionsExecuted > 0) {
+                        finalContent = `✅ ${actionsExecuted === 1 ? 'Ação executada' : `${actionsExecuted} ações executadas`} com sucesso!`
+                    }
+
                     newMsgs[lastIndex] = {
                         ...newMsgs[lastIndex],
-                        content: displayContent,
+                        content: finalContent,
                         hasActions: actionsExecuted > 0
                     }
                 }

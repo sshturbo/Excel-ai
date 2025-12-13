@@ -136,7 +136,20 @@ func (a *App) SetAPIKey(apiKey string) error {
 		if cfg == nil {
 			cfg = &storage.Config{}
 		}
+		if cfg.ProviderConfigs == nil {
+			cfg.ProviderConfigs = make(map[string]storage.ProviderConfig)
+		}
 		cfg.APIKey = apiKey
+
+		// Também salvar no mapa do provedor atual
+		provider := cfg.Provider
+		if provider == "" {
+			provider = "openrouter"
+		}
+		providerCfg := cfg.ProviderConfigs[provider]
+		providerCfg.APIKey = apiKey
+		cfg.ProviderConfigs[provider] = providerCfg
+
 		return a.storage.SaveConfig(cfg)
 	}
 	return nil
@@ -151,7 +164,20 @@ func (a *App) SetModel(model string) error {
 		if cfg == nil {
 			cfg = &storage.Config{}
 		}
+		if cfg.ProviderConfigs == nil {
+			cfg.ProviderConfigs = make(map[string]storage.ProviderConfig)
+		}
 		cfg.Model = model
+
+		// Também salvar no mapa do provedor atual
+		provider := cfg.Provider
+		if provider == "" {
+			provider = "openrouter"
+		}
+		providerCfg := cfg.ProviderConfigs[provider]
+		providerCfg.Model = model
+		cfg.ProviderConfigs[provider] = providerCfg
+
 		return a.storage.SaveConfig(cfg)
 	}
 	return nil
@@ -179,6 +205,11 @@ func (a *App) UpdateConfig(maxRowsContext, maxRowsPreview int, includeHeaders bo
 	if cfg == nil {
 		cfg = &storage.Config{}
 	}
+	if cfg.ProviderConfigs == nil {
+		cfg.ProviderConfigs = make(map[string]storage.ProviderConfig)
+	}
+
+	// Atualizar configurações gerais
 	cfg.MaxRowsContext = maxRowsContext
 	cfg.MaxRowsPreview = maxRowsPreview
 	cfg.IncludeHeaders = includeHeaders
@@ -187,6 +218,13 @@ func (a *App) UpdateConfig(maxRowsContext, maxRowsPreview int, includeHeaders bo
 	cfg.Language = language
 	cfg.Provider = provider
 	cfg.BaseURL = baseUrl
+
+	// Salvar configurações do provedor atual no mapa de providers
+	cfg.ProviderConfigs[provider] = storage.ProviderConfig{
+		APIKey:  cfg.APIKey,
+		Model:   cfg.Model,
+		BaseURL: baseUrl,
+	}
 
 	// Atualizar serviço
 	if baseUrl != "" {
@@ -198,6 +236,31 @@ func (a *App) UpdateConfig(maxRowsContext, maxRowsPreview int, includeHeaders bo
 	}
 
 	return a.storage.SaveConfig(cfg)
+}
+
+// SwitchProvider troca para outro provedor, carregando suas configurações salvas
+func (a *App) SwitchProvider(providerName string) (*storage.Config, error) {
+	if a.storage == nil {
+		return nil, fmt.Errorf("storage não disponível")
+	}
+
+	cfg, err := a.storage.SwitchProvider(providerName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Atualizar serviço de chat com as novas configurações
+	if cfg.APIKey != "" {
+		a.chatService.SetAPIKey(cfg.APIKey)
+	}
+	if cfg.Model != "" {
+		a.chatService.SetModel(cfg.Model)
+	}
+	if cfg.BaseURL != "" {
+		a.chatService.SetBaseURL(cfg.BaseURL)
+	}
+
+	return cfg, nil
 }
 
 // SendMessage envia mensagem para IA

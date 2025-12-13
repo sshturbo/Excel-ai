@@ -167,6 +167,28 @@ func (s *Service) SendMessage(message string, contextStr string, onChunk func(st
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Recarregar configurações do storage para garantir API key atualizada
+	if s.storage != nil {
+		if cfg, err := s.storage.LoadConfig(); err == nil && cfg != nil {
+			if cfg.APIKey != "" {
+				s.client.SetAPIKey(cfg.APIKey)
+			}
+			if cfg.Model != "" {
+				s.client.SetModel(cfg.Model)
+			}
+			if cfg.BaseURL != "" {
+				s.client.SetBaseURL(cfg.BaseURL)
+			} else if cfg.Provider == "groq" {
+				s.client.SetBaseURL("https://api.groq.com/openai/v1")
+			}
+		}
+	}
+
+	// Verificar se API key está configurada
+	if s.client.GetAPIKey() == "" {
+		return "", fmt.Errorf("API key não configurada. Vá em Configurações e configure sua chave de API")
+	}
+
 	// Gerar ID de conversa se não existir
 	if s.currentConvID == "" {
 		s.currentConvID = storage.GenerateID()

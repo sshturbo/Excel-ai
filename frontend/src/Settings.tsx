@@ -5,7 +5,8 @@ import {
     SetModel,
     GetSavedConfig,
     UpdateConfig,
-    GetAvailableModels
+    GetAvailableModels,
+    SwitchProvider
 } from "../wailsjs/go/main/App"
 import { dto } from "../wailsjs/go/models"
 
@@ -103,7 +104,7 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
 
     const loadModels = async () => {
         if (typeof (window as any)?.go === 'undefined') return
-        
+
         setIsLoadingModels(true)
         try {
             // Garantir que temos uma URL base válida
@@ -135,8 +136,8 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
     const filteredModels = useMemo(() => {
         if (!modelFilter.trim()) return availableModels.slice(0, 50) // Limitar para performance
         const search = modelFilter.toLowerCase()
-        return availableModels.filter(m => 
-            m.id.toLowerCase().includes(search) || 
+        return availableModels.filter(m =>
+            m.id.toLowerCase().includes(search) ||
             m.name.toLowerCase().includes(search)
         ).slice(0, 50)
     }, [availableModels, modelFilter])
@@ -153,7 +154,7 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
             await SetModel(selectedModel)
             await UpdateConfig(maxRowsContext, maxRowsPreview, includeHeaders, detailLevel, customPrompt, language, provider, baseUrl)
             toast.success('✅ Configurações salvas!')
-            
+
             // Recarregar modelos com a nova configuração
             await loadModels()
         } catch (err) {
@@ -218,12 +219,54 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
                             <CardContent className="space-y-4">
                                 <div className="space-y-2">
                                     <Label>Provedor</Label>
-                                    <Select value={provider} onValueChange={(val) => {
+                                    <Select value={provider} onValueChange={async (val) => {
                                         setProvider(val)
-                                        if (val === 'groq') {
-                                            setBaseUrl('https://api.groq.com/openai/v1')
-                                        } else if (val === 'openrouter') {
-                                            setBaseUrl('https://openrouter.ai/api/v1')
+                                        setAvailableModels([]) // Limpar modelos ao mudar
+
+                                        // Carregar configurações salvas deste provedor
+                                        try {
+                                            const cfg = await SwitchProvider(val)
+                                            if (cfg) {
+                                                // Se tem configurações salvas, usar
+                                                if (cfg.apiKey) {
+                                                    setApiKey(cfg.apiKey)
+                                                } else {
+                                                    setApiKey('') // Limpar se não tem config
+                                                }
+                                                if (cfg.model) {
+                                                    setModel(cfg.model)
+                                                } else {
+                                                    setModel('')
+                                                }
+                                                if (cfg.baseUrl) {
+                                                    setBaseUrl(cfg.baseUrl)
+                                                } else {
+                                                    // Default baseURL por provider
+                                                    if (val === 'groq') {
+                                                        setBaseUrl('https://api.groq.com/openai/v1')
+                                                    } else if (val === 'openrouter') {
+                                                        setBaseUrl('https://openrouter.ai/api/v1')
+                                                    } else {
+                                                        setBaseUrl('')
+                                                    }
+                                                }
+
+                                                // Indicar se é config nova ou existente
+                                                if (cfg.apiKey) {
+                                                    toast.success(`Configurações do ${val} carregadas!`)
+                                                } else {
+                                                    toast.info(`Configure a API Key para ${val}`)
+                                                }
+                                            }
+                                        } catch (err) {
+                                            console.error('Erro ao trocar provider:', err)
+                                            // Fallback: só trocar o baseURL
+                                            if (val === 'groq') {
+                                                setBaseUrl('https://api.groq.com/openai/v1')
+                                            } else if (val === 'openrouter') {
+                                                setBaseUrl('https://openrouter.ai/api/v1')
+                                            }
+                                            setApiKey('')
                                         }
                                     }}>
                                         <SelectTrigger>
@@ -283,8 +326,8 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
                                         <Label className="font-medium">Usar modelo personalizado</Label>
                                         <p className="text-xs text-muted-foreground">Digite o ID do modelo manualmente</p>
                                     </div>
-                                    <Switch 
-                                        checked={useCustomModel} 
+                                    <Switch
+                                        checked={useCustomModel}
                                         onCheckedChange={setUseCustomModel}
                                     />
                                 </div>
@@ -306,8 +349,8 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
                                     <>
                                         {/* Botão para carregar modelos da API */}
                                         <div className="flex gap-2">
-                                            <Button 
-                                                variant="outline" 
+                                            <Button
+                                                variant="outline"
                                                 onClick={loadModels}
                                                 disabled={isLoadingModels || !apiKey}
                                                 className="flex-1"
@@ -322,7 +365,7 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
                                                 )}
                                             </Button>
                                         </div>
-                                        
+
                                         {!apiKey && (
                                             <p className="text-xs text-amber-500">⚠️ Configure a API Key primeiro para carregar os modelos</p>
                                         )}
@@ -353,7 +396,7 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
                                                             className={`p-3 rounded-lg text-left transition-all ${model === m.id
                                                                 ? 'bg-primary/10 border-2 border-primary/50'
                                                                 : 'bg-background/40 border border-border hover:bg-muted/40'
-                                                            }`}
+                                                                }`}
                                                         >
                                                             <div className="flex items-center justify-between">
                                                                 <div className="font-medium text-sm truncate flex-1">{m.name || m.id}</div>
@@ -380,7 +423,7 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
                                                             className={`p-3 rounded-lg text-left transition-all ${model === m.value
                                                                 ? 'bg-primary/10 border-2 border-primary/50'
                                                                 : 'bg-background/40 border border-border hover:bg-muted/40'
-                                                            }`}
+                                                                }`}
                                                         >
                                                             <div className="font-medium text-sm">{m.label}</div>
                                                             <div className="text-xs text-muted-foreground">{m.desc}</div>
