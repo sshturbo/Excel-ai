@@ -169,3 +169,79 @@ func getColumnLetter(col int) string {
 	}
 	return result
 }
+
+// ModelInfo representa informações de um modelo da OpenRouter
+type ModelInfo struct {
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	Description   string  `json:"description"`
+	ContextLength int     `json:"context_length"`
+	Pricing       Pricing `json:"pricing"`
+}
+
+// Pricing representa os preços de um modelo
+type Pricing struct {
+	Prompt     string `json:"prompt"`
+	Completion string `json:"completion"`
+}
+
+// ModelsResponse resposta da API de modelos
+type ModelsResponse struct {
+	Data []struct {
+		ID            string `json:"id"`
+		Name          string `json:"name"`
+		Description   string `json:"description"`
+		ContextLength int    `json:"context_length"`
+		Pricing       struct {
+			Prompt     string `json:"prompt"`
+			Completion string `json:"completion"`
+		} `json:"pricing"`
+	} `json:"data"`
+}
+
+// GetAvailableModels busca os modelos disponíveis na OpenRouter
+func (c *Client) GetAvailableModels() ([]ModelInfo, error) {
+	req, err := http.NewRequest("GET", "https://openrouter.ai/api/v1/models", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// API de modelos não requer autenticação, mas se tiver key, envia
+	if c.config.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+	}
+	req.Header.Set("HTTP-Referer", "https://excel-ai-app.local")
+	req.Header.Set("X-Title", "Excel-AI")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var modelsResp ModelsResponse
+	if err := json.Unmarshal(body, &modelsResp); err != nil {
+		return nil, err
+	}
+
+	var models []ModelInfo
+	for _, m := range modelsResp.Data {
+		models = append(models, ModelInfo{
+			ID:            m.ID,
+			Name:          m.Name,
+			Description:   m.Description,
+			ContextLength: m.ContextLength,
+			Pricing: Pricing{
+				Prompt:     m.Pricing.Prompt,
+				Completion: m.Pricing.Completion,
+			},
+		})
+	}
+
+	return models, nil
+}

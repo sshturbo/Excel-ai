@@ -16,6 +16,8 @@ export function DeleteConversation(arg1:string):Promise<void>;
 
 export function GetActiveSelection():Promise<excel.SheetData>;
 
+export function GetAvailableModels():Promise<Array<main.ModelInfo>>;
+
 export function GetChatHistory():Promise<Array<main.ChatMessage>>;
 
 export function GetPreviewData(arg1:string,arg2:string):Promise<main.PreviewData>;

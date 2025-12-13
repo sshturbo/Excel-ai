@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import {
     SetAPIKey,
     SetModel,
     GetSavedConfig,
-    UpdateConfig
+    UpdateConfig,
+    GetAvailableModels
 } from "../wailsjs/go/main/App"
 
 // shadcn components
@@ -22,7 +23,17 @@ interface SettingsProps {
     onClose: () => void
 }
 
-const models = [
+interface ModelInfo {
+    id: string
+    name: string
+    description: string
+    contextLength: number
+    pricePrompt: string
+    priceComplete: string
+}
+
+// Modelos populares de fallback
+const popularModels = [
     { value: 'openai/gpt-4o-mini', label: 'GPT-4o Mini', desc: 'Rápido e econômico' },
     { value: 'openai/gpt-4o', label: 'GPT-4o', desc: 'Avançado' },
     { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet', desc: 'Análise excelente' },
@@ -34,6 +45,8 @@ const models = [
 export default function Settings({ onClose }: SettingsProps) {
     const [apiKey, setApiKey] = useState('')
     const [model, setModel] = useState('openai/gpt-4o-mini')
+    const [customModel, setCustomModel] = useState('')
+    const [useCustomModel, setUseCustomModel] = useState(false)
     const [maxRowsContext, setMaxRowsContext] = useState(50)
     const [maxRowsPreview, setMaxRowsPreview] = useState(100)
     const [detailLevel, setDetailLevel] = useState('normal')
@@ -41,6 +54,9 @@ export default function Settings({ onClose }: SettingsProps) {
     const [language, setLanguage] = useState('pt-BR')
     const [includeHeaders, setIncludeHeaders] = useState(true)
     const [isSaving, setIsSaving] = useState(false)
+    const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
+    const [isLoadingModels, setIsLoadingModels] = useState(false)
+    const [modelFilter, setModelFilter] = useState('')
 
     useEffect(() => {
         const hasWailsRuntime = typeof (window as any)?.go !== 'undefined'
@@ -55,8 +71,20 @@ export default function Settings({ onClose }: SettingsProps) {
         try {
             const cfg = await GetSavedConfig()
             if (cfg) {
-                if (cfg.apiKey) setApiKey(cfg.apiKey)
-                if (cfg.model) setModel(cfg.model)
+                if (cfg.apiKey) {
+                    setApiKey(cfg.apiKey)
+                    // Carregar modelos automaticamente se tiver API key
+                    loadModels()
+                }
+                if (cfg.model) {
+                    setModel(cfg.model)
+                    // Verificar se é um modelo personalizado
+                    const isPopular = popularModels.some(m => m.value === cfg.model)
+                    if (!isPopular) {
+                        setCustomModel(cfg.model)
+                        setUseCustomModel(true)
+                    }
+                }
                 if (cfg.maxRowsContext) setMaxRowsContext(cfg.maxRowsContext)
                 if (cfg.maxRowsPreview) setMaxRowsPreview(cfg.maxRowsPreview)
                 if (cfg.detailLevel) setDetailLevel(cfg.detailLevel)
@@ -69,6 +97,34 @@ export default function Settings({ onClose }: SettingsProps) {
         }
     }
 
+    const loadModels = async () => {
+        if (typeof (window as any)?.go === 'undefined') return
+        
+        setIsLoadingModels(true)
+        try {
+            const models = await GetAvailableModels()
+            if (models && models.length > 0) {
+                setAvailableModels(models)
+                toast.success(`${models.length} modelos carregados!`)
+            }
+        } catch (err) {
+            console.error('Erro ao carregar modelos:', err)
+            toast.error('Erro ao carregar modelos. Usando lista padrão.')
+        } finally {
+            setIsLoadingModels(false)
+        }
+    }
+
+    // Filtrar modelos
+    const filteredModels = useMemo(() => {
+        if (!modelFilter.trim()) return availableModels.slice(0, 50) // Limitar para performance
+        const search = modelFilter.toLowerCase()
+        return availableModels.filter(m => 
+            m.id.toLowerCase().includes(search) || 
+            m.name.toLowerCase().includes(search)
+        ).slice(0, 50)
+    }, [availableModels, modelFilter])
+
     const handleSave = async () => {
         if (typeof (window as any)?.go === 'undefined') {
             toast.error('Wails não detectado. Não é possível salvar fora do app.')
@@ -77,7 +133,8 @@ export default function Settings({ onClose }: SettingsProps) {
         setIsSaving(true)
         try {
             await SetAPIKey(apiKey)
-            await SetModel(model)
+            const selectedModel = useCustomModel ? customModel : model
+            await SetModel(selectedModel)
             await UpdateConfig(maxRowsContext, maxRowsPreview, includeHeaders, detailLevel, customPrompt, language)
             toast.success('✅ Configurações salvas!')
         } catch (err) {
@@ -163,21 +220,128 @@ export default function Settings({ onClose }: SettingsProps) {
                                 <CardTitle>Modelo de IA</CardTitle>
                                 <CardDescription>Escolha o modelo que melhor atende suas necessidades</CardDescription>
                             </CardHeader>
-                            <CardContent>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {models.map((m) => (
-                                        <button
-                                            key={m.value}
-                                            onClick={() => setModel(m.value)}
-                                            className={`p-3 rounded-lg text-left transition-all ${model === m.value
-                                                ? 'bg-primary/10 border-2 border-primary/50'
-                                                : 'bg-background/40 border border-border hover:bg-muted/40'
-                                                }`}
-                                        >
-                                            <div className="font-medium text-sm">{m.label}</div>
-                                            <div className="text-xs text-muted-foreground">{m.desc}</div>
-                                        </button>
-                                    ))}
+                            <CardContent className="space-y-4">
+                                {/* Toggle para modelo manual */}
+                                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                                    <div>
+                                        <Label className="font-medium">Usar modelo personalizado</Label>
+                                        <p className="text-xs text-muted-foreground">Digite o ID do modelo manualmente</p>
+                                    </div>
+                                    <Switch 
+                                        checked={useCustomModel} 
+                                        onCheckedChange={setUseCustomModel}
+                                    />
+                                </div>
+
+                                {useCustomModel ? (
+                                    /* Input para modelo personalizado */
+                                    <div className="space-y-2">
+                                        <Label>ID do Modelo</Label>
+                                        <Input
+                                            value={customModel}
+                                            onChange={(e) => setCustomModel(e.target.value)}
+                                            placeholder="ex: anthropic/claude-3.5-sonnet"
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                            Veja modelos disponíveis em <a href="https://openrouter.ai/models" target="_blank" className="text-primary hover:underline">openrouter.ai/models</a>
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {/* Botão para carregar modelos da API */}
+                                        <div className="flex gap-2">
+                                            <Button 
+                                                variant="outline" 
+                                                onClick={loadModels}
+                                                disabled={isLoadingModels || !apiKey}
+                                                className="flex-1"
+                                            >
+                                                {isLoadingModels ? (
+                                                    <>
+                                                        <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin mr-2" />
+                                                        Carregando...
+                                                    </>
+                                                ) : (
+                                                    <>🔄 Carregar Modelos da OpenRouter</>
+                                                )}
+                                            </Button>
+                                        </div>
+                                        
+                                        {!apiKey && (
+                                            <p className="text-xs text-amber-500">⚠️ Configure a API Key primeiro para carregar os modelos</p>
+                                        )}
+
+                                        {/* Filtro de modelos */}
+                                        {availableModels.length > 0 && (
+                                            <div className="space-y-2">
+                                                <Label>Buscar modelo</Label>
+                                                <Input
+                                                    value={modelFilter}
+                                                    onChange={(e) => setModelFilter(e.target.value)}
+                                                    placeholder="Digite para filtrar... (ex: gpt, claude, gemini)"
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Lista de modelos da API */}
+                                        {availableModels.length > 0 ? (
+                                            <div className="space-y-2">
+                                                <Label className="text-muted-foreground">
+                                                    {filteredModels.length} de {availableModels.length} modelos
+                                                </Label>
+                                                <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto pr-2">
+                                                    {filteredModels.map((m) => (
+                                                        <button
+                                                            key={m.id}
+                                                            onClick={() => setModel(m.id)}
+                                                            className={`p-3 rounded-lg text-left transition-all ${model === m.id
+                                                                ? 'bg-primary/10 border-2 border-primary/50'
+                                                                : 'bg-background/40 border border-border hover:bg-muted/40'
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center justify-between">
+                                                                <div className="font-medium text-sm truncate flex-1">{m.name || m.id}</div>
+                                                                {m.contextLength > 0 && (
+                                                                    <span className="text-xs text-muted-foreground ml-2">
+                                                                        {(m.contextLength / 1000).toFixed(0)}K ctx
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="text-xs text-muted-foreground truncate">{m.id}</div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            /* Modelos populares de fallback */
+                                            <div className="space-y-2">
+                                                <Label className="text-muted-foreground">Modelos populares</Label>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    {popularModels.map((m) => (
+                                                        <button
+                                                            key={m.value}
+                                                            onClick={() => setModel(m.value)}
+                                                            className={`p-3 rounded-lg text-left transition-all ${model === m.value
+                                                                ? 'bg-primary/10 border-2 border-primary/50'
+                                                                : 'bg-background/40 border border-border hover:bg-muted/40'
+                                                            }`}
+                                                        >
+                                                            <div className="font-medium text-sm">{m.label}</div>
+                                                            <div className="text-xs text-muted-foreground">{m.desc}</div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+
+                                {/* Modelo selecionado */}
+                                <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                                    <Label className="text-xs text-muted-foreground">Modelo selecionado:</Label>
+                                    <div className="font-mono text-sm text-primary mt-1">
+                                        {useCustomModel ? customModel || 'Nenhum' : model}
+                                    </div>
                                 </div>
                             </CardContent>
                         </Card>

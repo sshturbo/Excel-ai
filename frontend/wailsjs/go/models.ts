@@ -141,6 +141,28 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class ModelInfo {
+	    id: string;
+	    name: string;
+	    description: string;
+	    contextLength: number;
+	    pricePrompt: string;
+	    priceComplete: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.contextLength = source["contextLength"];
+	        this.pricePrompt = source["pricePrompt"];
+	        this.priceComplete = source["priceComplete"];
+	    }
+	}
 	export class PreviewData {
 	    headers: string[];
 	    rows: string[][];

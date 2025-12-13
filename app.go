@@ -289,6 +289,38 @@ func (a *App) SetModel(model string) error {
 	return nil
 }
 
+// ModelInfo representa informações de um modelo para o frontend
+type ModelInfo struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Description   string `json:"description"`
+	ContextLength int    `json:"contextLength"`
+	PricePrompt   string `json:"pricePrompt"`
+	PriceComplete string `json:"priceComplete"`
+}
+
+// GetAvailableModels retorna a lista de modelos disponíveis na OpenRouter
+func (a *App) GetAvailableModels() ([]ModelInfo, error) {
+	models, err := a.aiClient.GetAvailableModels()
+	if err != nil {
+		return nil, err
+	}
+
+	var result []ModelInfo
+	for _, m := range models {
+		result = append(result, ModelInfo{
+			ID:            m.ID,
+			Name:          m.Name,
+			Description:   m.Description,
+			ContextLength: m.ContextLength,
+			PricePrompt:   m.Pricing.Prompt,
+			PriceComplete: m.Pricing.Completion,
+		})
+	}
+
+	return result, nil
+}
+
 // GetSavedConfig retorna configurações salvas
 func (a *App) GetSavedConfig() (*storage.Config, error) {
 	if a.storage == nil {

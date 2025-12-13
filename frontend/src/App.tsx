@@ -226,6 +226,23 @@ export default function App() {
         try {
             await NewConversation()
             setMessages([])
+            setContextLoaded('')
+            setPreviewData(null)
+            setSelectedWorkbook(null)
+            setSelectedSheet(null)
+            
+            // Recarregar histórico de conversas
+            const list = await ListConversations()
+            if (list) setConversations(list)
+            
+            // Recarregar planilhas do Excel
+            if (connected) {
+                const result = await RefreshWorkbooks()
+                if (result.workbooks) {
+                    setWorkbooks(result.workbooks)
+                }
+            }
+            
             toast.success('Nova conversa criada')
         } catch (err) {
             console.error(err)
@@ -238,6 +255,37 @@ export default function App() {
             if (list) setConversations(list)
         } catch (err) {
             console.error(err)
+        }
+    }
+
+    const handleLoadConversation = async (convId: string) => {
+        try {
+            const messages = await LoadConversation(convId)
+            if (messages && messages.length > 0) {
+                const loadedMessages: Message[] = messages.map((m) => ({
+                    role: m.role as 'user' | 'assistant',
+                    content: m.content
+                }))
+                setMessages(loadedMessages)
+                toast.success('Conversa carregada!')
+            } else {
+                toast.info('Conversa vazia')
+            }
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : String(err)
+            toast.error('Erro ao carregar conversa: ' + errorMessage)
+        }
+    }
+
+    const handleDeleteConversation = async (convId: string, e: React.MouseEvent) => {
+        e.stopPropagation() // Evita disparar o onClick do item pai
+        try {
+            await DeleteConversation(convId)
+            setConversations(prev => prev.filter(c => c.id !== convId))
+            toast.success('Conversa excluída!')
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : String(err)
+            toast.error('Erro ao excluir: ' + errorMessage)
         }
     }
 
@@ -276,7 +324,7 @@ export default function App() {
                         ➕ Nova Conversa
                     </Button>
                     <Button onClick={() => setShowSettings(true)} variant="secondary">
-                        ⚙️ Config
+                        ⚙️ Configurações
                     </Button>
                     <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 border border-border rounded-full text-sm">
                         <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
@@ -347,15 +395,36 @@ export default function App() {
                             className="w-full flex items-center justify-between text-xs font-semibold uppercase text-muted-foreground mb-3 hover:text-foreground"
                         >
                             <span>💬 Histórico</span>
-                            <span>▶</span>
+                            <span className="text-xs">🔄 Atualizar</span>
                         </button>
-                        <div className="space-y-2 overflow-y-auto max-h-40">
-                            {conversations.slice(0, 5).map(conv => (
-                                <div key={conv.id} className="p-2 bg-muted/30 border border-border rounded text-sm cursor-pointer hover:bg-muted/60">
-                                    <div className="truncate">{conv.title || 'Sem título'}</div>
-                                    <div className="text-xs text-muted-foreground">{conv.updatedAt}</div>
-                                </div>
-                            ))}
+                        <div className="space-y-2 overflow-y-auto max-h-48">
+                            {conversations.length === 0 ? (
+                                <p className="text-center text-muted-foreground text-sm py-4">
+                                    Clique em "Atualizar" para carregar
+                                </p>
+                            ) : (
+                                conversations.slice(0, 10).map(conv => (
+                                    <div
+                                        key={conv.id}
+                                        onClick={() => handleLoadConversation(conv.id)}
+                                        className="group p-2 bg-muted/30 border border-border rounded text-sm cursor-pointer hover:bg-muted/60 hover:border-primary/50 transition-all"
+                                    >
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="truncate font-medium">{conv.title || 'Sem título'}</div>
+                                                <div className="text-xs text-muted-foreground">{conv.updatedAt}</div>
+                                            </div>
+                                            <button
+                                                onClick={(e) => handleDeleteConversation(conv.id, e)}
+                                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/20 rounded text-destructive transition-opacity"
+                                                title="Excluir conversa"
+                                            >
+                                                🗑️
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </div>
                 </aside>
