@@ -525,6 +525,23 @@ export default function App() {
         if (executed > 0) {
             toast.success(`${executed} alterações aplicadas!`)
             setPendingActions([])
+            
+            // Update the last assistant message to show the Undo button
+            setMessages(prev => {
+                const newMsgs = [...prev]
+                let lastIndex = -1
+                for (let i = newMsgs.length - 1; i >= 0; i--) {
+                    if (newMsgs[i].role === 'assistant') {
+                        lastIndex = i
+                        break
+                    }
+                }
+                if (lastIndex >= 0) {
+                    newMsgs[lastIndex] = { ...newMsgs[lastIndex], hasActions: true }
+                }
+                return newMsgs
+            })
+
             if (selectedWorkbook && selectedSheet) {
                 const contextMsg = await SetExcelContext(selectedWorkbook, selectedSheet)
                 setContextLoaded(contextMsg)
