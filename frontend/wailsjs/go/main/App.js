@@ -46,8 +46,8 @@ export function GetActiveSelection() {
   return window['go']['main']['App']['GetActiveSelection']();
 }
 
-export function GetAvailableModels() {
-  return window['go']['main']['App']['GetAvailableModels']();
+export function GetAvailableModels(arg1, arg2) {
+  return window['go']['main']['App']['GetAvailableModels'](arg1, arg2);
 }
 
 export function GetChatHistory() {

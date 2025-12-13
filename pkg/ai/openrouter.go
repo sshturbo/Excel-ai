@@ -85,6 +85,11 @@ func (c *Client) SetAPIKey(apiKey string) {
 	c.config.APIKey = apiKey
 }
 
+// GetBaseURL retorna a URL base configurada
+func (c *Client) GetBaseURL() string {
+	return c.config.BaseURL
+}
+
 // Chat envia mensagens para a IA e retorna a resposta
 func (c *Client) Chat(messages []Message) (string, error) {
 	if c.config.APIKey == "" {
@@ -211,18 +216,21 @@ type ModelsResponse struct {
 		Name          string `json:"name"`
 		Description   string `json:"description"`
 		ContextLength int    `json:"context_length"`
+		ContextWindow int    `json:"context_window"` // Groq usa context_window
 		Pricing       struct {
 			Prompt     string `json:"prompt"`
 			Completion string `json:"completion"`
 		} `json:"pricing"`
+		// Campos Groq
+		OwnedBy string `json:"owned_by"`
 	} `json:"data"`
 }
 
-// GetAvailableModels busca os modelos disponíveis na OpenRouter
+// GetAvailableModels busca os modelos disponíveis na API
 func (c *Client) GetAvailableModels() ([]ModelInfo, error) {
-	// Se não for OpenRouter, a API de modelos pode ser diferente ou não existir
-	// Groq usa /models também
-	req, err := http.NewRequest("GET", c.config.BaseURL+"/models", nil)
+	url := c.config.BaseURL + "/models"
+
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -236,27 +244,42 @@ func (c *Client) GetAvailableModels() ([]ModelInfo, error) {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("erro na requisição: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("erro ao ler resposta: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API retornou status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var modelsResp ModelsResponse
 	if err := json.Unmarshal(body, &modelsResp); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("erro ao parsear JSON: %w", err)
 	}
 
 	var models []ModelInfo
 	for _, m := range modelsResp.Data {
+		name := m.Name
+		if name == "" {
+			name = m.ID // Groq não retorna Name, usa ID
+		}
+
+		// Usar context_window se context_length não estiver definido (Groq)
+		contextLen := m.ContextLength
+		if contextLen == 0 {
+			contextLen = m.ContextWindow
+		}
+
 		models = append(models, ModelInfo{
 			ID:            m.ID,
-			Name:          m.Name,
+			Name:          name,
 			Description:   m.Description,
-			ContextLength: m.ContextLength,
+			ContextLength: contextLen,
 			Pricing: Pricing{
 				Prompt:     m.Pricing.Prompt,
 				Completion: m.Pricing.Completion,

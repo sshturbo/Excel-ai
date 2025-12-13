@@ -153,8 +153,8 @@ func (a *App) SetModel(model string) error {
 }
 
 // GetAvailableModels retorna modelos disponíveis
-func (a *App) GetAvailableModels() ([]dto.ModelInfo, error) {
-	return a.chatService.GetAvailableModels(), nil
+func (a *App) GetAvailableModels(apiKey, baseURL string) ([]dto.ModelInfo, error) {
+	return a.chatService.GetAvailableModels(apiKey, baseURL), nil
 }
 
 // GetSavedConfig retorna configurações salvas

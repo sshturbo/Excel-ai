@@ -26,7 +26,7 @@ export function EndUndoBatch():Promise<void>;
 
 export function GetActiveSelection():Promise<excel.SheetData>;
 
-export function GetAvailableModels():Promise<Array<dto.ModelInfo>>;
+export function GetAvailableModels(arg1:string,arg2:string):Promise<Array<dto.ModelInfo>>;
 
 export function GetChatHistory():Promise<Array<dto.ChatMessage>>;
 

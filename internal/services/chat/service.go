@@ -5,6 +5,7 @@ import (
 	"excel-ai/pkg/ai"
 	"excel-ai/pkg/storage"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -43,9 +44,57 @@ func (s *Service) SetBaseURL(url string) {
 	s.client.SetBaseURL(url)
 }
 
-func (s *Service) GetAvailableModels() []dto.ModelInfo {
-	models, err := s.client.GetAvailableModels()
+func (s *Service) GetAvailableModels(apiKey, baseURL string) []dto.ModelInfo {
+	var client *ai.Client
+	// Se uma URL base for fornecida, cria um cliente temporário para buscar os modelos
+	if baseURL != "" {
+		client = ai.NewClient(apiKey, "", baseURL)
+	} else {
+		// Caso contrário usa o cliente configurado
+		client = s.client
+	}
+
+	models, err := client.GetAvailableModels()
 	if err != nil {
+		// Check BaseURL to determine fallback
+		currentBaseURL := client.GetBaseURL()
+		if strings.Contains(currentBaseURL, "groq.com") {
+			return []dto.ModelInfo{
+				{
+					ID:            "llama3-8b-8192",
+					Name:          "Llama 3 8B",
+					Description:   "Modelo rápido e eficiente da Meta (Groq)",
+					ContextLength: 8192,
+					PricePrompt:   "0",
+					PriceComplete: "0",
+				},
+				{
+					ID:            "llama3-70b-8192",
+					Name:          "Llama 3 70B",
+					Description:   "Modelo de alta capacidade da Meta (Groq)",
+					ContextLength: 8192,
+					PricePrompt:   "0",
+					PriceComplete: "0",
+				},
+				{
+					ID:            "mixtral-8x7b-32768",
+					Name:          "Mixtral 8x7B",
+					Description:   "Modelo MoE de alta performance (Groq)",
+					ContextLength: 32768,
+					PricePrompt:   "0",
+					PriceComplete: "0",
+				},
+				{
+					ID:            "gemma-7b-it",
+					Name:          "Gemma 7B IT",
+					Description:   "Modelo do Google (Groq)",
+					ContextLength: 8192,
+					PricePrompt:   "0",
+					PriceComplete: "0",
+				},
+			}
+		}
+
 		// Fallback to hardcoded list if API fails
 		return []dto.ModelInfo{
 			{

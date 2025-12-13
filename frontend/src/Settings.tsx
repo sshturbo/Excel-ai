@@ -63,6 +63,12 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
         }
     }, [])
 
+    // Limpar modelos quando mudar de provedor
+    useEffect(() => {
+        setAvailableModels([])
+        setModelFilter('')
+    }, [provider])
+
     const loadConfig = async () => {
         try {
             const cfg = await GetSavedConfig()
@@ -100,10 +106,22 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
         
         setIsLoadingModels(true)
         try {
-            const models = await GetAvailableModels()
+            // Garantir que temos uma URL base válida
+            let url = baseUrl
+            if (!url) {
+                if (provider === 'groq') {
+                    url = 'https://api.groq.com/openai/v1'
+                } else {
+                    url = 'https://openrouter.ai/api/v1'
+                }
+            }
+            console.log('[DEBUG] Carregando modelos de:', url, 'com apiKey:', apiKey ? 'presente' : 'vazia')
+            const models = await GetAvailableModels(apiKey, url)
             if (models && models.length > 0) {
                 setAvailableModels(models)
                 toast.success(`${models.length} modelos carregados!`)
+            } else {
+                toast.warning('Nenhum modelo retornado pela API')
             }
         } catch (err) {
             console.error('Erro ao carregar modelos:', err)
@@ -135,6 +153,9 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
             await SetModel(selectedModel)
             await UpdateConfig(maxRowsContext, maxRowsPreview, includeHeaders, detailLevel, customPrompt, language, provider, baseUrl)
             toast.success('✅ Configurações salvas!')
+            
+            // Recarregar modelos com a nova configuração
+            await loadModels()
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err)
             toast.error('❌ Erro ao salvar: ' + errorMessage)
@@ -297,7 +318,7 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
                                                         Carregando...
                                                     </>
                                                 ) : (
-                                                    <>🔄 Carregar Modelos da OpenRouter</>
+                                                    <>🔄 Carregar Modelos {provider === 'groq' ? 'da Groq' : provider === 'openrouter' ? 'da OpenRouter' : 'da API'}</>
                                                 )}
                                             </Button>
                                         </div>
