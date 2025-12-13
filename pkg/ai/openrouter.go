@@ -286,7 +286,14 @@ func (c *Client) ChatStream(messages []Message, onChunk func(string) error) (str
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("erro na API: %s - %s", resp.Status, string(body))
+		errorMsg := string(body)
+
+		// Tratamento amigável para erro de política de dados em modelos gratuitos
+		if strings.Contains(errorMsg, "No endpoints found matching your data policy") {
+			return "", fmt.Errorf("Para usar modelos gratuitos, você precisa habilitar a coleta de dados no OpenRouter.\nAcesse: https://openrouter.ai/settings/privacy")
+		}
+
+		return "", fmt.Errorf("erro na API: %s - %s", resp.Status, errorMsg)
 	}
 
 	reader := bufio.NewReader(resp.Body)

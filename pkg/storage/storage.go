@@ -1,11 +1,14 @@
 package storage
 
 import (
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
+
+	_ "github.com/glebarez/go-sqlite"
 )
 
 // Message representa uma mensagem do chat
@@ -33,9 +36,22 @@ type ConversationSummary struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// Config armazena configurações do app
+type Config struct {
+	APIKey         string `json:"apiKey,omitempty"`
+	Model          string `json:"model"`
+	MaxRowsContext int    `json:"maxRowsContext"` // Máximo de linhas enviadas para IA
+	MaxRowsPreview int    `json:"maxRowsPreview"` // Máximo de linhas no preview
+	IncludeHeaders bool   `json:"includeHeaders"` // Incluir cabeçalhos no contexto
+	DetailLevel    string `json:"detailLevel"`    // "minimal", "normal", "detailed"
+	CustomPrompt   string `json:"customPrompt"`   // Prompt personalizado adicional
+	Language       string `json:"language"`       // Idioma das respostas
+	LastUsedWb     string `json:"lastUsedWorkbook,omitempty"`
+}
+
 // Storage gerencia persistência de dados
 type Storage struct {
-	basePath string
+	db *sql.DB
 }
 
 // NewStorage cria nova instância do storage
@@ -47,21 +63,53 @@ func NewStorage() (*Storage, error) {
 	}
 
 	basePath := filepath.Join(homeDir, ".excel-ai")
-
-	// Criar diretórios necessários
-	dirs := []string{
-		basePath,
-		filepath.Join(basePath, "conversations"),
-		filepath.Join(basePath, "config"),
+	if err := os.MkdirAll(basePath, 0755); err != nil {
+		return nil, err
 	}
 
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return nil, err
+	dbPath := filepath.Join(basePath, "excel-ai.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := initDB(db); err != nil {
+		db.Close()
+		return nil, err
+	}
+
+	return &Storage{db: db}, nil
+}
+
+func initDB(db *sql.DB) error {
+	queries := []string{
+		`CREATE TABLE IF NOT EXISTS conversations (
+			id TEXT PRIMARY KEY,
+			title TEXT,
+			context TEXT,
+			created_at DATETIME,
+			updated_at DATETIME
+		)`,
+		`CREATE TABLE IF NOT EXISTS messages (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			conversation_id TEXT,
+			role TEXT,
+			content TEXT,
+			timestamp DATETIME,
+			FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS settings (
+			key TEXT PRIMARY KEY,
+			value TEXT
+		)`,
+	}
+
+	for _, query := range queries {
+		if _, err := db.Exec(query); err != nil {
+			return fmt.Errorf("erro ao inicializar DB: %w", err)
 		}
 	}
-
-	return &Storage{basePath: basePath}, nil
+	return nil
 }
 
 // SaveConversation salva uma conversa
@@ -81,112 +129,158 @@ func (s *Storage) SaveConversation(conv *Conversation) error {
 		}
 	}
 
-	data, err := json.MarshalIndent(conv, "", "  ")
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Salvar conversa
+	_, err = tx.Exec(`
+		INSERT OR REPLACE INTO conversations (id, title, context, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, conv.ID, conv.Title, conv.Context, conv.CreatedAt, conv.UpdatedAt)
 	if err != nil {
 		return err
 	}
 
-	filePath := filepath.Join(s.basePath, "conversations", conv.ID+".json")
-	return os.WriteFile(filePath, data, 0644)
+	// Limpar mensagens antigas (simples estratégia de replace)
+	_, err = tx.Exec("DELETE FROM messages WHERE conversation_id = ?", conv.ID)
+	if err != nil {
+		return err
+	}
+
+	// Inserir mensagens
+	stmt, err := tx.Prepare(`
+		INSERT INTO messages (conversation_id, role, content, timestamp)
+		VALUES (?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, msg := range conv.Messages {
+		_, err = stmt.Exec(conv.ID, msg.Role, msg.Content, msg.Timestamp)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 // LoadConversation carrega uma conversa pelo ID
 func (s *Storage) LoadConversation(id string) (*Conversation, error) {
-	filePath := filepath.Join(s.basePath, "conversations", id+".json")
+	var conv Conversation
+	err := s.db.QueryRow(`
+		SELECT id, title, context, created_at, updated_at 
+		FROM conversations WHERE id = ?
+	`, id).Scan(&conv.ID, &conv.Title, &conv.Context, &conv.CreatedAt, &conv.UpdatedAt)
 
-	data, err := os.ReadFile(filePath)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("conversa não encontrada")
+		}
 		return nil, err
 	}
 
-	var conv Conversation
-	if err := json.Unmarshal(data, &conv); err != nil {
+	rows, err := s.db.Query(`
+		SELECT role, content, timestamp 
+		FROM messages 
+		WHERE conversation_id = ? 
+		ORDER BY id ASC
+	`, id)
+	if err != nil {
 		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var msg Message
+		if err := rows.Scan(&msg.Role, &msg.Content, &msg.Timestamp); err != nil {
+			return nil, err
+		}
+		conv.Messages = append(conv.Messages, msg)
 	}
 
 	return &conv, nil
 }
 
-// ListConversations lista todas as conversas
+// ListConversations lista todas as conversas (resumo)
 func (s *Storage) ListConversations() ([]ConversationSummary, error) {
-	convDir := filepath.Join(s.basePath, "conversations")
-
-	files, err := os.ReadDir(convDir)
+	rows, err := s.db.Query(`
+		SELECT id, title, updated_at 
+		FROM conversations 
+		ORDER BY updated_at DESC
+	`)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
 	var summaries []ConversationSummary
-
-	for _, file := range files {
-		if filepath.Ext(file.Name()) != ".json" {
-			continue
+	for rows.Next() {
+		var summary ConversationSummary
+		if err := rows.Scan(&summary.ID, &summary.Title, &summary.UpdatedAt); err != nil {
+			return nil, err
 		}
 
-		conv, err := s.LoadConversation(file.Name()[:len(file.Name())-5])
-		if err != nil {
-			continue
-		}
+		// Pegar preview (última mensagem)
+		var preview string
+		_ = s.db.QueryRow("SELECT content FROM messages WHERE conversation_id = ? ORDER BY id DESC LIMIT 1", summary.ID).Scan(&preview)
+		summary.Preview = truncateString(preview, 100)
 
-		preview := ""
-		if len(conv.Messages) > 0 {
-			lastMsg := conv.Messages[len(conv.Messages)-1]
-			preview = truncateString(lastMsg.Content, 100)
-		}
-
-		summaries = append(summaries, ConversationSummary{
-			ID:        conv.ID,
-			Title:     conv.Title,
-			Preview:   preview,
-			UpdatedAt: conv.UpdatedAt,
-		})
+		summaries = append(summaries, summary)
 	}
-
-	// Ordenar por data de atualização (mais recente primeiro)
-	sort.Slice(summaries, func(i, j int) bool {
-		return summaries[i].UpdatedAt.After(summaries[j].UpdatedAt)
-	})
 
 	return summaries, nil
 }
 
 // DeleteConversation remove uma conversa
 func (s *Storage) DeleteConversation(id string) error {
-	filePath := filepath.Join(s.basePath, "conversations", id+".json")
-	return os.Remove(filePath)
-}
+	// Com ON DELETE CASCADE, deletar a conversa deleta as mensagens
+	// Mas SQLite precisa de PRAGMA foreign_keys = ON para isso funcionar automaticamente
+	// Vamos garantir deletando manualmente ou ativando PRAGMA
 
-// Config armazena configurações do app
-type Config struct {
-	APIKey         string `json:"apiKey,omitempty"`
-	Model          string `json:"model"`
-	MaxRowsContext int    `json:"maxRowsContext"` // Máximo de linhas enviadas para IA
-	MaxRowsPreview int    `json:"maxRowsPreview"` // Máximo de linhas no preview
-	IncludeHeaders bool   `json:"includeHeaders"` // Incluir cabeçalhos no contexto
-	DetailLevel    string `json:"detailLevel"`    // "minimal", "normal", "detailed"
-	CustomPrompt   string `json:"customPrompt"`   // Prompt personalizado adicional
-	Language       string `json:"language"`       // Idioma das respostas
-	LastUsedWb     string `json:"lastUsedWorkbook,omitempty"`
-}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 
-// SaveConfig salva configurações
-func (s *Storage) SaveConfig(cfg *Config) error {
-	data, err := json.MarshalIndent(cfg, "", "  ")
+	_, err = tx.Exec("DELETE FROM messages WHERE conversation_id = ?", id)
 	if err != nil {
 		return err
 	}
 
-	filePath := filepath.Join(s.basePath, "config", "settings.json")
-	return os.WriteFile(filePath, data, 0644)
+	_, err = tx.Exec("DELETE FROM conversations WHERE id = ?", id)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// SaveConfig salva configurações
+func (s *Storage) SaveConfig(cfg *Config) error {
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(`
+		INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)
+	`, "main_config", string(data))
+	return err
 }
 
 // LoadConfig carrega configurações
 func (s *Storage) LoadConfig() (*Config, error) {
-	filePath := filepath.Join(s.basePath, "config", "settings.json")
-
-	data, err := os.ReadFile(filePath)
+	var value string
+	err := s.db.QueryRow("SELECT value FROM settings WHERE key = ?", "main_config").Scan(&value)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if err == sql.ErrNoRows {
 			return &Config{
 				Model:          "openai/gpt-4o-mini",
 				MaxRowsContext: 50,
@@ -200,7 +294,7 @@ func (s *Storage) LoadConfig() (*Config, error) {
 	}
 
 	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	if err := json.Unmarshal([]byte(value), &cfg); err != nil {
 		return nil, err
 	}
 
