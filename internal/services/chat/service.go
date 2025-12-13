@@ -179,7 +179,24 @@ func (s *Service) SendMessage(message string, contextStr string, onChunk func(st
 {"op": "write", "cell": "A1", "value": "valor"}
 :::
 
-Ops: write (célula), create-workbook, create-sheet (name), create-chart (range, chartType, title), create-pivot (sourceSheet, sourceRange, destSheet, destCell, tableName).
+Ops: write (célula), create-workbook, create-sheet (name), create-chart (range, chartType, title), create-pivot (sourceSheet, sourceRange, destSheet, destCell, tableName, rowFields, valueFields).
+
+REGRAS para create-pivot:
+1. SEMPRE crie a aba de destino ANTES com create-sheet
+2. sourceRange deve ser APENAS o intervalo (ex: "A1:F100" ou "A:F"), SEM o nome da aba
+3. Os dados de origem DEVEM ter cabeçalhos na primeira linha
+4. Use rowFields para definir campos nas linhas (array de strings)
+5. Use valueFields para definir campos nos valores (array de objetos {field, function})
+   Funções suportadas: sum, count, average, max, min
+
+Exemplo correto com campos configurados:
+:::excel-action
+{"op": "create-sheet", "name": "PivotAnalise"}
+:::
+:::excel-action
+{"op": "create-pivot", "sourceSheet": "Dados", "sourceRange": "A:F", "destSheet": "PivotAnalise", "destCell": "A1", "tableName": "TabelaDinamica1", "rowFields": ["IDENTIFICACAO"], "valueFields": [{"field": "Total", "function": "sum"}]}
+:::
+
 Use fórmulas em PT-BR (SOMA, MÉDIA, SE, PROCV). NÃO gere VBA.`
 
 		s.chatHistory = append(s.chatHistory, ai.Message{
@@ -223,7 +240,22 @@ func (s *Service) SendErrorFeedback(errorMessage string, onChunk func(string) er
 	defer s.mu.Unlock()
 
 	// Adiciona mensagem de erro como feedback
-	feedbackMsg := fmt.Sprintf("ERRO NA EXECUÇÃO: %s\n\nPor favor, corrija o comando. Se precisar criar uma aba primeiro, use create-sheet antes de create-pivot.", errorMessage)
+	feedbackMsg := fmt.Sprintf(`ERRO NA EXECUÇÃO DO COMANDO: %s
+
+IMPORTANTE: Para corrigir este erro, você DEVE enviar DOIS comandos separados :::excel-action em sequência:
+1. PRIMEIRO: Crie a aba com create-sheet
+2. SEGUNDO: Crie a tabela dinâmica com create-pivot
+
+Exemplo de resposta correta:
+:::excel-action
+{"op": "create-sheet", "name": "NOME_DA_ABA"}
+:::
+
+:::excel-action
+{"op": "create-pivot", "sourceSheet": "...", "sourceRange": "...", "destSheet": "NOME_DA_ABA", "destCell": "A1", "tableName": "..."}
+:::
+
+Por favor, envie os comandos corrigidos agora.`, errorMessage)
 
 	s.chatHistory = append(s.chatHistory, ai.Message{
 		Role:    "user",

@@ -44,6 +44,7 @@ import {
     CreateNewSheet,
     CreateChart,
     CreatePivotTable,
+    ConfigurePivotFields,
     SendErrorFeedback
 } from "../wailsjs/go/main/App"
 import { EventsOn } from "../wailsjs/runtime/runtime"
@@ -132,7 +133,7 @@ export default function App() {
         code({ node, className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || '')
             const isInline = !match && !className
-            
+
             if (isInline) {
                 return (
                     <code className="px-1.5 py-0.5 rounded bg-muted text-primary font-mono text-sm" {...props}>
@@ -140,7 +141,7 @@ export default function App() {
                     </code>
                 )
             }
-            
+
             // Bloco de código com syntax highlighting
             return (
                 <div className="relative group my-3">
@@ -221,9 +222,9 @@ export default function App() {
         // Links
         a({ href, children }) {
             return (
-                <a 
-                    href={href} 
-                    target="_blank" 
+                <a
+                    href={href}
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="text-primary hover:underline"
                 >
@@ -303,7 +304,7 @@ export default function App() {
     const handleSelectSheet = async (wbName: string, sheetName: string) => {
         // Toggle sheet selection (multi-select)
         const isSelected = selectedWorkbook === wbName && selectedSheets.includes(sheetName)
-        
+
         if (selectedWorkbook !== wbName) {
             // Mudou de workbook, reset selection
             setSelectedWorkbook(wbName)
@@ -322,9 +323,9 @@ export default function App() {
             setSelectedSheets([...selectedSheets, sheetName])
         }
 
-        const sheetsToLoad = isSelected 
+        const sheetsToLoad = isSelected
             ? selectedSheets.filter(s => s !== sheetName)
-            : selectedWorkbook === wbName 
+            : selectedWorkbook === wbName
                 ? [...selectedSheets, sheetName]
                 : [sheetName]
 
@@ -336,7 +337,7 @@ export default function App() {
         try {
             // Load context for all selected sheets
             await SetExcelContext(wbName, sheetsToLoad.join(','))
-            
+
             // Get preview for first selected sheet
             const data = await GetPreviewData(wbName, sheetsToLoad[0])
             if (data) {
@@ -407,9 +408,9 @@ export default function App() {
         try {
             if (action.op === 'write') {
                 await UpdateExcelCell(
-                    action.workbook || '', 
-                    action.sheet || '', 
-                    action.cell, 
+                    action.workbook || '',
+                    action.sheet || '',
+                    action.cell,
                     action.value
                 )
             } else if (action.op === 'create-workbook') {
@@ -422,6 +423,8 @@ export default function App() {
                 toast.success(`Nova aba criada: ${action.name}`)
                 const result = await RefreshWorkbooks()
                 if (result.workbooks) setWorkbooks(result.workbooks)
+                // Pequeno delay para garantir que o Excel processou a criação da aba
+                await new Promise(resolve => setTimeout(resolve, 300))
             } else if (action.op === 'create-chart') {
                 await CreateChart(
                     action.sheet || '',
@@ -432,13 +435,36 @@ export default function App() {
                 toast.success('Gráfico criado!')
             } else if (action.op === 'create-pivot') {
                 console.log('[DEBUG] create-pivot:', action)
+                const tableName = action.tableName || 'PivotTable1'
                 await CreatePivotTable(
                     action.sourceSheet || '',
                     action.sourceRange,
                     action.destSheet || '',
                     action.destCell,
-                    action.tableName || 'PivotTable1'
+                    tableName
                 )
+
+                // Configurar campos se especificados
+                if (action.rowFields || action.valueFields) {
+                    // Pequeno delay para garantir que a tabela foi criada
+                    await new Promise(resolve => setTimeout(resolve, 500))
+
+                    const rowFields = action.rowFields || []
+                    const valueFields = (action.valueFields || []).map((vf: any) => {
+                        if (typeof vf === 'string') {
+                            return { field: vf, function: 'sum' }
+                        }
+                        return vf
+                    })
+
+                    await ConfigurePivotFields(
+                        action.destSheet || '',
+                        tableName,
+                        rowFields,
+                        valueFields
+                    )
+                }
+
                 toast.success('Tabela dinâmica criada!')
             }
             return { success: true }
@@ -498,23 +524,23 @@ export default function App() {
             if (hasError && retryCount < maxRetries) {
                 retryCount++
                 console.log(`[DEBUG] Enviando erro para IA (tentativa ${retryCount}):`, errorMessage)
-                
+
                 setStreamingContent('')
                 toast.info(`Solicitando correção à IA (tentativa ${retryCount})...`)
-                
+
                 try {
                     const correctedResponse = await SendErrorFeedback(errorMessage)
                     currentResponse = correctedResponse
                     matches = [...correctedResponse.matchAll(actionRegex)]
-                    
+
                     // Atualiza mensagem com a nova resposta
                     const newDisplayContent = correctedResponse.replace(actionRegex, '').trim()
                     setMessages(prev => {
                         const newMsgs = [...prev]
                         const lastIndex = newMsgs.length - 1
                         if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
-                            newMsgs[lastIndex] = { 
-                                ...newMsgs[lastIndex], 
+                            newMsgs[lastIndex] = {
+                                ...newMsgs[lastIndex],
                                 content: newDisplayContent
                             }
                         }
@@ -553,17 +579,17 @@ export default function App() {
 
         try {
             const response = await SendMessage(text)
-            
+
             const { displayContent, actionsExecuted } = await processAIResponse(response)
 
             if (actionsExecuted > 0) {
                 toast.success(`${actionsExecuted} alterações aplicadas!`)
                 // Refresh context if we have selected sheets
                 if (selectedWorkbook && selectedSheets.length > 0) {
-                     const contextMsg = await SetExcelContext(selectedWorkbook, selectedSheets.join(','))
-                     setContextLoaded(contextMsg)
-                     const preview = await GetPreviewData(selectedWorkbook, selectedSheets[0])
-                     setPreviewData(preview)
+                    const contextMsg = await SetExcelContext(selectedWorkbook, selectedSheets.join(','))
+                    setContextLoaded(contextMsg)
+                    const preview = await GetPreviewData(selectedWorkbook, selectedSheets[0])
+                    setPreviewData(preview)
                 }
             }
 
@@ -571,8 +597,8 @@ export default function App() {
                 const newMsgs = [...prev]
                 const lastIndex = newMsgs.length - 1
                 if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
-                    newMsgs[lastIndex] = { 
-                        ...newMsgs[lastIndex], 
+                    newMsgs[lastIndex] = {
+                        ...newMsgs[lastIndex],
                         content: displayContent,
                         hasActions: actionsExecuted > 0
                     }
@@ -595,13 +621,13 @@ export default function App() {
         const userMessage = inputMessage.trim()
         setInputMessage('')
         setMessages(prev => [...prev, { role: 'user', content: userMessage }])
-        
+
         await processMessage(userMessage)
     }
 
     const handleRegenerate = async () => {
         if (isLoading || messages.length === 0) return
-        
+
         let lastUserMsgIndex = -1
         for (let i = messages.length - 1; i >= 0; i--) {
             if (messages[i].role === 'user') {
@@ -613,7 +639,7 @@ export default function App() {
 
         const text = messages[lastUserMsgIndex].content
         const countToRemove = messages.length - lastUserMsgIndex
-        
+
         try {
             await DeleteLastMessages(countToRemove)
             setMessages(prev => prev.slice(0, lastUserMsgIndex))
@@ -642,9 +668,9 @@ export default function App() {
 
     const handleSaveEdit = async (index: number) => {
         if (!editContent.trim()) return
-        
+
         const countToRemove = messages.length - index
-        
+
         try {
             await DeleteLastMessages(countToRemove)
             setMessages(prev => prev.slice(0, index))
@@ -666,7 +692,7 @@ export default function App() {
     const handleApplyActions = async () => {
         let executed = 0
         let errors = 0
-        
+
         const toastId = toast.loading('Aplicando alterações...')
 
         if (pendingActions.length > 0) {
@@ -677,15 +703,17 @@ export default function App() {
             try {
                 if (action.op === 'write') {
                     await UpdateExcelCell(
-                        action.workbook || '', 
-                        action.sheet || '', 
-                        action.cell, 
+                        action.workbook || '',
+                        action.sheet || '',
+                        action.cell,
                         action.value
                     )
                 } else if (action.op === 'create-workbook') {
                     await CreateNewWorkbook()
                 } else if (action.op === 'create-sheet') {
                     await CreateNewSheet(action.name)
+                    // Pequeno delay para garantir que o Excel processou a criação da aba
+                    await new Promise(resolve => setTimeout(resolve, 300))
                 } else if (action.op === 'create-chart') {
                     await CreateChart(
                         action.sheet || '',
@@ -721,7 +749,7 @@ export default function App() {
         if (pendingActions.length > 0) {
             await EndUndoBatch()
         }
-        
+
         toast.dismiss(toastId)
 
         if (executed > 0) {
@@ -730,7 +758,7 @@ export default function App() {
                 toast.warning(`${errors} falharam. Verifique o console.`)
             }
             setPendingActions([])
-            
+
             // Update the last assistant message to show the Undo button
             setMessages(prev => {
                 const newMsgs = [...prev]
@@ -794,11 +822,11 @@ export default function App() {
             setPreviewData(null)
             setSelectedWorkbook(null)
             setSelectedSheets([])
-            
+
             // Recarregar histórico de conversas
             const list = await ListConversations()
             if (list) setConversations(list)
-            
+
             // Recarregar planilhas do Excel
             if (connected) {
                 const result = await RefreshWorkbooks()
@@ -806,7 +834,7 @@ export default function App() {
                     setWorkbooks(result.workbooks)
                 }
             }
-            
+
             toast.success('Nova conversa criada')
         } catch (err) {
             console.error(err)
@@ -880,8 +908,8 @@ export default function App() {
 
     if (showSettings) {
         return (
-            <Settings 
-                onClose={() => setShowSettings(false)} 
+            <Settings
+                onClose={() => setShowSettings(false)}
                 askBeforeApply={askBeforeApply}
                 onAskBeforeApplyChange={setAskBeforeApply}
             />
@@ -1156,12 +1184,11 @@ export default function App() {
                                             </div>
                                         )}
                                         <div
-                                            className={`max-w-[85%] p-4 rounded-2xl shadow-sm animate-in fade-in slide-in-from-bottom-2 ${
-                                                editingMessageIndex === idx
-                                                    ? 'bg-card border border-border w-full max-w-full'
-                                                    : (msg.role === 'user'
-                                                        ? 'bg-primary text-primary-foreground rounded-br-sm'
-                                                        : 'bg-card border border-border rounded-bl-sm')
+                                            className={`max-w-[85%] p-4 rounded-2xl shadow-sm animate-in fade-in slide-in-from-bottom-2 ${editingMessageIndex === idx
+                                                ? 'bg-card border border-border w-full max-w-full'
+                                                : (msg.role === 'user'
+                                                    ? 'bg-primary text-primary-foreground rounded-br-sm'
+                                                    : 'bg-card border border-border rounded-bl-sm')
                                                 }`}
                                         >
                                             {editingMessageIndex === idx ? (
@@ -1181,7 +1208,7 @@ export default function App() {
                                                     {msg.role === 'assistant' ? (
                                                         <div className="text-sm relative">
                                                             {msg.content ? (
-                                                                <ReactMarkdown 
+                                                                <ReactMarkdown
                                                                     remarkPlugins={[remarkGfm]}
                                                                     components={markdownComponents}
                                                                 >
@@ -1196,9 +1223,9 @@ export default function App() {
                                                             )}
                                                             {msg.hasActions && (
                                                                 <div className="mt-3 pt-3 border-t border-border flex justify-end">
-                                                                    <Button 
-                                                                        variant="outline" 
-                                                                        size="sm" 
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        size="sm"
                                                                         onClick={handleUndo}
                                                                         className="text-xs h-7"
                                                                     >
@@ -1212,14 +1239,13 @@ export default function App() {
                                                             <div className="whitespace-pre-wrap text-sm">{msg.content}</div>
                                                         </div>
                                                     )}
-                                                    
+
                                                     {/* Message Actions Footer */}
                                                     {!isLoading && (
-                                                        <div className={`flex items-center justify-end gap-1 mt-2 pt-1 opacity-0 group-hover:opacity-100 transition-opacity ${
-                                                            msg.role === 'user' 
-                                                                ? 'border-t border-primary-foreground/20' 
-                                                                : 'border-t border-border'
-                                                        }`}>
+                                                        <div className={`flex items-center justify-end gap-1 mt-2 pt-1 opacity-0 group-hover:opacity-100 transition-opacity ${msg.role === 'user'
+                                                            ? 'border-t border-primary-foreground/20'
+                                                            : 'border-t border-border'
+                                                            }`}>
                                                             {msg.role === 'user' && (
                                                                 <button
                                                                     onClick={() => handleEditMessage(idx, msg.content)}
@@ -1229,14 +1255,13 @@ export default function App() {
                                                                     ✏️
                                                                 </button>
                                                             )}
-                                                            
+
                                                             <button
                                                                 onClick={() => handleCopy(msg.content)}
-                                                                className={`p-1.5 rounded transition-colors ${
-                                                                    msg.role === 'user'
-                                                                        ? 'hover:bg-primary-foreground/10 text-primary-foreground/80 hover:text-primary-foreground'
-                                                                        : 'hover:bg-muted text-muted-foreground hover:text-foreground'
-                                                                }`}
+                                                                className={`p-1.5 rounded transition-colors ${msg.role === 'user'
+                                                                    ? 'hover:bg-primary-foreground/10 text-primary-foreground/80 hover:text-primary-foreground'
+                                                                    : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                                                                    }`}
                                                                 title="Copiar"
                                                             >
                                                                 📋
@@ -1244,11 +1269,10 @@ export default function App() {
 
                                                             <button
                                                                 onClick={() => handleShare(msg.content)}
-                                                                className={`p-1.5 rounded transition-colors ${
-                                                                    msg.role === 'user'
-                                                                        ? 'hover:bg-primary-foreground/10 text-primary-foreground/80 hover:text-primary-foreground'
-                                                                        : 'hover:bg-muted text-muted-foreground hover:text-foreground'
-                                                                }`}
+                                                                className={`p-1.5 rounded transition-colors ${msg.role === 'user'
+                                                                    ? 'hover:bg-primary-foreground/10 text-primary-foreground/80 hover:text-primary-foreground'
+                                                                    : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                                                                    }`}
                                                                 title="Compartilhar"
                                                             >
                                                                 📤

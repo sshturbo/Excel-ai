@@ -107,6 +107,11 @@ func (a *App) CreatePivotTable(sourceSheet, sourceRange, destSheet, destCell, ta
 	return a.excelService.CreatePivotTable(sourceSheet, sourceRange, destSheet, destCell, tableName)
 }
 
+// ConfigurePivotFields configura os campos de uma tabela dinâmica
+func (a *App) ConfigurePivotFields(sheetName, tableName string, rowFields []string, dataFields []map[string]string) error {
+	return a.excelService.ConfigurePivotFields(sheetName, tableName, rowFields, dataFields)
+}
+
 // UndoLastChange desfaz a última alteração
 func (a *App) UndoLastChange() error {
 	return a.excelService.UndoLastChange()

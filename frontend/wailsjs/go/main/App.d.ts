@@ -8,6 +8,8 @@ export function ApplyFormula(arg1:number,arg2:number,arg3:string):Promise<void>;
 
 export function ClearChat():Promise<void>;
 
+export function ConfigurePivotFields(arg1:string,arg2:string,arg3:Array<string>,arg4:Array<Record<string, string>>):Promise<void>;
+
 export function ConnectExcel():Promise<dto.ExcelStatus>;
 
 export function CreateChart(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;

@@ -395,6 +395,26 @@ func (s *Service) CreatePivotTable(sourceSheet, sourceRange, destSheet, destCell
 	return err
 }
 
+func (s *Service) ConfigurePivotFields(sheetName, tableName string, rowFields []string, dataFields []map[string]string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+
+	workbook := s.currentWorkbook
+	if workbook == "" {
+		activeWb, _, err := s.client.GetActiveWorkbookAndSheet()
+		if err != nil {
+			return fmt.Errorf("nenhuma pasta de trabalho selecionada: %w", err)
+		}
+		workbook = activeWb
+	}
+
+	return s.client.ConfigurePivotFields(workbook, sheetName, tableName, rowFields, dataFields)
+}
+
 func (s *Service) WriteToExcel(row, col int, value interface{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

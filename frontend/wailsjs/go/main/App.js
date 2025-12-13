@@ -10,6 +10,10 @@ export function ClearChat() {
   return window['go']['main']['App']['ClearChat']();
 }
 
+export function ConfigurePivotFields(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ConfigurePivotFields'](arg1, arg2, arg3, arg4);
+}
+
 export function ConnectExcel() {
   return window['go']['main']['App']['ConnectExcel']();
 }
