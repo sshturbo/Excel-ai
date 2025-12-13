@@ -58,6 +58,10 @@ export function GetChatHistory() {
   return window['go']['main']['App']['GetChatHistory']();
 }
 
+export function GetHeaders(arg1, arg2) {
+  return window['go']['main']['App']['GetHeaders'](arg1, arg2);
+}
+
 export function GetPreviewData(arg1, arg2) {
   return window['go']['main']['App']['GetPreviewData'](arg1, arg2);
 }
@@ -66,8 +70,20 @@ export function GetSavedConfig() {
   return window['go']['main']['App']['GetSavedConfig']();
 }
 
+export function GetUsedRange(arg1) {
+  return window['go']['main']['App']['GetUsedRange'](arg1);
+}
+
 export function ListConversations() {
   return window['go']['main']['App']['ListConversations']();
+}
+
+export function ListPivotTables(arg1) {
+  return window['go']['main']['App']['ListPivotTables'](arg1);
+}
+
+export function ListSheets() {
+  return window['go']['main']['App']['ListSheets']();
 }
 
 export function LoadConversation(arg1) {
@@ -76,6 +92,10 @@ export function LoadConversation(arg1) {
 
 export function NewConversation() {
   return window['go']['main']['App']['NewConversation']();
+}
+
+export function QueryExcel(arg1, arg2) {
+  return window['go']['main']['App']['QueryExcel'](arg1, arg2);
 }
 
 export function RefreshWorkbooks() {
@@ -100,6 +120,10 @@ export function SetExcelContext(arg1, arg2) {
 
 export function SetModel(arg1) {
   return window['go']['main']['App']['SetModel'](arg1);
+}
+
+export function SheetExists(arg1) {
+  return window['go']['main']['App']['SheetExists'](arg1);
 }
 
 export function StartUndoBatch() {

@@ -329,3 +329,80 @@ func (a *App) ApplyFormula(row, col int, formula string) error {
 func (a *App) CreateNewSheet(name string) error {
 	return a.excelService.CreateNewSheet(name)
 }
+
+// ========== OPERAÇÕES DE CONSULTA (QUERY) ==========
+
+// ListSheets lista todas as abas do workbook atual
+func (a *App) ListSheets() ([]string, error) {
+	return a.excelService.ListSheets()
+}
+
+// SheetExists verifica se uma aba existe
+func (a *App) SheetExists(sheetName string) (bool, error) {
+	return a.excelService.SheetExists(sheetName)
+}
+
+// ListPivotTables lista tabelas dinâmicas em uma aba
+func (a *App) ListPivotTables(sheetName string) ([]string, error) {
+	return a.excelService.ListPivotTables(sheetName)
+}
+
+// GetHeaders retorna os cabeçalhos de um range
+func (a *App) GetHeaders(sheetName, rangeAddr string) ([]string, error) {
+	return a.excelService.GetHeaders(sheetName, rangeAddr)
+}
+
+// GetUsedRange retorna o range utilizado de uma aba
+func (a *App) GetUsedRange(sheetName string) (string, error) {
+	return a.excelService.GetUsedRange(sheetName)
+}
+
+// QueryResult resultado de uma query
+type QueryResult struct {
+	Success bool        `json:"success"`
+	Data    interface{} `json:"data"`
+	Error   string      `json:"error,omitempty"`
+}
+
+// QueryExcel executa uma query genérica no Excel
+func (a *App) QueryExcel(queryType string, params map[string]string) QueryResult {
+	switch queryType {
+	case "list-sheets":
+		sheets, err := a.ListSheets()
+		if err != nil {
+			return QueryResult{Success: false, Error: err.Error()}
+		}
+		return QueryResult{Success: true, Data: sheets}
+
+	case "sheet-exists":
+		exists, err := a.SheetExists(params["name"])
+		if err != nil {
+			return QueryResult{Success: false, Error: err.Error()}
+		}
+		return QueryResult{Success: true, Data: exists}
+
+	case "list-pivot-tables":
+		pivots, err := a.ListPivotTables(params["sheet"])
+		if err != nil {
+			return QueryResult{Success: false, Error: err.Error()}
+		}
+		return QueryResult{Success: true, Data: pivots}
+
+	case "get-headers":
+		headers, err := a.GetHeaders(params["sheet"], params["range"])
+		if err != nil {
+			return QueryResult{Success: false, Error: err.Error()}
+		}
+		return QueryResult{Success: true, Data: headers}
+
+	case "get-used-range":
+		usedRange, err := a.GetUsedRange(params["sheet"])
+		if err != nil {
+			return QueryResult{Success: false, Error: err.Error()}
+		}
+		return QueryResult{Success: true, Data: usedRange}
+
+	default:
+		return QueryResult{Success: false, Error: fmt.Sprintf("query type '%s' não reconhecido", queryType)}
+	}
+}

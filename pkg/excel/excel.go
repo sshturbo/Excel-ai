@@ -1019,3 +1019,238 @@ func (c *Client) SetCellValue(workbookName, sheetName, cellAddress, value string
 		return err
 	})
 }
+
+// ========== OPERAÇÕES DE CONSULTA (QUERY) ==========
+
+// ListSheets retorna a lista de abas de um workbook
+func (c *Client) ListSheets(workbookName string) ([]string, error) {
+	return runOnCOMThreadWithResult(c, func() ([]string, error) {
+		workbooks, err := oleutil.GetProperty(c.excelApp, "Workbooks")
+		if err != nil {
+			return nil, err
+		}
+		workbooksDisp := workbooks.ToIDispatch()
+		defer workbooksDisp.Release()
+
+		wb, err := oleutil.GetProperty(workbooksDisp, "Item", workbookName)
+		if err != nil {
+			return nil, fmt.Errorf("workbook '%s' não encontrado", workbookName)
+		}
+		wbDisp := wb.ToIDispatch()
+		defer wbDisp.Release()
+
+		sheets, err := oleutil.GetProperty(wbDisp, "Worksheets")
+		if err != nil {
+			return nil, err
+		}
+		sheetsDisp := sheets.ToIDispatch()
+		defer sheetsDisp.Release()
+
+		countVar, _ := oleutil.GetProperty(sheetsDisp, "Count")
+		count := int(countVar.Val)
+
+		var sheetNames []string
+		for i := 1; i <= count; i++ {
+			sheet, err := oleutil.GetProperty(sheetsDisp, "Item", i)
+			if err != nil {
+				continue
+			}
+			sheetDisp := sheet.ToIDispatch()
+			nameVar, _ := oleutil.GetProperty(sheetDisp, "Name")
+			sheetNames = append(sheetNames, nameVar.ToString())
+			sheetDisp.Release()
+		}
+
+		return sheetNames, nil
+	})
+}
+
+// SheetExists verifica se uma aba existe
+func (c *Client) SheetExists(workbookName, sheetName string) (bool, error) {
+	sheets, err := c.ListSheets(workbookName)
+	if err != nil {
+		return false, err
+	}
+	for _, s := range sheets {
+		if strings.EqualFold(s, sheetName) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// ListPivotTables retorna lista de tabelas dinâmicas em uma aba
+func (c *Client) ListPivotTables(workbookName, sheetName string) ([]string, error) {
+	return runOnCOMThreadWithResult(c, func() ([]string, error) {
+		workbooks, err := oleutil.GetProperty(c.excelApp, "Workbooks")
+		if err != nil {
+			return nil, err
+		}
+		workbooksDisp := workbooks.ToIDispatch()
+		defer workbooksDisp.Release()
+
+		wb, err := oleutil.GetProperty(workbooksDisp, "Item", workbookName)
+		if err != nil {
+			return nil, fmt.Errorf("workbook '%s' não encontrado", workbookName)
+		}
+		wbDisp := wb.ToIDispatch()
+		defer wbDisp.Release()
+
+		sheets, err := oleutil.GetProperty(wbDisp, "Worksheets")
+		if err != nil {
+			return nil, err
+		}
+		sheetsDisp := sheets.ToIDispatch()
+		defer sheetsDisp.Release()
+
+		sheet, err := oleutil.GetProperty(sheetsDisp, "Item", sheetName)
+		if err != nil {
+			return nil, fmt.Errorf("aba '%s' não encontrada", sheetName)
+		}
+		sheetDisp := sheet.ToIDispatch()
+		defer sheetDisp.Release()
+
+		pivotTables, err := oleutil.GetProperty(sheetDisp, "PivotTables")
+		if err != nil {
+			return []string{}, nil // Sem pivot tables
+		}
+		pivotTablesDisp := pivotTables.ToIDispatch()
+		defer pivotTablesDisp.Release()
+
+		countVar, _ := oleutil.GetProperty(pivotTablesDisp, "Count")
+		count := int(countVar.Val)
+
+		var names []string
+		for i := 1; i <= count; i++ {
+			pt, err := oleutil.GetProperty(pivotTablesDisp, "Item", i)
+			if err != nil {
+				continue
+			}
+			ptDisp := pt.ToIDispatch()
+			nameVar, _ := oleutil.GetProperty(ptDisp, "Name")
+			names = append(names, nameVar.ToString())
+			ptDisp.Release()
+		}
+
+		return names, nil
+	})
+}
+
+// GetHeaders retorna os cabeçalhos (primeira linha) de um range
+func (c *Client) GetHeaders(workbookName, sheetName, rangeAddr string) ([]string, error) {
+	return runOnCOMThreadWithResult(c, func() ([]string, error) {
+		workbooks, err := oleutil.GetProperty(c.excelApp, "Workbooks")
+		if err != nil {
+			return nil, err
+		}
+		workbooksDisp := workbooks.ToIDispatch()
+		defer workbooksDisp.Release()
+
+		wb, err := oleutil.GetProperty(workbooksDisp, "Item", workbookName)
+		if err != nil {
+			return nil, fmt.Errorf("workbook '%s' não encontrado", workbookName)
+		}
+		wbDisp := wb.ToIDispatch()
+		defer wbDisp.Release()
+
+		sheets, err := oleutil.GetProperty(wbDisp, "Worksheets")
+		if err != nil {
+			return nil, err
+		}
+		sheetsDisp := sheets.ToIDispatch()
+		defer sheetsDisp.Release()
+
+		sheet, err := oleutil.GetProperty(sheetsDisp, "Item", sheetName)
+		if err != nil {
+			return nil, fmt.Errorf("aba '%s' não encontrada", sheetName)
+		}
+		sheetDisp := sheet.ToIDispatch()
+		defer sheetDisp.Release()
+
+		// Obter range
+		rng, err := oleutil.GetProperty(sheetDisp, "Range", rangeAddr)
+		if err != nil {
+			return nil, fmt.Errorf("range '%s' inválido", rangeAddr)
+		}
+		rngDisp := rng.ToIDispatch()
+		defer rngDisp.Release()
+
+		// Pegar primeira linha do range
+		firstRow, err := oleutil.GetProperty(rngDisp, "Rows", 1)
+		if err != nil {
+			return nil, err
+		}
+		firstRowDisp := firstRow.ToIDispatch()
+		defer firstRowDisp.Release()
+
+		// Contar colunas
+		colsVar, _ := oleutil.GetProperty(firstRowDisp, "Columns")
+		colsDisp := colsVar.ToIDispatch()
+		defer colsDisp.Release()
+
+		countVar, _ := oleutil.GetProperty(colsDisp, "Count")
+		count := int(countVar.Val)
+
+		var headers []string
+		for i := 1; i <= count; i++ {
+			cell, err := oleutil.GetProperty(firstRowDisp, "Cells", 1, i)
+			if err != nil {
+				continue
+			}
+			cellDisp := cell.ToIDispatch()
+			valueVar, _ := oleutil.GetProperty(cellDisp, "Value")
+
+			var header string
+			if valueVar.Val != 0 {
+				header = fmt.Sprintf("%v", valueVar.Value())
+			}
+			headers = append(headers, header)
+			cellDisp.Release()
+		}
+
+		return headers, nil
+	})
+}
+
+// GetUsedRange retorna o endereço do range utilizado em uma aba
+func (c *Client) GetUsedRange(workbookName, sheetName string) (string, error) {
+	return runOnCOMThreadWithResult(c, func() (string, error) {
+		workbooks, err := oleutil.GetProperty(c.excelApp, "Workbooks")
+		if err != nil {
+			return "", err
+		}
+		workbooksDisp := workbooks.ToIDispatch()
+		defer workbooksDisp.Release()
+
+		wb, err := oleutil.GetProperty(workbooksDisp, "Item", workbookName)
+		if err != nil {
+			return "", fmt.Errorf("workbook '%s' não encontrado", workbookName)
+		}
+		wbDisp := wb.ToIDispatch()
+		defer wbDisp.Release()
+
+		sheets, err := oleutil.GetProperty(wbDisp, "Worksheets")
+		if err != nil {
+			return "", err
+		}
+		sheetsDisp := sheets.ToIDispatch()
+		defer sheetsDisp.Release()
+
+		sheet, err := oleutil.GetProperty(sheetsDisp, "Item", sheetName)
+		if err != nil {
+			return "", fmt.Errorf("aba '%s' não encontrada", sheetName)
+		}
+		sheetDisp := sheet.ToIDispatch()
+		defer sheetDisp.Release()
+
+		usedRange, err := oleutil.GetProperty(sheetDisp, "UsedRange")
+		if err != nil {
+			return "", err
+		}
+		usedRangeDisp := usedRange.ToIDispatch()
+		defer usedRangeDisp.Release()
+
+		addrVar, _ := oleutil.GetProperty(usedRangeDisp, "Address")
+		return addrVar.ToString(), nil
+	})
+}

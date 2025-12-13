@@ -45,6 +45,7 @@ import {
     CreateChart,
     CreatePivotTable,
     ConfigurePivotFields,
+    QueryExcel,
     SendErrorFeedback
 } from "../wailsjs/go/main/App"
 import { EventsOn } from "../wailsjs/runtime/runtime"
@@ -483,6 +484,45 @@ export default function App() {
 
     // Função para processar resposta da IA e executar ações
     const processAIResponse = async (response: string, maxRetries: number = 2): Promise<{ displayContent: string; actionsExecuted: number }> => {
+        // Processar queries primeiro (:::excel-query)
+        const queryRegex = /:::excel-query\s*([\s\S]*?)\s*:::/g
+        const queryMatches = [...response.matchAll(queryRegex)]
+
+        // Resultados de queries para enviar de volta à IA
+        const queryResults: string[] = []
+
+        for (const match of queryMatches) {
+            try {
+                const jsonStr = match[1]
+                // Suportar múltiplas queries no mesmo bloco
+                const lines = jsonStr.split('\n').filter(l => l.trim().startsWith('{'))
+
+                for (const line of lines) {
+                    const query = JSON.parse(line.trim())
+                    console.log('[QUERY]', query)
+
+                    const result = await QueryExcel(query.type, {
+                        name: query.name || '',
+                        sheet: query.sheet || '',
+                        range: query.range || ''
+                    })
+
+                    if (result.success) {
+                        queryResults.push(`Query "${query.type}": ${JSON.stringify(result.data)}`)
+                    } else {
+                        queryResults.push(`Query "${query.type}" falhou: ${result.error}`)
+                    }
+                }
+            } catch (err) {
+                console.error('Erro ao processar query:', err)
+            }
+        }
+
+        // Se temos resultados de query, podemos exibi-los no chat
+        if (queryResults.length > 0) {
+            console.log('[QUERY RESULTS]', queryResults)
+        }
+
         const actionRegex = /:::excel-action\s*([\s\S]*?)\s*:::/g
         let matches = [...response.matchAll(actionRegex)]
         let actionsExecuted = 0
@@ -583,13 +623,109 @@ export default function App() {
         // Add placeholder for assistant message
         setMessages(prev => [...prev, { role: 'assistant', content: '' }])
 
+        const MAX_AGENT_ITERATIONS = 5 // Limite de iterações para evitar loops infinitos
+        let currentMessage = text
+        let totalActionsExecuted = 0
+        let finalDisplayContent = ''
+        let iteration = 0
+        let continueAgent = true
+        const previousQueries: string[] = [] // Para detectar loops repetitivos
+
         try {
-            const response = await SendMessage(text)
+            while (continueAgent) {
+                // Loop principal do agente
+                const startIteration = iteration
 
-            const { displayContent, actionsExecuted } = await processAIResponse(response)
+                while (iteration < startIteration + MAX_AGENT_ITERATIONS) {
+                    iteration++
+                    console.log(`[AGENT] Iteração ${iteration}`)
 
-            if (actionsExecuted > 0) {
-                toast.success(`${actionsExecuted} alterações aplicadas!`)
+                    // Atualizar status visual durante o loop
+                    if (iteration > 1) {
+                        setStreamingContent(`🔄 Agente processando... (iteração ${iteration})`)
+                    }
+
+                    const response = await SendMessage(currentMessage)
+
+                    // Processar queries primeiro
+                    const queryRegex = /:::excel-query\s*([\s\S]*?)\s*:::/g
+                    const queryMatches = [...response.matchAll(queryRegex)]
+                    const queryResults: string[] = []
+
+                    for (const match of queryMatches) {
+                        try {
+                            const jsonStr = match[1]
+                            const lines = jsonStr.split('\n').filter(l => l.trim().startsWith('{'))
+
+                            for (const line of lines) {
+                                const query = JSON.parse(line.trim())
+                                console.log('[AGENT QUERY]', query)
+
+                                const result = await QueryExcel(query.type, {
+                                    name: query.name || '',
+                                    sheet: query.sheet || '',
+                                    range: query.range || ''
+                                })
+
+                                if (result.success) {
+                                    queryResults.push(`${query.type}: ${JSON.stringify(result.data)}`)
+                                } else {
+                                    queryResults.push(`${query.type} erro: ${result.error}`)
+                                }
+                            }
+                        } catch (err) {
+                            console.error('Erro ao processar query:', err)
+                        }
+                    }
+
+                    // Processar ações
+                    const { displayContent, actionsExecuted } = await processAIResponse(response)
+                    totalActionsExecuted += actionsExecuted
+
+                    // Se houve queries, enviamos os resultados de volta para a IA continuar
+                    if (queryResults.length > 0) {
+                        // Detectar loop repetitivo (mesma query enviada 2x seguidas)
+                        const querySignature = queryResults.join('|')
+                        if (previousQueries.length > 0 && previousQueries[previousQueries.length - 1] === querySignature) {
+                            console.warn('[AGENT] Loop repetitivo detectado! Mesmas queries enviadas consecutivamente.')
+                            toast.warning('Loop detectado - mesmas consultas repetidas. Agente interrompido.')
+                            finalDisplayContent = displayContent + '\n\n⚠️ Agente interrompido: loop repetitivo detectado.'
+                            continueAgent = false
+                            break
+                        }
+                        previousQueries.push(querySignature)
+
+                        console.log('[AGENT] Enviando resultados de volta:', queryResults)
+                        currentMessage = `[Query Results]\n${queryResults.join('\n')}\n\nContinue with the task based on these results.`
+                        // Continuar o loop
+                    } else {
+                        // Sem queries, terminamos o loop
+                        finalDisplayContent = displayContent
+                        continueAgent = false
+                        break
+                    }
+                }
+
+                // Verificar se atingiu o limite da rodada
+                if (continueAgent && iteration >= startIteration + MAX_AGENT_ITERATIONS) {
+                    console.warn('[AGENT] Limite de iterações atingido, perguntando ao usuário')
+
+                    // Perguntar se quer continuar
+                    const wantContinue = window.confirm(
+                        `⚠️ Limite de ${MAX_AGENT_ITERATIONS} iterações atingido (total: ${iteration}).\n\n` +
+                        `O agente ainda está processando a tarefa.\n` +
+                        `Deseja continuar por mais ${MAX_AGENT_ITERATIONS} iterações?`
+                    )
+
+                    if (!wantContinue) {
+                        finalDisplayContent += '\n\n⚠️ Agente interrompido pelo usuário.'
+                        continueAgent = false
+                    }
+                }
+            }
+
+            if (totalActionsExecuted > 0) {
+                toast.success(`${totalActionsExecuted} alterações aplicadas!`)
                 // Refresh context if we have selected sheets
                 if (selectedWorkbook && selectedSheets.length > 0) {
                     const contextMsg = await SetExcelContext(selectedWorkbook, selectedSheets.join(','))
@@ -604,15 +740,15 @@ export default function App() {
                 const lastIndex = newMsgs.length - 1
                 if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
                     // Se não há conteúdo de texto mas houve ações, mostrar mensagem de sucesso
-                    let finalContent = displayContent
-                    if (!finalContent && actionsExecuted > 0) {
-                        finalContent = `✅ ${actionsExecuted === 1 ? 'Ação executada' : `${actionsExecuted} ações executadas`} com sucesso!`
+                    let finalContent = finalDisplayContent
+                    if (!finalContent && totalActionsExecuted > 0) {
+                        finalContent = `✅ ${totalActionsExecuted === 1 ? 'Ação executada' : `${totalActionsExecuted} ações executadas`} com sucesso!`
                     }
 
                     newMsgs[lastIndex] = {
                         ...newMsgs[lastIndex],
                         content: finalContent,
-                        hasActions: actionsExecuted > 0
+                        hasActions: totalActionsExecuted > 0
                     }
                 }
                 return newMsgs
@@ -936,8 +1072,8 @@ export default function App() {
                     <div className="w-10 h-10 rounded-lg bg-primary text-primary-foreground flex items-center justify-center text-xl">
                         📊
                     </div>
-                    <span className="text-xl font-semibold tracking-tight">
-                        Excel-AI
+                    <span className="text-xl font-semibold tracking-tight bg-linear-to-r from-primary to-blue-500 bg-clip-text text-transparent">
+                        HipoSystem
                     </span>
                 </div>
 
@@ -1160,7 +1296,7 @@ export default function App() {
                                         <CardHeader>
                                             <CardTitle className="flex items-center gap-2">
                                                 <span className="text-2xl">{selectedSheets.length > 0 ? '📊' : '🤖'}</span>
-                                                <span>{selectedSheets.length > 0 ? `${selectedSheets.length} aba(s) selecionada(s)` : 'Excel-AI pronto'}</span>
+                                                <span>{selectedSheets.length > 0 ? `${selectedSheets.length} aba(s) selecionada(s)` : 'HipoSystem pronto'}</span>
                                             </CardTitle>
                                         </CardHeader>
                                         <CardContent>

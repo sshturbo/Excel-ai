@@ -3,6 +3,7 @@
 import {dto} from '../models';
 import {excel} from '../models';
 import {storage} from '../models';
+import {main} from '../models';
 
 export function ApplyFormula(arg1:number,arg2:number,arg3:string):Promise<void>;
 
@@ -32,15 +33,25 @@ export function GetAvailableModels(arg1:string,arg2:string):Promise<Array<dto.Mo
 
 export function GetChatHistory():Promise<Array<dto.ChatMessage>>;
 
+export function GetHeaders(arg1:string,arg2:string):Promise<Array<string>>;
+
 export function GetPreviewData(arg1:string,arg2:string):Promise<dto.PreviewData>;
 
 export function GetSavedConfig():Promise<storage.Config>;
 
+export function GetUsedRange(arg1:string):Promise<string>;
+
 export function ListConversations():Promise<Array<dto.ConversationInfo>>;
+
+export function ListPivotTables(arg1:string):Promise<Array<string>>;
+
+export function ListSheets():Promise<Array<string>>;
 
 export function LoadConversation(arg1:string):Promise<Array<dto.ChatMessage>>;
 
 export function NewConversation():Promise<string>;
+
+export function QueryExcel(arg1:string,arg2:Record<string, string>):Promise<main.QueryResult>;
 
 export function RefreshWorkbooks():Promise<dto.ExcelStatus>;
 
@@ -53,6 +64,8 @@ export function SetAPIKey(arg1:string):Promise<void>;
 export function SetExcelContext(arg1:string,arg2:string):Promise<string>;
 
 export function SetModel(arg1:string):Promise<void>;
+
+export function SheetExists(arg1:string):Promise<boolean>;
 
 export function StartUndoBatch():Promise<void>;
 

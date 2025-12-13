@@ -597,10 +597,10 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
                         <Card className="bg-card/60 text-center py-8">
                             <CardContent className="space-y-4">
                                 <div className="text-6xl animate-bounce">📊</div>
-                                <h2 className="text-3xl font-bold">
-                                    Excel-AI
+                                <h2 className="text-3xl font-bold bg-linear-to-r from-primary to-blue-500 bg-clip-text text-transparent">
+                                    HipoSystem
                                 </h2>
-                                <p className="text-muted-foreground">Seu assistente inteligente para planilhas</p>
+                                <p className="text-muted-foreground">✨ Inteligência Artificial ao alcance da sua planilha</p>
                                 <span className="inline-block px-3 py-1 bg-muted rounded-full text-sm text-primary">
                                     v2.0.0
                                 </span>

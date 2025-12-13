@@ -117,6 +117,15 @@ func initDB(db *sql.DB) error {
 			key TEXT PRIMARY KEY,
 			value TEXT
 		)`,
+		`CREATE TABLE IF NOT EXISTS checkpoints (
+			id TEXT PRIMARY KEY,
+			conversation_id TEXT,
+			name TEXT,
+			messages TEXT,
+			context TEXT,
+			created_at DATETIME,
+			FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+		)`,
 	}
 
 	for _, query := range queries {
@@ -408,4 +417,116 @@ func truncateString(s string, maxLen int) string {
 // GenerateID gera um ID único para conversas
 func GenerateID() string {
 	return time.Now().Format("20060102-150405")
+}
+
+// ========== HIPO.md - Contexto por projeto ==========
+
+// LoadProjectContext carrega o arquivo HIPO.md do diretório especificado
+// Retorna o conteúdo do arquivo ou string vazia se não existir
+func LoadProjectContext(projectDir string) (string, error) {
+	hipoPath := filepath.Join(projectDir, "HIPO.md")
+
+	// Tenta HIPO.md primeiro, depois .hipo.md (hidden file)
+	if _, err := os.Stat(hipoPath); os.IsNotExist(err) {
+		hipoPath = filepath.Join(projectDir, ".hipo.md")
+		if _, err := os.Stat(hipoPath); os.IsNotExist(err) {
+			return "", nil // Sem arquivo de contexto, não é erro
+		}
+	}
+
+	content, err := os.ReadFile(hipoPath)
+	if err != nil {
+		return "", fmt.Errorf("erro ao ler HIPO.md: %w", err)
+	}
+
+	return string(content), nil
+}
+
+// ========== Checkpointing de conversas ==========
+
+// Checkpoint representa um ponto salvo de uma conversa
+type Checkpoint struct {
+	ID             string    `json:"id"`
+	ConversationID string    `json:"conversationId"`
+	Name           string    `json:"name"`
+	Messages       []Message `json:"messages"`
+	Context        string    `json:"context,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+}
+
+// SaveCheckpoint salva um checkpoint de uma conversa
+func (s *Storage) SaveCheckpoint(conversationID, name string, messages []Message, context string) error {
+	checkpoint := Checkpoint{
+		ID:             GenerateID() + "-cp",
+		ConversationID: conversationID,
+		Name:           name,
+		Messages:       messages,
+		Context:        context,
+		CreatedAt:      time.Now(),
+	}
+
+	messagesJSON, err := json.Marshal(checkpoint.Messages)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(`
+		INSERT INTO checkpoints (id, conversation_id, name, messages, context, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		checkpoint.ID, checkpoint.ConversationID, checkpoint.Name,
+		string(messagesJSON), checkpoint.Context, checkpoint.CreatedAt)
+
+	return err
+}
+
+// LoadCheckpoint carrega um checkpoint específico
+func (s *Storage) LoadCheckpoint(checkpointID string) (*Checkpoint, error) {
+	var cp Checkpoint
+	var messagesJSON string
+
+	err := s.db.QueryRow(`
+		SELECT id, conversation_id, name, messages, context, created_at
+		FROM checkpoints WHERE id = ?`, checkpointID).
+		Scan(&cp.ID, &cp.ConversationID, &cp.Name, &messagesJSON, &cp.Context, &cp.CreatedAt)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := json.Unmarshal([]byte(messagesJSON), &cp.Messages); err != nil {
+		return nil, err
+	}
+
+	return &cp, nil
+}
+
+// ListCheckpoints lista todos os checkpoints de uma conversa
+func (s *Storage) ListCheckpoints(conversationID string) ([]Checkpoint, error) {
+	rows, err := s.db.Query(`
+		SELECT id, conversation_id, name, created_at
+		FROM checkpoints 
+		WHERE conversation_id = ?
+		ORDER BY created_at DESC`, conversationID)
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var checkpoints []Checkpoint
+	for rows.Next() {
+		var cp Checkpoint
+		if err := rows.Scan(&cp.ID, &cp.ConversationID, &cp.Name, &cp.CreatedAt); err != nil {
+			continue
+		}
+		checkpoints = append(checkpoints, cp)
+	}
+
+	return checkpoints, nil
+}
+
+// DeleteCheckpoint remove um checkpoint
+func (s *Storage) DeleteCheckpoint(checkpointID string) error {
+	_, err := s.db.Exec("DELETE FROM checkpoints WHERE id = ?", checkpointID)
+	return err
 }

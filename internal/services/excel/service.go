@@ -452,3 +452,75 @@ func (s *Service) Close() {
 		s.client.Close()
 	}
 }
+
+// ========== OPERAÇÕES DE CONSULTA (QUERY) ==========
+
+// ListSheets lista todas as abas do workbook atual
+func (s *Service) ListSheets() ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client == nil {
+		return nil, fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return nil, fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.ListSheets(s.currentWorkbook)
+}
+
+// SheetExists verifica se uma aba existe
+func (s *Service) SheetExists(sheetName string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client == nil {
+		return false, fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return false, fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.SheetExists(s.currentWorkbook, sheetName)
+}
+
+// ListPivotTables lista tabelas dinâmicas em uma aba
+func (s *Service) ListPivotTables(sheetName string) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client == nil {
+		return nil, fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return nil, fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.ListPivotTables(s.currentWorkbook, sheetName)
+}
+
+// GetHeaders retorna os cabeçalhos de um range
+func (s *Service) GetHeaders(sheetName, rangeAddr string) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client == nil {
+		return nil, fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return nil, fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.GetHeaders(s.currentWorkbook, sheetName, rangeAddr)
+}
+
+// GetUsedRange retorna o range utilizado de uma aba
+func (s *Service) GetUsedRange(sheetName string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client == nil {
+		return "", fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return "", fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.GetUsedRange(s.currentWorkbook, sheetName)
+}
