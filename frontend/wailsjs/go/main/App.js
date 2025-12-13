@@ -22,6 +22,10 @@ export function DeleteConversation(arg1) {
   return window['go']['main']['App']['DeleteConversation'](arg1);
 }
 
+export function DeleteLastMessages(arg1) {
+  return window['go']['main']['App']['DeleteLastMessages'](arg1);
+}
+
 export function GetActiveSelection() {
   return window['go']['main']['App']['GetActiveSelection']();
 }
@@ -74,8 +78,16 @@ export function SetModel(arg1) {
   return window['go']['main']['App']['SetModel'](arg1);
 }
 
+export function UndoLastChange() {
+  return window['go']['main']['App']['UndoLastChange']();
+}
+
 export function UpdateConfig(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['UpdateConfig'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function UpdateExcelCell(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['UpdateExcelCell'](arg1, arg2, arg3, arg4);
 }
 
 export function WriteToExcel(arg1, arg2, arg3) {

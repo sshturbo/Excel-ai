@@ -8,7 +8,17 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+// UndoAction representa uma ação que pode ser desfeita
+type UndoAction struct {
+	Workbook string `json:"workbook"`
+	Sheet    string `json:"sheet"`
+	Cell     string `json:"cell"`
+	OldValue string `json:"oldValue"`
+}
 
 // App struct principal da aplicação
 type App struct {
@@ -23,6 +33,7 @@ type App struct {
 	currentWorkbook string
 	currentSheet    string
 	previewData     *excel.SheetData
+	undoStack       []UndoAction
 }
 
 // ExcelStatus status da conexão com Excel
@@ -249,6 +260,61 @@ func (a *App) GetActiveSelection() (*excel.SheetData, error) {
 	return a.excelClient.GetActiveSelection()
 }
 
+// UpdateExcelCell atualiza uma célula no Excel
+func (a *App) UpdateExcelCell(workbook, sheet, cell, value string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.excelClient == nil {
+		return fmt.Errorf("Excel não conectado")
+	}
+
+	// Se workbook não for especificado, usa o atual
+	if workbook == "" {
+		workbook = a.currentWorkbook
+	}
+	if sheet == "" {
+		sheet = a.currentSheet
+	}
+
+	if workbook == "" || sheet == "" {
+		return fmt.Errorf("Nenhuma planilha selecionada")
+	}
+
+	// Salvar valor antigo para desfazer
+	oldValue, err := a.excelClient.GetCellValue(workbook, sheet, cell)
+	if err == nil {
+		a.undoStack = append(a.undoStack, UndoAction{
+			Workbook: workbook,
+			Sheet:    sheet,
+			Cell:     cell,
+			OldValue: oldValue,
+		})
+	}
+
+	return a.excelClient.SetCellValue(workbook, sheet, cell, value)
+}
+
+// UndoLastChange desfaz a última alteração
+func (a *App) UndoLastChange() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if len(a.undoStack) == 0 {
+		return fmt.Errorf("nada para desfazer")
+	}
+
+	// Pegar última ação
+	lastAction := a.undoStack[len(a.undoStack)-1]
+	a.undoStack = a.undoStack[:len(a.undoStack)-1]
+
+	if a.excelClient == nil {
+		return fmt.Errorf("Excel não conectado")
+	}
+
+	return a.excelClient.SetCellValue(lastAction.Workbook, lastAction.Sheet, lastAction.Cell, lastAction.OldValue)
+}
+
 // SetAPIKey configura a chave da API OpenRouter
 func (a *App) SetAPIKey(apiKey string) error {
 	a.mu.Lock()
@@ -374,8 +440,19 @@ func (a *App) SendMessage(message string) (string, error) {
 Ajude o usuário a entender, analisar e manipular dados de planilhas.
 Seja claro, conciso e forneça respostas práticas.
 Quando apropriado, sugira fórmulas do Excel ou passos para resolver problemas.
-Se sugerir uma fórmula ou valor para escrever em uma célula, formate assim:
-[ESCREVER A1: =SOMA(B1:B10)] ou [ESCREVER B2: Texto aqui]
+
+VOCÊ PODE MODIFICAR A PLANILHA.
+Para escrever um valor ou fórmula em uma célula, você DEVE incluir um bloco JSON no final da sua resposta com o seguinte formato:
+
+:::excel-action
+{
+  "op": "write",
+  "cell": "A1",
+  "value": "Valor ou =FORMULA()"
+}
+:::
+
+Use a tag :::excel-action para envolver o JSON.
 Responda em português.`
 
 	// Incluir contexto do Excel no system prompt se disponível
@@ -400,7 +477,10 @@ Use esses dados para responder às perguntas do usuário. Quando o usuário perg
 
 	messages := append([]ai.Message{systemMsg}, a.chatHistory...)
 
-	response, err := a.aiClient.Chat(messages)
+	response, err := a.aiClient.ChatStream(messages, func(chunk string) error {
+		runtime.EventsEmit(a.ctx, "chat:chunk", chunk)
+		return nil
+	})
 	if err != nil {
 		// Remover a mensagem do usuário se houve erro
 		a.chatHistory = a.chatHistory[:len(a.chatHistory)-1]
@@ -456,6 +536,27 @@ func (a *App) ClearChat() {
 	a.excelContext = ""
 	a.currentConvID = ""
 	a.previewData = nil
+}
+
+// DeleteLastMessages remove as últimas N mensagens do histórico
+func (a *App) DeleteLastMessages(count int) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if count <= 0 {
+		return nil
+	}
+
+	if count > len(a.chatHistory) {
+		a.chatHistory = []ai.Message{}
+	} else {
+		a.chatHistory = a.chatHistory[:len(a.chatHistory)-count]
+	}
+
+	// Salvar estado atualizado
+	go a.saveCurrentConversation()
+
+	return nil
 }
 
 // NewConversation inicia uma nova conversa

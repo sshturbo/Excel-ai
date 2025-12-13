@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { toast } from 'sonner'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -32,8 +34,12 @@ import {
     NewConversation,
     GetSavedConfig,
     WriteToExcel,
-    ApplyFormula
+    ApplyFormula,
+    UpdateExcelCell,
+    UndoLastChange,
+    DeleteLastMessages
 } from "../wailsjs/go/main/App"
+import { EventsOn } from "../wailsjs/runtime/runtime"
 
 // shadcn components
 import { Button } from "@/components/ui/button"
@@ -64,6 +70,7 @@ ChartJS.register(
 interface Message {
     role: 'user' | 'assistant'
     content: string
+    hasActions?: boolean
 }
 
 interface Workbook {
@@ -104,9 +111,140 @@ export default function App() {
     const [chartData, setChartData] = useState<any>(null)
     const [expandedWorkbook, setExpandedWorkbook] = useState<string | null>(null)
     const [showSettings, setShowSettings] = useState(false)
+    const [askBeforeApply, setAskBeforeApply] = useState(true)
+    const [pendingActions, setPendingActions] = useState<any[]>([])
+    const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null)
+    const [editContent, setEditContent] = useState('')
 
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLTextAreaElement>(null)
+
+    // Componentes customizados para Markdown
+    const markdownComponents: Components = useMemo(() => ({
+        // Código inline
+        code({ node, className, children, ...props }) {
+            const match = /language-(\w+)/.exec(className || '')
+            const isInline = !match && !className
+            
+            if (isInline) {
+                return (
+                    <code className="px-1.5 py-0.5 rounded bg-muted text-primary font-mono text-sm" {...props}>
+                        {children}
+                    </code>
+                )
+            }
+            
+            // Bloco de código com syntax highlighting
+            return (
+                <div className="relative group my-3">
+                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                            onClick={() => {
+                                navigator.clipboard.writeText(String(children).replace(/\n$/, ''))
+                                toast.success('Código copiado!')
+                            }}
+                            className="px-2 py-1 text-xs bg-muted hover:bg-muted/80 rounded border border-border"
+                        >
+                            📋 Copiar
+                        </button>
+                    </div>
+                    {match && (
+                        <div className="text-xs text-muted-foreground px-3 py-1 bg-muted/50 border-b border-border rounded-t">
+                            {match[1]}
+                        </div>
+                    )}
+                    <SyntaxHighlighter
+                        style={oneDark}
+                        language={match?.[1] || 'text'}
+                        PreTag="div"
+                        customStyle={{
+                            margin: 0,
+                            borderRadius: match ? '0 0 0.5rem 0.5rem' : '0.5rem',
+                            fontSize: '0.85rem',
+                        }}
+                    >
+                        {String(children).replace(/\n$/, '')}
+                    </SyntaxHighlighter>
+                </div>
+            )
+        },
+        // Tabelas
+        table({ children }) {
+            return (
+                <div className="overflow-x-auto my-3">
+                    <table className="min-w-full border border-border rounded-lg overflow-hidden">
+                        {children}
+                    </table>
+                </div>
+            )
+        },
+        thead({ children }) {
+            return <thead className="bg-muted/50">{children}</thead>
+        },
+        th({ children }) {
+            return <th className="px-3 py-2 text-left text-sm font-semibold border-b border-border">{children}</th>
+        },
+        td({ children }) {
+            return <td className="px-3 py-2 text-sm border-b border-border/50">{children}</td>
+        },
+        // Listas
+        ul({ children }) {
+            return <ul className="list-disc list-inside space-y-1 my-2 ml-2">{children}</ul>
+        },
+        ol({ children }) {
+            return <ol className="list-decimal list-inside space-y-1 my-2 ml-2">{children}</ol>
+        },
+        li({ children }) {
+            return <li className="text-sm">{children}</li>
+        },
+        // Títulos
+        h1({ children }) {
+            return <h1 className="text-xl font-bold mt-4 mb-2 text-primary">{children}</h1>
+        },
+        h2({ children }) {
+            return <h2 className="text-lg font-bold mt-3 mb-2 text-primary">{children}</h2>
+        },
+        h3({ children }) {
+            return <h3 className="text-base font-semibold mt-2 mb-1">{children}</h3>
+        },
+        // Parágrafos
+        p({ children }) {
+            return <p className="my-2 leading-relaxed">{children}</p>
+        },
+        // Links
+        a({ href, children }) {
+            return (
+                <a 
+                    href={href} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                >
+                    {children}
+                </a>
+            )
+        },
+        // Blockquote
+        blockquote({ children }) {
+            return (
+                <blockquote className="border-l-4 border-primary/50 pl-4 my-3 italic text-muted-foreground bg-muted/20 py-2 rounded-r">
+                    {children}
+                </blockquote>
+            )
+        },
+        // Horizontal rule
+        hr() {
+            return <hr className="my-4 border-border" />
+        },
+        // Strong/Bold
+        strong({ children }) {
+            return <strong className="font-semibold text-primary">{children}</strong>
+        },
+        // Emphasis/Italic
+        em({ children }) {
+            return <em className="italic">{children}</em>
+        },
+    }), [])
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -192,23 +330,225 @@ export default function App() {
         })
     }
 
+    const [streamingContent, setStreamingContent] = useState('')
+
+    useEffect(() => {
+        const cleanup = EventsOn("chat:chunk", (chunk: string) => {
+            setStreamingContent(prev => prev + chunk)
+        })
+        return () => cleanup()
+    }, [])
+
+    useEffect(() => {
+        if (streamingContent && isLoading) {
+            setMessages(prev => {
+                const newMsgs = [...prev]
+                const lastIndex = newMsgs.length - 1
+                if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
+                    // Only update if content is different to avoid loops
+                    if (newMsgs[lastIndex].content !== streamingContent) {
+                        newMsgs[lastIndex] = { ...newMsgs[lastIndex], content: streamingContent }
+                    }
+                }
+                return newMsgs
+            })
+        }
+    }, [streamingContent, isLoading])
+
+    const processMessage = async (text: string) => {
+        setIsLoading(true)
+        setStreamingContent('')
+
+        // Add placeholder for assistant message
+        setMessages(prev => [...prev, { role: 'assistant', content: '' }])
+
+        try {
+            const response = await SendMessage(text)
+            
+            // Check for Excel Actions (Global regex)
+            const actionRegex = /:::excel-action\s*([\s\S]*?)\s*:::/g
+            const matches = [...response.matchAll(actionRegex)]
+            
+            let actionsExecuted = 0
+            
+            for (const match of matches) {
+                try {
+                    const jsonStr = match[1]
+                    // Sanitize potential markdown code blocks
+                    const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim()
+                    const action = JSON.parse(cleanJson)
+                    
+                    if (action.op === 'write') {
+                        if (askBeforeApply) {
+                            setPendingActions(prev => [...prev, action])
+                        } else {
+                            await UpdateExcelCell(
+                                action.workbook || '', 
+                                action.sheet || '', 
+                                action.cell, 
+                                action.value
+                            )
+                            actionsExecuted++
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to execute Excel action", e)
+                }
+            }
+
+            if (actionsExecuted > 0) {
+                toast.success(`${actionsExecuted} alterações aplicadas!`)
+                // Refresh context if we have a selected sheet
+                if (selectedWorkbook && selectedSheet) {
+                     const contextMsg = await SetExcelContext(selectedWorkbook, selectedSheet)
+                     setContextLoaded(contextMsg)
+                     const preview = await GetPreviewData(selectedWorkbook, selectedSheet)
+                     setPreviewData(preview)
+                }
+            }
+
+            // Remove all action blocks from the displayed message
+            const displayContent = response.replace(actionRegex, '').trim()
+
+            setMessages(prev => {
+                const newMsgs = [...prev]
+                const lastIndex = newMsgs.length - 1
+                if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
+                    newMsgs[lastIndex] = { 
+                        ...newMsgs[lastIndex], 
+                        content: displayContent,
+                        hasActions: actionsExecuted > 0
+                    }
+                }
+                return newMsgs
+            })
+        } catch (err) {
+            setMessages(prev => prev.slice(0, -1)) // Remove failed message
+            const errorMessage = err instanceof Error ? err.message : String(err)
+            toast.error('Erro: ' + errorMessage)
+        } finally {
+            setIsLoading(false)
+            inputRef.current?.focus()
+        }
+    }
+
     const handleSendMessage = async () => {
         if (!inputMessage.trim() || isLoading) return
 
         const userMessage = inputMessage.trim()
         setInputMessage('')
         setMessages(prev => [...prev, { role: 'user', content: userMessage }])
-        setIsLoading(true)
+        
+        await processMessage(userMessage)
+    }
 
+    const handleRegenerate = async () => {
+        if (isLoading || messages.length === 0) return
+        
+        let lastUserMsgIndex = -1
+        for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].role === 'user') {
+                lastUserMsgIndex = i
+                break
+            }
+        }
+        if (lastUserMsgIndex === -1) return
+
+        const text = messages[lastUserMsgIndex].content
+        const countToRemove = messages.length - lastUserMsgIndex
+        
         try {
-            const response = await SendMessage(userMessage)
-            setMessages(prev => [...prev, { role: 'assistant', content: response }])
+            await DeleteLastMessages(countToRemove)
+            setMessages(prev => prev.slice(0, lastUserMsgIndex))
+            setMessages(prev => [...prev, { role: 'user', content: text }])
+            await processMessage(text)
         } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : String(err)
-            toast.error('Erro: ' + errorMessage)
-        } finally {
-            setIsLoading(false)
-            inputRef.current?.focus()
+            console.error(err)
+            toast.error('Erro ao regenerar')
+        }
+    }
+
+    const handleCopy = (text: string) => {
+        navigator.clipboard.writeText(text)
+        toast.success('Copiado para a área de transferência')
+    }
+
+    const handleShare = (text: string) => {
+        navigator.clipboard.writeText(text)
+        toast.success('Pronto para compartilhar!')
+    }
+
+    const handleEditMessage = (index: number, content: string) => {
+        setEditingMessageIndex(index)
+        setEditContent(content)
+    }
+
+    const handleSaveEdit = async (index: number) => {
+        if (!editContent.trim()) return
+        
+        const countToRemove = messages.length - index
+        
+        try {
+            await DeleteLastMessages(countToRemove)
+            setMessages(prev => prev.slice(0, index))
+            setMessages(prev => [...prev, { role: 'user', content: editContent }])
+            setEditingMessageIndex(null)
+            setEditContent('')
+            await processMessage(editContent)
+        } catch (err) {
+            console.error(err)
+            toast.error('Erro ao editar')
+        }
+    }
+
+    const handleCancelEdit = () => {
+        setEditingMessageIndex(null)
+        setEditContent('')
+    }
+
+    const handleApplyActions = async () => {
+        let executed = 0
+        for (const action of pendingActions) {
+            try {
+                await UpdateExcelCell(
+                    action.workbook || '', 
+                    action.sheet || '', 
+                    action.cell, 
+                    action.value
+                )
+                executed++
+            } catch (e) {
+                console.error(e)
+            }
+        }
+        
+        if (executed > 0) {
+            toast.success(`${executed} alterações aplicadas!`)
+            setPendingActions([])
+            if (selectedWorkbook && selectedSheet) {
+                const contextMsg = await SetExcelContext(selectedWorkbook, selectedSheet)
+                setContextLoaded(contextMsg)
+                const preview = await GetPreviewData(selectedWorkbook, selectedSheet)
+                setPreviewData(preview)
+            }
+        }
+    }
+
+    const handleDiscardActions = () => {
+        setPendingActions([])
+        toast.info('Alterações descartadas')
+    }
+
+    const handleUndo = async () => {
+        try {
+            await UndoLastChange()
+            toast.success('Alteração desfeita!')
+            if (selectedWorkbook && selectedSheet) {
+                const preview = await GetPreviewData(selectedWorkbook, selectedSheet)
+                setPreviewData(preview)
+            }
+        } catch (err) {
+            toast.error('Nada para desfazer')
         }
     }
 
@@ -303,7 +643,13 @@ export default function App() {
     }
 
     if (showSettings) {
-        return <Settings onClose={() => setShowSettings(false)} />
+        return (
+            <Settings 
+                onClose={() => setShowSettings(false)} 
+                askBeforeApply={askBeforeApply}
+                onAskBeforeApplyChange={setAskBeforeApply}
+            />
+        )
     }
 
     return (
@@ -505,6 +851,24 @@ export default function App() {
                         </div>
                     )}
 
+                    {/* Pending Actions */}
+                    {pendingActions.length > 0 && (
+                        <div className="px-6 py-2 bg-yellow-500/10 border-b border-yellow-500/20 flex items-center justify-between animate-in slide-in-from-top-2">
+                            <div className="flex items-center gap-2 text-sm text-yellow-500">
+                                <span>⚠️</span>
+                                <span>A IA sugeriu <strong>{pendingActions.length}</strong> alterações na planilha.</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Button size="sm" variant="ghost" onClick={handleDiscardActions} className="text-muted-foreground hover:text-destructive">
+                                    Descartar
+                                </Button>
+                                <Button size="sm" onClick={handleApplyActions} className="bg-yellow-500 hover:bg-yellow-600 text-black">
+                                    Aplicar Alterações
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Chat Messages */}
                     {!showPreview && !showChart && (
                         <div className="flex-1 overflow-y-auto p-6 space-y-4">
@@ -513,41 +877,157 @@ export default function App() {
                                     <Card className="w-full max-w-md bg-card/60">
                                         <CardHeader>
                                             <CardTitle className="flex items-center gap-2">
-                                                <span className="text-2xl">🤖</span>
-                                                <span>Excel-AI pronto</span>
+                                                <span className="text-2xl">{selectedSheet ? '📊' : '🤖'}</span>
+                                                <span>{selectedSheet ? `Planilha: ${selectedSheet}` : 'Excel-AI pronto'}</span>
                                             </CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                            <p className="text-sm text-muted-foreground">
-                                                Selecione uma planilha na lateral e faça perguntas sobre seus dados.
-                                            </p>
+                                            {selectedSheet ? (
+                                                <div className="space-y-3">
+                                                    <p className="text-sm text-muted-foreground">
+                                                        ✅ Planilha <strong className="text-primary">{selectedSheet}</strong> carregada!
+                                                    </p>
+                                                    <p className="text-sm text-muted-foreground">
+                                                        Faça perguntas como:
+                                                    </p>
+                                                    <ul className="text-sm text-muted-foreground space-y-1 ml-4">
+                                                        <li>• "Qual a soma da coluna B?"</li>
+                                                        <li>• "Mostre os 5 maiores valores"</li>
+                                                        <li>• "Crie uma fórmula para calcular média"</li>
+                                                        <li>• "Analise os dados dessa planilha"</li>
+                                                    </ul>
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm text-muted-foreground">
+                                                    Selecione uma planilha na lateral e faça perguntas sobre seus dados.
+                                                </p>
+                                            )}
                                         </CardContent>
                                     </Card>
                                 </div>
                             ) : (
                                 messages.map((msg, idx) => (
-                                    <div
-                                        key={idx}
-                                        className={`max-w-[85%] p-4 rounded-2xl shadow-sm animate-in fade-in slide-in-from-bottom-2 ${msg.role === 'user'
-                                            ? 'ml-auto bg-primary text-primary-foreground rounded-br-sm'
-                                            : 'bg-card border border-border rounded-bl-sm'
-                                            }`}
-                                    >
-                                        {msg.role === 'assistant' ? (
-                                            <div className="prose prose-invert prose-sm max-w-none">
-                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                                    <div key={idx} className={`group flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                        {msg.role === 'assistant' && (
+                                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20 shrink-0 mt-1">
+                                                🤖
                                             </div>
-                                        ) : (
-                                            <div className="whitespace-pre-wrap">{msg.content}</div>
                                         )}
+                                        <div
+                                            className={`max-w-[85%] p-4 rounded-2xl shadow-sm animate-in fade-in slide-in-from-bottom-2 ${
+                                                editingMessageIndex === idx
+                                                    ? 'bg-card border border-border w-full max-w-full'
+                                                    : (msg.role === 'user'
+                                                        ? 'bg-primary text-primary-foreground rounded-br-sm'
+                                                        : 'bg-card border border-border rounded-bl-sm')
+                                                }`}
+                                        >
+                                            {editingMessageIndex === idx ? (
+                                                <div className="space-y-3">
+                                                    <Textarea
+                                                        value={editContent}
+                                                        onChange={(e) => setEditContent(e.target.value)}
+                                                        className="min-h-25 bg-transparent text-foreground"
+                                                    />
+                                                    <div className="flex justify-end gap-2">
+                                                        <Button size="sm" variant="ghost" onClick={handleCancelEdit}>Cancelar</Button>
+                                                        <Button size="sm" onClick={() => handleSaveEdit(idx)}>Salvar e Enviar</Button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    {msg.role === 'assistant' ? (
+                                                        <div className="text-sm relative">
+                                                            {msg.content ? (
+                                                                <ReactMarkdown 
+                                                                    remarkPlugins={[remarkGfm]}
+                                                                    components={markdownComponents}
+                                                                >
+                                                                    {msg.content}
+                                                                </ReactMarkdown>
+                                                            ) : (
+                                                                <div className="flex items-center gap-1.5 h-6">
+                                                                    <div className="w-2 h-2 bg-foreground/40 rounded-full animate-[bounce_1s_infinite_-0.3s]"></div>
+                                                                    <div className="w-2 h-2 bg-foreground/40 rounded-full animate-[bounce_1s_infinite_-0.15s]"></div>
+                                                                    <div className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce"></div>
+                                                                </div>
+                                                            )}
+                                                            {msg.hasActions && (
+                                                                <div className="mt-3 pt-3 border-t border-border flex justify-end">
+                                                                    <Button 
+                                                                        variant="outline" 
+                                                                        size="sm" 
+                                                                        onClick={handleUndo}
+                                                                        className="text-xs h-7"
+                                                                    >
+                                                                        ↩️ Desfazer Alteração
+                                                                    </Button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="relative">
+                                                            <div className="whitespace-pre-wrap text-sm">{msg.content}</div>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Message Actions Footer */}
+                                                    {!isLoading && (
+                                                        <div className={`flex items-center justify-end gap-1 mt-2 pt-1 opacity-0 group-hover:opacity-100 transition-opacity ${
+                                                            msg.role === 'user' 
+                                                                ? 'border-t border-primary-foreground/20' 
+                                                                : 'border-t border-border'
+                                                        }`}>
+                                                            {msg.role === 'user' && (
+                                                                <button
+                                                                    onClick={() => handleEditMessage(idx, msg.content)}
+                                                                    className="p-1.5 rounded hover:bg-primary-foreground/10 text-primary-foreground/80 hover:text-primary-foreground transition-colors"
+                                                                    title="Editar"
+                                                                >
+                                                                    ✏️
+                                                                </button>
+                                                            )}
+                                                            
+                                                            <button
+                                                                onClick={() => handleCopy(msg.content)}
+                                                                className={`p-1.5 rounded transition-colors ${
+                                                                    msg.role === 'user'
+                                                                        ? 'hover:bg-primary-foreground/10 text-primary-foreground/80 hover:text-primary-foreground'
+                                                                        : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                                                                }`}
+                                                                title="Copiar"
+                                                            >
+                                                                📋
+                                                            </button>
+
+                                                            <button
+                                                                onClick={() => handleShare(msg.content)}
+                                                                className={`p-1.5 rounded transition-colors ${
+                                                                    msg.role === 'user'
+                                                                        ? 'hover:bg-primary-foreground/10 text-primary-foreground/80 hover:text-primary-foreground'
+                                                                        : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                                                                }`}
+                                                                title="Compartilhar"
+                                                            >
+                                                                📤
+                                                            </button>
+
+                                                            {msg.role === 'assistant' && idx === messages.length - 1 && (
+                                                                <button
+                                                                    onClick={handleRegenerate}
+                                                                    className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                                                                    title="Regenerar resposta"
+                                                                >
+                                                                    🔄
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
                                 ))
-                            )}
-                            {isLoading && (
-                                <div className="flex items-center gap-2 text-muted-foreground">
-                                    <div className="w-5 h-5 border-2 border-muted border-t-primary rounded-full animate-spin"></div>
-                                    <span>Pensando...</span>
-                                </div>
                             )}
                             <div ref={messagesEndRef} />
                         </div>

@@ -501,3 +501,93 @@ func (c *Client) GetActiveWorkbookAndSheet() (workbook, sheet string, err error)
 	})
 	return res.workbook, res.sheet, err
 }
+
+// GetCellValue lê o valor de uma célula específica
+func (c *Client) GetCellValue(workbookName, sheetName, cellAddress string) (string, error) {
+	return runOnCOMThreadWithResult(c, func() (string, error) {
+		workbooks, err := oleutil.GetProperty(c.excelApp, "Workbooks")
+		if err != nil {
+			return "", err
+		}
+		defer workbooks.ToIDispatch().Release()
+
+		wb, err := oleutil.GetProperty(workbooks.ToIDispatch(), "Item", workbookName)
+		if err != nil {
+			return "", fmt.Errorf("pasta de trabalho '%s' não encontrada: %w", workbookName, err)
+		}
+		wbDisp := wb.ToIDispatch()
+		defer wbDisp.Release()
+
+		sheets, err := oleutil.GetProperty(wbDisp, "Sheets")
+		if err != nil {
+			return "", err
+		}
+		defer sheets.ToIDispatch().Release()
+
+		sheet, err := oleutil.GetProperty(sheets.ToIDispatch(), "Item", sheetName)
+		if err != nil {
+			return "", fmt.Errorf("aba '%s' não encontrada: %w", sheetName, err)
+		}
+		sheetDisp := sheet.ToIDispatch()
+		defer sheetDisp.Release()
+
+		cell, err := oleutil.GetProperty(sheetDisp, "Range", cellAddress)
+		if err != nil {
+			return "", fmt.Errorf("célula '%s' inválida: %w", cellAddress, err)
+		}
+		cellDisp := cell.ToIDispatch()
+		defer cellDisp.Release()
+
+		val, err := oleutil.GetProperty(cellDisp, "Value")
+		if err != nil {
+			return "", nil // Célula vazia ou erro ao ler
+		}
+
+		if val.Value() == nil {
+			return "", nil
+		}
+
+		return val.ToString(), nil
+	})
+}
+
+// SetCellValue escreve um valor em uma célula específica
+func (c *Client) SetCellValue(workbookName, sheetName, cellAddress, value string) error {
+	return c.runOnCOMThread(func() error {
+		workbooks, err := oleutil.GetProperty(c.excelApp, "Workbooks")
+		if err != nil {
+			return err
+		}
+		defer workbooks.ToIDispatch().Release()
+
+		wb, err := oleutil.GetProperty(workbooks.ToIDispatch(), "Item", workbookName)
+		if err != nil {
+			return fmt.Errorf("pasta de trabalho '%s' não encontrada: %w", workbookName, err)
+		}
+		wbDisp := wb.ToIDispatch()
+		defer wbDisp.Release()
+
+		sheets, err := oleutil.GetProperty(wbDisp, "Sheets")
+		if err != nil {
+			return err
+		}
+		defer sheets.ToIDispatch().Release()
+
+		sheet, err := oleutil.GetProperty(sheets.ToIDispatch(), "Item", sheetName)
+		if err != nil {
+			return fmt.Errorf("aba '%s' não encontrada: %w", sheetName, err)
+		}
+		sheetDisp := sheet.ToIDispatch()
+		defer sheetDisp.Release()
+
+		cell, err := oleutil.GetProperty(sheetDisp, "Range", cellAddress)
+		if err != nil {
+			return fmt.Errorf("célula '%s' inválida: %w", cellAddress, err)
+		}
+		cellDisp := cell.ToIDispatch()
+		defer cellDisp.Release()
+
+		_, err = oleutil.PutProperty(cellDisp, "Value", value)
+		return err
+	})
+}

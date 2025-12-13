@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -244,4 +245,94 @@ func (c *Client) GetAvailableModels() ([]ModelInfo, error) {
 	}
 
 	return models, nil
+}
+
+// ChatStream envia mensagens para a IA e processa a resposta via streaming
+func (c *Client) ChatStream(messages []Message, onChunk func(string) error) (string, error) {
+	if c.config.APIKey == "" {
+		return "", fmt.Errorf("API key não configurada")
+	}
+
+	reqBody := struct {
+		Model    string    `json:"model"`
+		Messages []Message `json:"messages"`
+		Stream   bool      `json:"stream"`
+	}{
+		Model:    c.config.Model,
+		Messages: messages,
+		Stream:   true,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequest("POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+	req.Header.Set("HTTP-Referer", "https://excel-ai-app.local")
+	req.Header.Set("X-Title", "Excel-AI")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("erro na API: %s - %s", resp.Status, string(body))
+	}
+
+	reader := bufio.NewReader(resp.Body)
+	var fullResponse strings.Builder
+
+	for {
+		line, err := reader.ReadBytes('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return "", err
+		}
+
+		line = bytes.TrimSpace(line)
+		if !bytes.HasPrefix(line, []byte("data: ")) {
+			continue
+		}
+
+		data := bytes.TrimPrefix(line, []byte("data: "))
+		if string(data) == "[DONE]" {
+			break
+		}
+
+		var chunk struct {
+			Choices []struct {
+				Delta struct {
+					Content string `json:"content"`
+				} `json:"delta"`
+			} `json:"choices"`
+		}
+
+		if err := json.Unmarshal(data, &chunk); err != nil {
+			continue
+		}
+
+		if len(chunk.Choices) > 0 {
+			content := chunk.Choices[0].Delta.Content
+			if content != "" {
+				fullResponse.WriteString(content)
+				if err := onChunk(content); err != nil {
+					return "", err
+				}
+			}
+		}
+	}
+
+	return fullResponse.String(), nil
 }

@@ -14,6 +14,8 @@ export function CreateNewSheet(arg1:string):Promise<void>;
 
 export function DeleteConversation(arg1:string):Promise<void>;
 
+export function DeleteLastMessages(arg1:number):Promise<void>;
+
 export function GetActiveSelection():Promise<excel.SheetData>;
 
 export function GetAvailableModels():Promise<Array<main.ModelInfo>>;
@@ -40,6 +42,10 @@ export function SetExcelContext(arg1:string,arg2:string):Promise<string>;
 
 export function SetModel(arg1:string):Promise<void>;
 
+export function UndoLastChange():Promise<void>;
+
 export function UpdateConfig(arg1:number,arg2:number,arg3:boolean,arg4:string,arg5:string,arg6:string):Promise<void>;
+
+export function UpdateExcelCell(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function WriteToExcel(arg1:number,arg2:number,arg3:string):Promise<void>;

@@ -21,6 +21,8 @@ import { Switch } from "@/components/ui/switch"
 
 interface SettingsProps {
     onClose: () => void
+    askBeforeApply: boolean
+    onAskBeforeApplyChange: (value: boolean) => void
 }
 
 interface ModelInfo {
@@ -42,7 +44,7 @@ const popularModels = [
     { value: 'deepseek/deepseek-chat', label: 'DeepSeek Chat', desc: 'Ótimo custo' },
 ]
 
-export default function Settings({ onClose }: SettingsProps) {
+export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChange }: SettingsProps) {
     const [apiKey, setApiKey] = useState('')
     const [model, setModel] = useState('openai/gpt-4o-mini')
     const [customModel, setCustomModel] = useState('')
@@ -393,6 +395,16 @@ export default function Settings({ onClose }: SettingsProps) {
                                 <div className="flex items-center justify-between p-4 bg-muted/30 border border-border rounded-lg">
                                     <Label>Incluir cabeçalhos no contexto</Label>
                                     <Switch checked={includeHeaders} onCheckedChange={setIncludeHeaders} />
+                                </div>
+
+                                <div className="flex items-center justify-between p-4 bg-muted/30 border border-border rounded-lg">
+                                    <div className="space-y-1">
+                                        <Label>Perguntar antes de aplicar</Label>
+                                        <p className="text-xs text-muted-foreground">
+                                            A IA pedirá confirmação antes de modificar a planilha
+                                        </p>
+                                    </div>
+                                    <Switch checked={askBeforeApply} onCheckedChange={onAskBeforeApplyChange} />
                                 </div>
                             </CardContent>
                         </Card>
