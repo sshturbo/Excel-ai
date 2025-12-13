@@ -53,6 +53,10 @@ type WriteRequest struct {
 
 // ModelInfo informações do modelo
 type ModelInfo struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Description   string `json:"description"`
+	ContextLength int    `json:"contextLength"`
+	PricePrompt   string `json:"pricePrompt"`
+	PriceComplete string `json:"priceComplete"`
 }

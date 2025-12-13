@@ -1,77 +1,4 @@
-export namespace excel {
-	
-	export class CellData {
-	    row: number;
-	    col: number;
-	    value: any;
-	    text: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new CellData(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.row = source["row"];
-	        this.col = source["col"];
-	        this.value = source["value"];
-	        this.text = source["text"];
-	    }
-	}
-	export class SheetData {
-	    name: string;
-	    headers: string[];
-	    rows: CellData[][];
-	
-	    static createFrom(source: any = {}) {
-	        return new SheetData(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.headers = source["headers"];
-	        this.rows = this.convertValues(source["rows"], CellData);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class Workbook {
-	    name: string;
-	    path: string;
-	    sheets: string[];
-	
-	    static createFrom(source: any = {}) {
-	        return new Workbook(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.path = source["path"];
-	        this.sheets = source["sheets"];
-	    }
-	}
-
-}
-
-export namespace main {
+export namespace dto {
 	
 	export class ChatMessage {
 	    role: string;
@@ -183,6 +110,79 @@ export namespace main {
 	        this.totalCols = source["totalCols"];
 	        this.workbook = source["workbook"];
 	        this.sheet = source["sheet"];
+	    }
+	}
+
+}
+
+export namespace excel {
+	
+	export class CellData {
+	    row: number;
+	    col: number;
+	    value: any;
+	    text: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CellData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.row = source["row"];
+	        this.col = source["col"];
+	        this.value = source["value"];
+	        this.text = source["text"];
+	    }
+	}
+	export class SheetData {
+	    name: string;
+	    headers: string[];
+	    rows: CellData[][];
+	
+	    static createFrom(source: any = {}) {
+	        return new SheetData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.headers = source["headers"];
+	        this.rows = this.convertValues(source["rows"], CellData);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Workbook {
+	    name: string;
+	    path: string;
+	    sheets: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Workbook(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.sheets = source["sheets"];
 	    }
 	}
 
