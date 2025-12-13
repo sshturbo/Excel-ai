@@ -38,57 +38,74 @@ func (s *Service) SetModel(modelID string) {
 }
 
 func (s *Service) GetAvailableModels() []dto.ModelInfo {
-	// Hardcoded for now, could be fetched from API
-	return []dto.ModelInfo{
-		{
-			ID:            "google/gemini-2.0-flash-exp:free",
-			Name:          "Gemini 2.0 Flash (Free)",
-			Description:   "Modelo experimental rápido e gratuito do Google",
-			ContextLength: 1000000,
-			PricePrompt:   "0",
-			PriceComplete: "0",
-		},
-		{
-			ID:            "google/gemini-exp-1206:free",
-			Name:          "Gemini Exp 1206 (Free)",
-			Description:   "Modelo experimental atualizado",
-			ContextLength: 1000000,
-			PricePrompt:   "0",
-			PriceComplete: "0",
-		},
-		{
-			ID:            "meta-llama/llama-3.2-90b-vision-instruct:free",
-			Name:          "Llama 3.2 90B (Free)",
-			Description:   "Modelo open source poderoso da Meta",
-			ContextLength: 128000,
-			PricePrompt:   "0",
-			PriceComplete: "0",
-		},
-		{
-			ID:            "microsoft/phi-3-medium-128k-instruct:free",
-			Name:          "Phi-3 Medium (Free)",
-			Description:   "Modelo eficiente da Microsoft",
-			ContextLength: 128000,
-			PricePrompt:   "0",
-			PriceComplete: "0",
-		},
-		{
-			ID:            "anthropic/claude-3.5-sonnet",
-			Name:          "Claude 3.5 Sonnet",
-			Description:   "Alta inteligência e capacidade de codificação",
-			ContextLength: 200000,
-			PricePrompt:   "$3/1M",
-			PriceComplete: "$15/1M",
-		},
-		{
-			ID:            "openai/gpt-4o",
-			Name:          "GPT-4o",
-			Description:   "Modelo flagship da OpenAI",
-			ContextLength: 128000,
-			PricePrompt:   "$5/1M",
-			PriceComplete: "$15/1M",
-		},
+	models, err := s.client.GetAvailableModels()
+	if err != nil {
+		// Fallback to hardcoded list if API fails
+		return []dto.ModelInfo{
+			{
+				ID:            "google/gemini-2.0-flash-exp:free",
+				Name:          "Gemini 2.0 Flash (Free)",
+				Description:   "Modelo experimental rápido e gratuito do Google",
+				ContextLength: 1000000,
+				PricePrompt:   "0",
+				PriceComplete: "0",
+			},
+			{
+				ID:            "google/gemini-exp-1206:free",
+				Name:          "Gemini Exp 1206 (Free)",
+				Description:   "Modelo experimental atualizado",
+				ContextLength: 1000000,
+				PricePrompt:   "0",
+				PriceComplete: "0",
+			},
+			{
+				ID:            "meta-llama/llama-3.2-90b-vision-instruct:free",
+				Name:          "Llama 3.2 90B (Free)",
+				Description:   "Modelo open source poderoso da Meta",
+				ContextLength: 128000,
+				PricePrompt:   "0",
+				PriceComplete: "0",
+			},
+			{
+				ID:            "microsoft/phi-3-medium-128k-instruct:free",
+				Name:          "Phi-3 Medium (Free)",
+				Description:   "Modelo eficiente da Microsoft",
+				ContextLength: 128000,
+				PricePrompt:   "0",
+				PriceComplete: "0",
+			},
+			{
+				ID:            "anthropic/claude-3.5-sonnet",
+				Name:          "Claude 3.5 Sonnet",
+				Description:   "Alta inteligência e capacidade de codificação",
+				ContextLength: 200000,
+				PricePrompt:   "$3/1M",
+				PriceComplete: "$15/1M",
+			},
+			{
+				ID:            "openai/gpt-4o",
+				Name:          "GPT-4o",
+				Description:   "Modelo flagship da OpenAI",
+				ContextLength: 128000,
+				PricePrompt:   "$5/1M",
+				PriceComplete: "$15/1M",
+			},
+		}
 	}
+
+	var result []dto.ModelInfo
+	for _, m := range models {
+		result = append(result, dto.ModelInfo{
+			ID:            m.ID,
+			Name:          m.Name,
+			Description:   m.Description,
+			ContextLength: m.ContextLength,
+			PricePrompt:   m.Pricing.Prompt,
+			PriceComplete: m.Pricing.Completion,
+		})
+	}
+
+	return result
 }
 
 func (s *Service) SendMessage(message string, contextStr string, onChunk func(string) error) (string, error) {

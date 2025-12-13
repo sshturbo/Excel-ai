@@ -7,6 +7,7 @@ import {
     UpdateConfig,
     GetAvailableModels
 } from "../wailsjs/go/main/App"
+import { dto } from "../wailsjs/go/models"
 
 // shadcn components
 import { Button } from "@/components/ui/button"
@@ -23,15 +24,6 @@ interface SettingsProps {
     onClose: () => void
     askBeforeApply: boolean
     onAskBeforeApplyChange: (value: boolean) => void
-}
-
-interface ModelInfo {
-    id: string
-    name: string
-    description: string
-    contextLength: number
-    pricePrompt: string
-    priceComplete: string
 }
 
 // Modelos populares de fallback
@@ -56,7 +48,7 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
     const [language, setLanguage] = useState('pt-BR')
     const [includeHeaders, setIncludeHeaders] = useState(true)
     const [isSaving, setIsSaving] = useState(false)
-    const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
+    const [availableModels, setAvailableModels] = useState<dto.ModelInfo[]>([])
     const [isLoadingModels, setIsLoadingModels] = useState(false)
     const [modelFilter, setModelFilter] = useState('')
 
