@@ -193,6 +193,8 @@ export namespace storage {
 	export class Config {
 	    apiKey?: string;
 	    model: string;
+	    provider?: string;
+	    baseUrl?: string;
 	    maxRowsContext: number;
 	    maxRowsPreview: number;
 	    includeHeaders: boolean;
@@ -209,6 +211,8 @@ export namespace storage {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.apiKey = source["apiKey"];
 	        this.model = source["model"];
+	        this.provider = source["provider"];
+	        this.baseUrl = source["baseUrl"];
 	        this.maxRowsContext = source["maxRowsContext"];
 	        this.maxRowsPreview = source["maxRowsPreview"];
 	        this.includeHeaders = source["includeHeaders"];

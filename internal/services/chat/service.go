@@ -19,7 +19,7 @@ type Service struct {
 
 func NewService(storage *storage.Storage) *Service {
 	return &Service{
-		client:      ai.NewClient("", ""), // API Key set later
+		client:      ai.NewClient("", "", ""), // API Key, Model, BaseURL set later
 		storage:     storage,
 		chatHistory: []ai.Message{},
 	}
@@ -35,6 +35,12 @@ func (s *Service) SetModel(modelID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.client.SetModel(modelID)
+}
+
+func (s *Service) SetBaseURL(url string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.client.SetBaseURL(url)
 }
 
 func (s *Service) GetAvailableModels() []dto.ModelInfo {

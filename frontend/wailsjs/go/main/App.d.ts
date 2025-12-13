@@ -54,7 +54,7 @@ export function StartUndoBatch():Promise<void>;
 
 export function UndoLastChange():Promise<void>;
 
-export function UpdateConfig(arg1:number,arg2:number,arg3:boolean,arg4:string,arg5:string,arg6:string):Promise<void>;
+export function UpdateConfig(arg1:number,arg2:number,arg3:boolean,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string):Promise<void>;
 
 export function UpdateExcelCell(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 

@@ -37,6 +37,11 @@ func NewApp() *App {
 			if cfg.Model != "" {
 				chatSvc.SetModel(cfg.Model)
 			}
+			if cfg.BaseURL != "" {
+				chatSvc.SetBaseURL(cfg.BaseURL)
+			} else if cfg.Provider == "groq" {
+				chatSvc.SetBaseURL("https://api.groq.com/openai/v1")
+			}
 		}
 	}
 
@@ -161,7 +166,7 @@ func (a *App) GetSavedConfig() (*storage.Config, error) {
 }
 
 // UpdateConfig atualiza configurações
-func (a *App) UpdateConfig(maxRowsContext, maxRowsPreview int, includeHeaders bool, detailLevel, customPrompt, language string) error {
+func (a *App) UpdateConfig(maxRowsContext, maxRowsPreview int, includeHeaders bool, detailLevel, customPrompt, language, provider, baseUrl string) error {
 	if a.storage == nil {
 		return fmt.Errorf("storage não disponível")
 	}
@@ -175,6 +180,18 @@ func (a *App) UpdateConfig(maxRowsContext, maxRowsPreview int, includeHeaders bo
 	cfg.DetailLevel = detailLevel
 	cfg.CustomPrompt = customPrompt
 	cfg.Language = language
+	cfg.Provider = provider
+	cfg.BaseURL = baseUrl
+
+	// Atualizar serviço
+	if baseUrl != "" {
+		a.chatService.SetBaseURL(baseUrl)
+	} else if provider == "groq" {
+		a.chatService.SetBaseURL("https://api.groq.com/openai/v1")
+	} else {
+		a.chatService.SetBaseURL("https://openrouter.ai/api/v1")
+	}
+
 	return a.storage.SaveConfig(cfg)
 }
 

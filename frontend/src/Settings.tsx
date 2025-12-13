@@ -39,6 +39,8 @@ const popularModels = [
 export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChange }: SettingsProps) {
     const [apiKey, setApiKey] = useState('')
     const [model, setModel] = useState('openai/gpt-4o-mini')
+    const [provider, setProvider] = useState('openrouter')
+    const [baseUrl, setBaseUrl] = useState('')
     const [customModel, setCustomModel] = useState('')
     const [useCustomModel, setUseCustomModel] = useState(false)
     const [maxRowsContext, setMaxRowsContext] = useState(50)
@@ -70,6 +72,8 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
                     // Carregar modelos automaticamente se tiver API key
                     loadModels()
                 }
+                if (cfg.provider) setProvider(cfg.provider)
+                if (cfg.baseUrl) setBaseUrl(cfg.baseUrl)
                 if (cfg.model) {
                     setModel(cfg.model)
                     // Verificar se é um modelo personalizado
@@ -129,7 +133,7 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
             await SetAPIKey(apiKey)
             const selectedModel = useCustomModel ? customModel : model
             await SetModel(selectedModel)
-            await UpdateConfig(maxRowsContext, maxRowsPreview, includeHeaders, detailLevel, customPrompt, language)
+            await UpdateConfig(maxRowsContext, maxRowsPreview, includeHeaders, detailLevel, customPrompt, language, provider, baseUrl)
             toast.success('✅ Configurações salvas!')
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err)
@@ -187,10 +191,43 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
                                 <div className="w-12 h-12 bg-primary text-primary-foreground rounded-xl flex items-center justify-center text-2xl mb-2">
                                     🔑
                                 </div>
-                                <CardTitle>Chave de API</CardTitle>
-                                <CardDescription>Configure sua chave do OpenRouter</CardDescription>
+                                <CardTitle>Provedor e Chave de API</CardTitle>
+                                <CardDescription>Configure o provedor de IA e sua chave de acesso</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label>Provedor</Label>
+                                    <Select value={provider} onValueChange={(val) => {
+                                        setProvider(val)
+                                        if (val === 'groq') {
+                                            setBaseUrl('https://api.groq.com/openai/v1')
+                                        } else if (val === 'openrouter') {
+                                            setBaseUrl('https://openrouter.ai/api/v1')
+                                        }
+                                    }}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Selecione o provedor" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="openrouter">OpenRouter (Recomendado)</SelectItem>
+                                            <SelectItem value="groq">Groq (Rápido e Gratuito)</SelectItem>
+                                            <SelectItem value="custom">Personalizado (OpenAI Compatible)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {provider === 'custom' && (
+                                    <div className="space-y-2">
+                                        <Label>Base URL</Label>
+                                        <Input
+                                            type="text"
+                                            value={baseUrl}
+                                            onChange={(e) => setBaseUrl(e.target.value)}
+                                            placeholder="https://api.exemplo.com/v1"
+                                        />
+                                    </div>
+                                )}
+
                                 <div className="space-y-2">
                                     <Label>API Key</Label>
                                     <Input
@@ -200,7 +237,11 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
                                         placeholder="sk-or-v1-..."
                                     />
                                     <p className="text-sm text-muted-foreground">
-                                        Obtenha em <a href="https://openrouter.ai/keys" target="_blank" className="text-primary hover:underline">openrouter.ai/keys</a>
+                                        {provider === 'groq' ? (
+                                            <>Obtenha em <a href="https://console.groq.com/keys" target="_blank" className="text-primary hover:underline">console.groq.com/keys</a></>
+                                        ) : (
+                                            <>Obtenha em <a href="https://openrouter.ai/keys" target="_blank" className="text-primary hover:underline">openrouter.ai/keys</a></>
+                                        )}
                                     </p>
                                 </div>
                             </CardContent>

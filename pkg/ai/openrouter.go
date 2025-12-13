@@ -10,13 +10,14 @@ import (
 	"strings"
 )
 
-// Config configuração do cliente OpenRouter
+// Config configuração do cliente AI
 type Config struct {
-	APIKey string
-	Model  string
+	APIKey  string
+	Model   string
+	BaseURL string
 }
 
-// Client cliente para API OpenRouter
+// Client cliente para API AI (OpenAI Compatible)
 type Client struct {
 	config     Config
 	httpClient *http.Client
@@ -45,18 +46,33 @@ type ChatResponse struct {
 	} `json:"error,omitempty"`
 }
 
-// NewClient cria um novo cliente OpenRouter
-func NewClient(apiKey, model string) *Client {
+// NewClient cria um novo cliente AI
+func NewClient(apiKey, model, baseURL string) *Client {
 	if model == "" {
 		model = "openai/gpt-4o-mini" // modelo padrão econômico
 	}
+	if baseURL == "" {
+		baseURL = "https://openrouter.ai/api/v1"
+	}
+	// Remover barra final se existir
+	baseURL = strings.TrimRight(baseURL, "/")
+
 	return &Client{
 		config: Config{
-			APIKey: apiKey,
-			Model:  model,
+			APIKey:  apiKey,
+			Model:   model,
+			BaseURL: baseURL,
 		},
 		httpClient: &http.Client{},
 	}
+}
+
+// SetBaseURL altera a URL base da API
+func (c *Client) SetBaseURL(url string) {
+	if url == "" {
+		url = "https://openrouter.ai/api/v1"
+	}
+	c.config.BaseURL = strings.TrimRight(url, "/")
 }
 
 // SetModel altera o modelo utilizado
@@ -86,7 +102,7 @@ func (c *Client) Chat(messages []Message) (string, error) {
 		return "", err
 	}
 
-	req, err := http.NewRequest("POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", c.config.BaseURL+"/chat/completions", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", err
 	}
@@ -204,7 +220,9 @@ type ModelsResponse struct {
 
 // GetAvailableModels busca os modelos disponíveis na OpenRouter
 func (c *Client) GetAvailableModels() ([]ModelInfo, error) {
-	req, err := http.NewRequest("GET", "https://openrouter.ai/api/v1/models", nil)
+	// Se não for OpenRouter, a API de modelos pode ser diferente ou não existir
+	// Groq usa /models também
+	req, err := http.NewRequest("GET", c.config.BaseURL+"/models", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -272,7 +290,7 @@ func (c *Client) ChatStream(messages []Message, onChunk func(string) error) (str
 		return "", err
 	}
 
-	req, err := http.NewRequest("POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", c.config.BaseURL+"/chat/completions", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", err
 	}

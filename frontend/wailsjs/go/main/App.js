@@ -102,8 +102,8 @@ export function UndoLastChange() {
   return window['go']['main']['App']['UndoLastChange']();
 }
 
-export function UpdateConfig(arg1, arg2, arg3, arg4, arg5, arg6) {
-  return window['go']['main']['App']['UpdateConfig'](arg1, arg2, arg3, arg4, arg5, arg6);
+export function UpdateConfig(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
+  return window['go']['main']['App']['UpdateConfig'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
 
 export function UpdateExcelCell(arg1, arg2, arg3, arg4) {

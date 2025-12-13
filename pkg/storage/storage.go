@@ -40,12 +40,14 @@ type ConversationSummary struct {
 type Config struct {
 	APIKey         string `json:"apiKey,omitempty"`
 	Model          string `json:"model"`
-	MaxRowsContext int    `json:"maxRowsContext"` // Máximo de linhas enviadas para IA
-	MaxRowsPreview int    `json:"maxRowsPreview"` // Máximo de linhas no preview
-	IncludeHeaders bool   `json:"includeHeaders"` // Incluir cabeçalhos no contexto
-	DetailLevel    string `json:"detailLevel"`    // "minimal", "normal", "detailed"
-	CustomPrompt   string `json:"customPrompt"`   // Prompt personalizado adicional
-	Language       string `json:"language"`       // Idioma das respostas
+	Provider       string `json:"provider,omitempty"` // "openrouter", "groq", "custom"
+	BaseURL        string `json:"baseUrl,omitempty"`  // URL base para custom/groq
+	MaxRowsContext int    `json:"maxRowsContext"`     // Máximo de linhas enviadas para IA
+	MaxRowsPreview int    `json:"maxRowsPreview"`     // Máximo de linhas no preview
+	IncludeHeaders bool   `json:"includeHeaders"`     // Incluir cabeçalhos no contexto
+	DetailLevel    string `json:"detailLevel"`        // "minimal", "normal", "detailed"
+	CustomPrompt   string `json:"customPrompt"`       // Prompt personalizado adicional
+	Language       string `json:"language"`           // Idioma das respostas
 	LastUsedWb     string `json:"lastUsedWorkbook,omitempty"`
 }
 
@@ -282,6 +284,8 @@ func (s *Storage) LoadConfig() (*Config, error) {
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return &Config{
+				Provider:       "openrouter",
+				BaseURL:        "https://openrouter.ai/api/v1",
 				Model:          "openai/gpt-4o-mini",
 				MaxRowsContext: 50,
 				MaxRowsPreview: 100,
