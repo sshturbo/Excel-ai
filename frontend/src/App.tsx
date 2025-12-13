@@ -289,6 +289,8 @@ export default function App() {
             if (result.connected && result.workbooks) {
                 setWorkbooks(result.workbooks)
                 toast.success('Conectado ao Excel!')
+            } else if (result.error) {
+                toast.error('Erro ao conectar: ' + result.error)
             }
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err)

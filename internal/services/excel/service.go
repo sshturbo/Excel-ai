@@ -41,7 +41,11 @@ func (s *Service) Connect() (*dto.ExcelStatus, error) {
 	s.client = client
 	workbooks, err := s.client.GetOpenWorkbooks()
 	if err != nil {
-		return &dto.ExcelStatus{Connected: true, Error: "Erro ao listar planilhas: " + err.Error()}, nil
+		// Se falhar ao listar, consideramos que a conexão não foi totalmente bem sucedida
+		// para permitir que o usuário tente novamente
+		s.client.Close()
+		s.client = nil
+		return &dto.ExcelStatus{Connected: false, Error: "Conectado ao Excel, mas falha ao listar planilhas: " + err.Error()}, nil
 	}
 
 	return &dto.ExcelStatus{Connected: true, Workbooks: workbooks}, nil

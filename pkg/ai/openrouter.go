@@ -30,8 +30,9 @@ type Message struct {
 
 // ChatRequest requisição para a API
 type ChatRequest struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
+	Model     string    `json:"model"`
+	Messages  []Message `json:"messages"`
+	MaxTokens int       `json:"max_tokens,omitempty"`
 }
 
 // ChatResponse resposta da API
@@ -75,8 +76,9 @@ func (c *Client) Chat(messages []Message) (string, error) {
 	}
 
 	reqBody := ChatRequest{
-		Model:    c.config.Model,
-		Messages: messages,
+		Model:     c.config.Model,
+		Messages:  messages,
+		MaxTokens: 4096, // Limite razoável para evitar erro de crédito insuficiente
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -254,13 +256,15 @@ func (c *Client) ChatStream(messages []Message, onChunk func(string) error) (str
 	}
 
 	reqBody := struct {
-		Model    string    `json:"model"`
-		Messages []Message `json:"messages"`
-		Stream   bool      `json:"stream"`
+		Model     string    `json:"model"`
+		Messages  []Message `json:"messages"`
+		Stream    bool      `json:"stream"`
+		MaxTokens int       `json:"max_tokens,omitempty"`
 	}{
-		Model:    c.config.Model,
-		Messages: messages,
-		Stream:   true,
+		Model:     c.config.Model,
+		Messages:  messages,
+		Stream:    true,
+		MaxTokens: 4096, // Limite razoável para evitar erro de crédito insuficiente
 	}
 
 	jsonData, err := json.Marshal(reqBody)

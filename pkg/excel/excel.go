@@ -3,7 +3,9 @@ package excel
 import (
 	"fmt"
 	"runtime"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-ole/go-ole"
 	"github.com/go-ole/go-ole/oleutil"
@@ -103,7 +105,22 @@ func (c *Client) runOnCOMThread(fn func() error) error {
 
 	errChan := make(chan error, 1)
 	c.cmdChan <- func() {
-		errChan <- fn()
+		var err error
+		// Tentar até 3 vezes com backoff se o Excel estiver ocupado
+		for i := 0; i < 3; i++ {
+			err = fn()
+			if err == nil {
+				break
+			}
+			// Verificar se é erro de "Call was rejected by callee" (Excel ocupado)
+			if strings.Contains(err.Error(), "Call was rejected by callee") ||
+				strings.Contains(err.Error(), "A chamada foi rejeitada pelo chamado") {
+				time.Sleep(time.Millisecond * 500 * time.Duration(i+1))
+				continue
+			}
+			break
+		}
+		errChan <- err
 	}
 	return <-errChan
 }
@@ -119,7 +136,22 @@ func runOnCOMThreadWithResult[T any](c *Client, fn func() (T, error)) (T, error)
 	}
 	resChan := make(chan result, 1)
 	c.cmdChan <- func() {
-		v, err := fn()
+		var v T
+		var err error
+		// Tentar até 3 vezes com backoff se o Excel estiver ocupado
+		for i := 0; i < 3; i++ {
+			v, err = fn()
+			if err == nil {
+				break
+			}
+			// Verificar se é erro de "Call was rejected by callee" (Excel ocupado)
+			if strings.Contains(err.Error(), "Call was rejected by callee") ||
+				strings.Contains(err.Error(), "A chamada foi rejeitada pelo chamado") {
+				time.Sleep(time.Millisecond * 500 * time.Duration(i+1))
+				continue
+			}
+			break
+		}
 		resChan <- result{v, err}
 	}
 	res := <-resChan
