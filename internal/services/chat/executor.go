@@ -107,6 +107,39 @@ func (s *Service) executeQuery(params map[string]interface{}) (string, error) {
 			return "", err
 		}
 		return fmt.Sprintf("PIVOTS: %v", pivots), nil
+
+	case "get-range-values":
+		sheet, _ := params["sheet"].(string)
+		rng, _ := params["range"].(string)
+		values, err := s.excelService.GetRangeValues(sheet, rng)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("RANGE VALUES (%s!%s): %v", sheet, rng, values), nil
+
+	case "has-filter":
+		sheet, _ := params["sheet"].(string)
+		hasFilter, err := s.excelService.HasFilter(sheet)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("HAS FILTER (%s): %v", sheet, hasFilter), nil
+
+	case "get-row-count":
+		sheet, _ := params["sheet"].(string)
+		count, err := s.excelService.GetRowCount(sheet)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("ROW COUNT (%s): %d", sheet, count), nil
+
+	case "get-column-count":
+		sheet, _ := params["sheet"].(string)
+		count, err := s.excelService.GetColumnCount(sheet)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("COLUMN COUNT (%s): %d", sheet, count), nil
 	}
 
 	return "", fmt.Errorf("unknown query type: %s", queryType)
