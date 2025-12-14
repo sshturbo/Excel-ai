@@ -10,7 +10,7 @@ import {
     SendErrorFeedback,
     StartUndoBatch,
     EndUndoBatch
-} from "../../wailsjs/go/main/App"
+} from "../../wailsjs/go/app/App"
 
 interface ProcessAIResponseOptions {
     askBeforeApply: boolean

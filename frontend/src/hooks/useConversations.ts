@@ -9,7 +9,7 @@ import {
     LoadConversation,
     DeleteConversation,
     NewConversation
-} from "../../wailsjs/go/main/App"
+} from "../../wailsjs/go/app/App"
 
 interface UseConversationsReturn {
     conversations: ConversationItem[]

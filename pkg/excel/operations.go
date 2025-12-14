@@ -1,0 +1,208 @@
+// operations.go - Excel general data operations (copy, sort, filter, rows)
+package excel
+
+import (
+	"fmt"
+
+	"github.com/go-ole/go-ole/oleutil"
+)
+
+// CopyRange copia um range para outro local
+func (c *Client) CopyRange(workbookName, sheetName, sourceRange, destRange string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		srcObj, err := oleutil.GetProperty(sheet, "Range", sourceRange)
+		if err != nil {
+			return fmt.Errorf("range origem '%s' inválido: %w", sourceRange, err)
+		}
+		srcDisp := srcObj.ToIDispatch()
+		defer srcDisp.Release()
+
+		destObj, err := oleutil.GetProperty(sheet, "Range", destRange)
+		if err != nil {
+			return fmt.Errorf("range destino '%s' inválido: %w", destRange, err)
+		}
+		destDisp := destObj.ToIDispatch()
+		defer destDisp.Release()
+
+		_, err = oleutil.CallMethod(srcDisp, "Copy", destDisp)
+		return err
+	})
+}
+
+// SortRange ordena dados em um range
+// ascending: true para A-Z, false para Z-A
+func (c *Client) SortRange(workbookName, sheetName, rangeAddr string, column int, ascending bool) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		rangeObj, err := oleutil.GetProperty(sheet, "Range", rangeAddr)
+		if err != nil {
+			return fmt.Errorf("range '%s' inválido: %w", rangeAddr, err)
+		}
+		rangeDisp := rangeObj.ToIDispatch()
+		defer rangeDisp.Release()
+
+		// Obter célula de ordenação
+		cells, _ := oleutil.GetProperty(rangeDisp, "Cells")
+		cellsDisp := cells.ToIDispatch()
+		defer cellsDisp.Release()
+
+		keyCell, _ := oleutil.GetProperty(cellsDisp, "Item", 1, column)
+		keyCellDisp := keyCell.ToIDispatch()
+		defer keyCellDisp.Release()
+
+		order := 1 // xlAscending
+		if !ascending {
+			order = 2 // xlDescending
+		}
+
+		_, err = oleutil.CallMethod(rangeDisp, "Sort", keyCellDisp, order)
+		return err
+	})
+}
+
+// ApplyFilter aplica filtro automático a um range
+func (c *Client) ApplyFilter(workbookName, sheetName, rangeAddr string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		rangeObj, err := oleutil.GetProperty(sheet, "Range", rangeAddr)
+		if err != nil {
+			return fmt.Errorf("range '%s' inválido: %w", rangeAddr, err)
+		}
+		rangeDisp := rangeObj.ToIDispatch()
+		defer rangeDisp.Release()
+
+		_, err = oleutil.CallMethod(rangeDisp, "AutoFilter")
+		return err
+	})
+}
+
+// ClearFilters remove todos os filtros de uma aba
+func (c *Client) ClearFilters(workbookName, sheetName string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		// Verificar se há AutoFilterMode ativo
+		autoFilterMode, _ := oleutil.GetProperty(sheet, "AutoFilterMode")
+		if autoFilterMode.Val != 0 {
+			// Obter o AutoFilter e desativar chamando AutoFilter novamente no range
+			autoFilter, _ := oleutil.GetProperty(sheet, "AutoFilter")
+			if autoFilter.Val != 0 {
+				autoFilterDisp := autoFilter.ToIDispatch()
+				rangeObj, _ := oleutil.GetProperty(autoFilterDisp, "Range")
+				if rangeObj.Val != 0 {
+					rangeDisp := rangeObj.ToIDispatch()
+					oleutil.CallMethod(rangeDisp, "AutoFilter") // Desativa o filtro
+					rangeDisp.Release()
+				}
+				autoFilterDisp.Release()
+			}
+		}
+		return nil
+	})
+}
+
+// InsertRows insere linhas em uma posição específica
+func (c *Client) InsertRows(workbookName, sheetName string, rowNumber, count int) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		for i := 0; i < count; i++ {
+			// Selecionar linha
+			rowAddr := fmt.Sprintf("%d:%d", rowNumber, rowNumber)
+			rowObj, err := oleutil.GetProperty(sheet, "Rows", rowAddr)
+			if err != nil {
+				return err
+			}
+			rowDisp := rowObj.ToIDispatch()
+			_, err = oleutil.CallMethod(rowDisp, "Insert")
+			rowDisp.Release()
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// DeleteRows exclui linhas a partir de uma posição
+func (c *Client) DeleteRows(workbookName, sheetName string, rowNumber, count int) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		// Desabilitar alertas
+		oleutil.PutProperty(c.excelApp, "DisplayAlerts", false)
+		defer oleutil.PutProperty(c.excelApp, "DisplayAlerts", true)
+
+		// Selecionar range de linhas
+		rowAddr := fmt.Sprintf("%d:%d", rowNumber, rowNumber+count-1)
+		rowObj, err := oleutil.GetProperty(sheet, "Rows", rowAddr)
+		if err != nil {
+			return err
+		}
+		rowDisp := rowObj.ToIDispatch()
+		defer rowDisp.Release()
+
+		_, err = oleutil.CallMethod(rowDisp, "Delete")
+		return err
+	})
+}
+
+// DeleteSheet exclui uma aba da pasta de trabalho
+func (c *Client) DeleteSheet(workbookName, sheetName string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		// Desabilitar alertas para não pedir confirmação
+		oleutil.PutProperty(c.excelApp, "DisplayAlerts", false)
+		defer oleutil.PutProperty(c.excelApp, "DisplayAlerts", true)
+
+		_, err = oleutil.CallMethod(sheet, "Delete")
+		return err
+	})
+}
+
+// RenameSheet renomeia uma aba
+func (c *Client) RenameSheet(workbookName, oldName, newName string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, oldName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		_, err = oleutil.PutProperty(sheet, "Name", newName)
+		return err
+	})
+}

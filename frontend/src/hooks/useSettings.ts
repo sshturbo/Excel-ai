@@ -10,7 +10,7 @@ import {
     UpdateConfig,
     GetAvailableModels,
     SwitchProvider
-} from "../../wailsjs/go/main/App"
+} from "../../wailsjs/go/app/App"
 
 // Popular models fallback
 export const popularModels = [

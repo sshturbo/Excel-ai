@@ -40,7 +40,7 @@ import {
     RefreshWorkbooks,
     StartUndoBatch,
     EndUndoBatch
-} from "../wailsjs/go/main/App"
+} from "../wailsjs/go/app/App"
 
 export default function App() {
     // Theme

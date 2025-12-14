@@ -32,7 +32,7 @@ import {
     CreateTable,
     DeleteTable,
     RefreshWorkbooks
-} from "../../wailsjs/go/main/App"
+} from "../../wailsjs/go/app/App"
 
 /**
  * Executes an Excel action and returns the result

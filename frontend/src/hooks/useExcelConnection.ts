@@ -8,7 +8,7 @@ import {
     RefreshWorkbooks,
     SetExcelContext,
     GetPreviewData
-} from "../../wailsjs/go/main/App"
+} from "../../wailsjs/go/app/App"
 import { EventsOn } from "../../wailsjs/runtime/runtime"
 
 interface UseExcelConnectionReturn {

@@ -1,3 +1,24 @@
+export namespace app {
+	
+	export class QueryResult {
+	    success: boolean;
+	    data: any;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new QueryResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.success = source["success"];
+	        this.data = source["data"];
+	        this.error = source["error"];
+	    }
+	}
+
+}
+
 export namespace dto {
 	
 	export class ChatMessage {
@@ -183,27 +204,6 @@ export namespace excel {
 	        this.name = source["name"];
 	        this.path = source["path"];
 	        this.sheets = source["sheets"];
-	    }
-	}
-
-}
-
-export namespace main {
-	
-	export class QueryResult {
-	    success: boolean;
-	    data: any;
-	    error?: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new QueryResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.success = source["success"];
-	        this.data = source["data"];
-	        this.error = source["error"];
 	    }
 	}
 
