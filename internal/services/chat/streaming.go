@@ -319,6 +319,8 @@ AGENT RULES:
 4. You will receive results and can continue automatically
 5. Use format-range to make headers bold or highlight data
 6. Use autofit to adjust column widths after inserting data
+7. CRITICAL: ALWAYS specify "sheet" parameter in write/format actions! After creating a new sheet, use that sheet name in ALL following actions.
+8. For batch data insert, use the "data" field with a 2D array: {"op": "write", "sheet": "MinhaAba", "cell": "A1", "data": [["Col1", "Col2"], ["Val1", "Val2"]]}
 
 EXAMPLE - Create chart with thinking:
 :::thinking
