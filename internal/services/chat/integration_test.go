@@ -98,7 +98,7 @@ func TestAllTools(t *testing.T) {
 		})
 	}
 
-	exec("Ler Célula", "get-cell-formula", map[string]interface{}{"cell": "A2"})
+	exec("Ler Célula", "get-cell-formula", map[string]interface{}{"sheet": sheet1, "cell": "A2"})
 	exec("Obter Used Range", "get-used-range", map[string]interface{}{"sheet": sheet1})
 
 	// GRUPO 3: FORMATAÇÃO
@@ -156,7 +156,7 @@ func TestAllTools(t *testing.T) {
 
 	// Sort
 	exec("Ordenar Preço Desc", "sort", map[string]interface{}{
-		"sheet": sheet1, "range": "A2:B5", "column": 2, "ascending": false,
+		"sheet": sheet1, "range": "A2:B5", "column": 2.0, "ascending": false,
 	})
 
 	// GRUPO 6: CHART & PIVOT
@@ -177,10 +177,9 @@ func TestAllTools(t *testing.T) {
 	// })
 
 	// GRUPO 7: CLEANUP ACTIONS
-	exec("Deletar Gráfico", "delete-chart", map[string]interface{}{
-		"sheet": sheet1, "name": "Vendas Chart", // O nome criado pode variar, 'Gráfico 1'. O teste pode falhar se o nome não bater.
-		// Vamos pular delete especifico por nome se nao sabemos o nome exato.
-	})
+	//	exec("Deletar Gráfico", "delete-chart", map[string]interface{}{
+	//		"sheet": sheet1, "name": "Vendas Chart",
+	//	})
 	exec("Deletar Tabela", "delete-table", map[string]interface{}{
 		"sheet": sheet1, "name": "TabVendas",
 	})

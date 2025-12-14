@@ -83,6 +83,22 @@ func (s *Service) executeQuery(params map[string]interface{}) (string, error) {
 			return "", err
 		}
 		return fmt.Sprintf("ACTIVE CELL: %s", cell), nil
+
+	case "list-tables":
+		sheet, _ := params["sheet"].(string)
+		tables, err := s.excelService.ListTables(sheet)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("TABLES: %v", tables), nil
+
+	case "list-charts":
+		sheet, _ := params["sheet"].(string)
+		charts, err := s.excelService.ListCharts(sheet)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("CHARTS: %v", charts), nil
 	}
 
 	return "", fmt.Errorf("unknown query type: %s", queryType)
@@ -105,10 +121,11 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 		// Vou converter qualquer valor para string.
 
 		valStr := fmt.Sprintf("%v", params["value"])
+		sheet, _ := params["sheet"].(string)
 
 		// UpdateCell recebe (workbook, sheet, cell, value)
 		// O backend usa current se vazio.
-		err := s.excelService.UpdateCell("", "", cell, valStr)
+		err := s.excelService.UpdateCell("", sheet, cell, valStr)
 		if err != nil {
 			return "", err
 		}
