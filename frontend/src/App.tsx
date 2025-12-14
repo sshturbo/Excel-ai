@@ -527,16 +527,43 @@ export default function App() {
         return () => cleanup()
     }, [])
 
+    // Ref para manter selectedWorkbook atualizado no callback sem recriar listener
+    const selectedWorkbookRef = useRef(selectedWorkbook)
+    useEffect(() => {
+        selectedWorkbookRef.current = selectedWorkbook
+    }, [selectedWorkbook])
+
     // Listener para atualizações em tempo real das planilhas
     useEffect(() => {
+        console.log("[WATCHER] Registrando listener de eventos...")
         const cleanup = EventsOn("excel:workbooks-changed", (data: any) => {
-            if (data?.workbooks) {
-                setWorkbooks(data.workbooks)
+            console.log("[WATCHER] Evento recebido:", data)
+            if (data?.workbooks !== undefined) {
+                setWorkbooks(data.workbooks || [])
                 // Atualizar status de conexão
                 setConnected(data.connected ?? true)
+
+                // Se o workbook selecionado foi fechado, limpar seleção
+                const currentSelected = selectedWorkbookRef.current
+                if (currentSelected) {
+                    const workbookStillExists = (data.workbooks || []).some(
+                        (wb: any) => wb.name === currentSelected
+                    )
+                    if (!workbookStillExists) {
+                        console.log("[WATCHER] Workbook selecionado foi fechado, limpando seleção")
+                        setSelectedWorkbook(null)
+                        setSelectedSheets([])
+                        setContextLoaded('')
+                        setPreviewData(null)
+                        setExpandedWorkbook(null)
+                    }
+                }
             }
         })
-        return () => cleanup()
+        return () => {
+            console.log("[WATCHER] Removendo listener de eventos...")
+            cleanup()
+        }
     }, [])
 
     // Resetar buffer quando não está carregando

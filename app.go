@@ -86,7 +86,19 @@ func (a *App) StartWorkbookWatcher() {
 			case <-ticker.C:
 				// Verificar se ainda está conectado
 				status, err := a.excelService.RefreshWorkbooks()
-				if err != nil || status == nil {
+				if err != nil {
+					continue
+				}
+				if status == nil {
+					continue
+				}
+
+				// Se houver erro de conexão, emitir desconexão
+				if status.Error != "" && !status.Connected {
+					if a.lastWorkbooksState != "" {
+						a.lastWorkbooksState = ""
+						runtime.EventsEmit(a.ctx, "excel:workbooks-changed", status)
+					}
 					continue
 				}
 
@@ -94,8 +106,16 @@ func (a *App) StartWorkbookWatcher() {
 				currentState, _ := json.Marshal(status.Workbooks)
 				currentStateStr := string(currentState)
 
-				// Se mudou, emitir evento
+				// Debug: logar quantidade de workbooks
+				wbCount := 0
+				if status.Workbooks != nil {
+					wbCount = len(status.Workbooks)
+				}
+				fmt.Printf("[WATCHER] Workbooks encontrados: %d\n", wbCount)
+
+				// Se mudou (inclui ficar vazio), emitir evento
 				if currentStateStr != a.lastWorkbooksState {
+					fmt.Printf("[WATCHER] Mudança detectada! Emitindo evento...\n")
 					a.lastWorkbooksState = currentStateStr
 					runtime.EventsEmit(a.ctx, "excel:workbooks-changed", status)
 				}
