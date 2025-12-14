@@ -25,6 +25,7 @@ func NewApp() *App {
 	// Inicializar serviços
 	excelSvc := excelService.NewService()
 	chatSvc := chatService.NewService(stor)
+	chatSvc.SetExcelService(excelSvc)
 
 	// Carregar configurações salvas
 	if stor != nil {

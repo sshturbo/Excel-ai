@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"excel-ai/internal/domain"
+	"excel-ai/internal/services/excel"
 	"excel-ai/pkg/ai"
 	"excel-ai/pkg/storage"
 )
@@ -18,6 +19,7 @@ type Service struct {
 	chatHistory   []domain.Message
 	currentConvID string
 	cancelFunc    context.CancelFunc
+	excelService  *excel.Service
 }
 
 func NewService(storage *storage.Storage) *Service {
@@ -46,6 +48,10 @@ func (s *Service) SetBaseURL(url string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.client.SetBaseURL(url)
+}
+
+func (s *Service) SetExcelService(svc *excel.Service) {
+	s.excelService = svc
 }
 
 // Helper to convert domain messages to AI messages

@@ -1,16 +1,10 @@
 // AI Response Processing Service
-// Handles parsing and execution of AI responses with excel-action and excel-query blocks
+// Handles parsing and formatting of AI responses.
+// Execution logic has been moved to Backend (Autonomous Agent).
 
-import { toast } from 'sonner'
-import type { ExcelAction, AIProcessingResult, Workbook } from '@/types'
-import { executeExcelAction } from './excelActions'
+import type { AIProcessingResult, ExcelAction, Workbook } from '@/types'
 
-import {
-    QueryExcel,
-    SendErrorFeedback,
-    StartUndoBatch,
-    EndUndoBatch
-} from "../../wailsjs/go/app/App"
+// Removed imports related to execution (QueryExcel, SendErrorFeedback, etc) to prevent client-side execution.
 
 interface ProcessAIResponseOptions {
     askBeforeApply: boolean
@@ -22,164 +16,53 @@ interface ProcessAIResponseOptions {
 }
 
 /**
- * Processes excel-query blocks and returns results
- * @param response AI response containing excel-query blocks
- * @returns Array of query result strings
+ * Processes excel-query blocks (now handled by backend, this acts as cleaner/logger)
  */
 export async function processQueryBlocks(response: string): Promise<string[]> {
+    // Backend handles queries autonomously. We just parse for debug/display if needed.
     const queryRegex = /:::excel-query\s*([\s\S]*?)\s*:::/g
-    const queryMatches = [...response.matchAll(queryRegex)]
     const queryResults: string[] = []
 
-    for (const match of queryMatches) {
-        try {
-            const jsonStr = match[1]
-            // Support multiple queries in the same block
-            const lines = jsonStr.split('\n').filter(l => l.trim().startsWith('{'))
-
-            for (const line of lines) {
-                const query = JSON.parse(line.trim())
-                console.log('[QUERY]', query)
-
-                const result = await QueryExcel(query.type, {
-                    name: query.name || '',
-                    sheet: query.sheet || '',
-                    range: query.range || ''
-                })
-
-                if (result.success) {
-                    queryResults.push(`Query "${query.type}": ${JSON.stringify(result.data)}`)
-                } else {
-                    queryResults.push(`Query "${query.type}" falhou: ${result.error}`)
-                }
-            }
-        } catch (err) {
-            console.error('Erro ao processar query:', err)
-        }
-    }
-
-    if (queryResults.length > 0) {
-        console.log('[QUERY RESULTS]', queryResults)
+    // Log queries found for debugging
+    const matches = [...response.matchAll(queryRegex)]
+    if (matches.length > 0) {
+        console.log('[Frontend] Queries detected (executed by backend):', matches.length)
     }
 
     return queryResults
 }
 
 /**
- * Processes AI response and executes excel-action blocks
- * @param response Raw AI response
- * @param options Processing options
- * @returns Processing result with display content and action count
+ * Processes AI response (Display Only)
+ * Execution is now Server-Side.
  */
 export async function processAIResponse(
     response: string,
     options: ProcessAIResponseOptions
 ): Promise<AIProcessingResult> {
-    const {
-        askBeforeApply,
-        maxRetries = 2,
-        onWorkbooksUpdate,
-        onPendingAction,
-        onMessageUpdate,
-        onStreamingUpdate
-    } = options
 
-    // Process queries first
-    await processQueryBlocks(response)
+    // Backend takes care of everything.
+    // We just need to clean the response for display if desired.
+    // Ideally we show "Executing..." placeholders, but for now let's just show text.
 
     const actionRegex = /:::excel-action\s*([\s\S]*?)\s*:::/g
-    let matches = [...response.matchAll(actionRegex)]
-    let actionsExecuted = 0
-    let currentResponse = response
-    let retryCount = 0
-    let undoBatchStarted = false
+    const queryRegex = /:::excel-query\s*([\s\S]*?)\s*:::/g
 
-    while (matches.length > 0 && retryCount <= maxRetries) {
-        if (!askBeforeApply && retryCount === 0) {
-            await StartUndoBatch()
-            undoBatchStarted = true
-        }
+    // Remove blocks from display content to keep UI clean
+    // (Or keep them if we want transparency - User preference)
+    // Let's hide them by default as they are verbose JSONs.
+    // But maybe replace with a badge [Action executed]
 
-        let hasError = false
-        let errorMessage = ''
+    let displayContent = response
 
-        for (const match of matches) {
-            try {
-                const jsonStr = match[1]
-                const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim()
-                const action: ExcelAction = JSON.parse(cleanJson)
+    displayContent = displayContent.replace(queryRegex, '\n*[Consultando Excel...]*\n')
+    displayContent = displayContent.replace(actionRegex, '\n*[Executando Ação...]*\n')
 
-                if (askBeforeApply) {
-                    if (onPendingAction) {
-                        onPendingAction(action)
-                    }
-                } else {
-                    const result = await executeExcelAction(action, onWorkbooksUpdate)
-                    if (result.success) {
-                        actionsExecuted++
-                    } else {
-                        hasError = true
-                        errorMessage = result.error || 'Erro desconhecido'
-                        toast.warning(`Erro: ${errorMessage}. Solicitando correção...`)
-                        break // Stop at first error to request correction
-                    }
-                }
-            } catch (e: unknown) {
-                console.error("Erro ao parsear ação", e)
-                hasError = true
-                errorMessage = `Erro ao processar comando: ${e instanceof Error ? e.message : String(e)}`
-                break
-            }
-        }
-
-        // If there was an error, send feedback to AI
-        if (hasError && retryCount < maxRetries) {
-            retryCount++
-            console.log(`[DEBUG] Enviando erro para IA (tentativa ${retryCount}):`, errorMessage)
-
-            if (onStreamingUpdate) {
-                onStreamingUpdate('')
-            }
-            toast.info(`Solicitando correção à IA (tentativa ${retryCount})...`)
-
-            try {
-                const correctedResponse = await SendErrorFeedback(errorMessage)
-                currentResponse = correctedResponse
-                matches = [...correctedResponse.matchAll(actionRegex)]
-
-                // Update message with new response
-                const newDisplayContent = correctedResponse.replace(actionRegex, '').trim()
-                if (onMessageUpdate) {
-                    onMessageUpdate(newDisplayContent)
-                }
-            } catch (feedbackErr) {
-                console.error("Erro ao enviar feedback:", feedbackErr)
-                const msg = feedbackErr instanceof Error ? feedbackErr.message : String(feedbackErr)
-                toast.error('Erro ao solicitar correção à IA: ' + msg)
-                break
-            }
-        } else {
-            break
-        }
-    }
-
-    // Always finalize the batch if it was started
-    if (!askBeforeApply && undoBatchStarted) {
-        try {
-            await EndUndoBatch()
-        } catch (e) {
-            console.warn('Falha ao finalizar lote de Undo:', e)
-        }
-    }
-
-    const displayContent = currentResponse.replace(actionRegex, '').trim()
-    return { displayContent, actionsExecuted }
+    return { displayContent: displayContent.trim(), actionsExecuted: 0 }
 }
 
 /**
  * Extracts actions from AI response without executing them
- * @param response AI response containing excel-action blocks
- * @returns Array of parsed actions
  */
 export function extractActionsFromResponse(response: string): ExcelAction[] {
     const actionRegex = /:::excel-action\s*([\s\S]*?)\s*:::/g

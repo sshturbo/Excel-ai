@@ -30,16 +30,21 @@ func NewClient() (*Client, error) {
 		ole.CoInitialize(0)
 		defer ole.CoUninitialize()
 
-		// Conectar ao Excel
-		unknown, err := oleutil.GetActiveObject("Excel.Application")
-		if err != nil {
-			errChan <- fmt.Errorf("nenhuma instância do Excel encontrada: %w", err)
-			return
+		// Conectar ao Excel com Retry Loop
+		var excelApp *ole.IDispatch
+		for i := 0; i < 10; i++ {
+			unknown, err := oleutil.GetActiveObject("Excel.Application")
+			if err == nil {
+				excelApp, err = unknown.QueryInterface(ole.IID_IDispatch)
+				if err == nil {
+					break
+				}
+			}
+			time.Sleep(500 * time.Millisecond)
 		}
 
-		excelApp, err := unknown.QueryInterface(ole.IID_IDispatch)
-		if err != nil {
-			errChan <- fmt.Errorf("falha ao obter interface Excel: %w", err)
+		if excelApp == nil {
+			errChan <- fmt.Errorf("falha ao conectar ao Excel (verifique se ele está aberto e não está em modo de edição)")
 			return
 		}
 
@@ -81,16 +86,22 @@ func (c *Client) runOnCOMThread(fn func() error) error {
 	errChan := make(chan error, 1)
 	c.cmdChan <- func() {
 		var err error
-		// Tentar até 3 vezes com backoff se o Excel estiver ocupado
-		for i := 0; i < 3; i++ {
+		// Tentar até 10 vezes com backoff se o Excel estiver ocupado
+		for i := 0; i < 10; i++ {
 			err = fn()
 			if err == nil {
 				break
 			}
-			// Verificar se é erro de "Call was rejected by callee" (Excel ocupado)
-			if strings.Contains(err.Error(), "Call was rejected by callee") ||
-				strings.Contains(err.Error(), "A chamada foi rejeitada pelo chamado") {
-				time.Sleep(time.Millisecond * 500 * time.Duration(i+1))
+			// Verificar erro COM de "Busy" ou "Call rejected"
+			errStr := err.Error()
+			fmt.Printf("[ExcelClient] Erro runOnCOMThread tentativa %d/10: %s\n", i+1, errStr) // DEBUG LOG
+
+			if strings.Contains(errStr, "Call was rejected by callee") ||
+				strings.Contains(errStr, "A chamada foi rejeitada pelo chamado") ||
+				strings.Contains(errStr, "80010001") {
+
+				fmt.Printf("[ExcelClient] Excel ocupado. Aguardando 1s...\n")
+				time.Sleep(time.Millisecond * 1000)
 				continue
 			}
 			break
@@ -113,16 +124,22 @@ func runOnCOMThreadWithResult[T any](c *Client, fn func() (T, error)) (T, error)
 	c.cmdChan <- func() {
 		var v T
 		var err error
-		// Tentar até 3 vezes com backoff se o Excel estiver ocupado
-		for i := 0; i < 3; i++ {
+		// Tentar até 10 vezes com backoff se o Excel estiver ocupado
+		for i := 0; i < 10; i++ {
 			v, err = fn()
 			if err == nil {
 				break
 			}
-			// Verificar se é erro de "Call was rejected by callee" (Excel ocupado)
-			if strings.Contains(err.Error(), "Call was rejected by callee") ||
-				strings.Contains(err.Error(), "A chamada foi rejeitada pelo chamado") {
-				time.Sleep(time.Millisecond * 500 * time.Duration(i+1))
+			// Verificar erro COM de "Busy" ou "Call rejected"
+			errStr := err.Error()
+			fmt.Printf("[ExcelClient] Erro runWithResult tentativa %d/10: %s\n", i+1, errStr) // DEBUG LOG
+
+			if strings.Contains(errStr, "Call was rejected by callee") ||
+				strings.Contains(errStr, "A chamada foi rejeitada pelo chamado") ||
+				strings.Contains(errStr, "80010001") {
+
+				fmt.Printf("[ExcelClient] Excel ocupado. Aguardando 1s...\n")
+				time.Sleep(time.Millisecond * 1000)
 				continue
 			}
 			break

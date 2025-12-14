@@ -8,32 +8,34 @@ import (
 	"excel-ai/internal/domain"
 )
 
+// SendMessage envia mensagem para IA e gerencia o loop autônomo de execução
 func (s *Service) SendMessage(message string, contextStr string, onChunk func(string) error) (string, error) {
 	s.mu.Lock()
+	// Lock é perigoso se o loop demorar muito e bloquear outras leituras,
+	// mas necessário para proteger s.chatHistory.
+	// O ideal seria travar apenas nas modificações de histórico, mas vamos manter assim por segurança.
 	defer s.mu.Unlock()
 
-	// Recarregar configurações do storage para garantir API key atualizada
 	s.refreshConfig()
 
-	// Verificar se API key está configurada
 	if s.client.GetAPIKey() == "" {
 		return "", fmt.Errorf("API key não configurada. Vá em Configurações e configure sua chave de API")
 	}
 
-	// Gerar ID de conversa se não existir
 	if s.currentConvID == "" {
 		s.currentConvID = s.generateID()
 	}
 
-	// Garantir que temos um system prompt se o histórico estiver vazio
 	if len(s.chatHistory) == 0 {
-		s.addSystemPrompt()
+		s.ensureSystemPrompt()
+	} else {
+		s.ensureSystemPrompt() // Garante injecão mesmo se histórico não estiver vazio
 	}
 
-	// Se context for fornecido, adiciona como mensagem do usuário
+	// 1. Adicionar mensagem do usuário
 	fullContent := message
 	if contextStr != "" {
-		fullContent = fmt.Sprintf("Contexto do Excel:\n%s\n\nPergunta do usuário: %s", contextStr, message)
+		fullContent = fmt.Sprintf("Contexto do Excel (Atualizado):\n%s\n\nPergunta do usuário: %s", contextStr, message)
 	}
 
 	s.chatHistory = append(s.chatHistory, domain.Message{
@@ -45,60 +47,105 @@ func (s *Service) SendMessage(message string, contextStr string, onChunk func(st
 	// Criar context cancelável
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancelFunc = cancel
+	defer func() {
+		s.cancelFunc = nil
+		cancel() // Garante limpeza
+	}()
 
-	// Converter domain history para AI history
-	aiHistory := s.toAIMessages(s.chatHistory)
+	// LOOP AUTÔNOMO (Max 10 passos para evitar loops infinitos)
+	maxSteps := 10
+	var finalResponse string
 
-	// Call AI (use correct client based on provider)
-	var response string
-	var err error
-	if s.provider == "google" {
-		response, err = s.geminiClient.ChatStream(ctx, aiHistory, onChunk)
-	} else {
-		response, err = s.client.ChatStream(ctx, aiHistory, onChunk)
-	}
-	s.cancelFunc = nil
-	if err != nil {
-		// Remove user message on error (exceto se foi cancelado)
-		if ctx.Err() != context.Canceled {
-			s.chatHistory = s.chatHistory[:len(s.chatHistory)-1]
+	for step := 0; step < maxSteps; step++ {
+		// Verificar cancelamento
+		if ctx.Err() != nil {
+			return finalResponse, ctx.Err()
 		}
-		return "", err
-	}
 
-	s.chatHistory = append(s.chatHistory, domain.Message{
-		Role:      domain.RoleAssistant,
-		Content:   response,
-		Timestamp: time.Now(),
-	})
+		// Converter para AI messages
+		aiHistory := s.toAIMessages(s.chatHistory)
+
+		// Call AI
+		var currentResponse string
+		var err error
+
+		// Wrapper para onChunk acumular resposta atual
+		chunkWrapper := func(chunk string) error {
+			currentResponse += chunk
+			return onChunk(chunk) // Passa pro frontend
+		}
+
+		if s.provider == "google" {
+			_, err = s.geminiClient.ChatStream(ctx, aiHistory, chunkWrapper)
+		} else {
+			_, err = s.client.ChatStream(ctx, aiHistory, chunkWrapper)
+		}
+
+		if err != nil {
+			// Se erro, removemos a última mensagem do usuário se for o primeiro passo?
+			// Melhor não, apenas retornamos erro.
+			return finalResponse, err
+		}
+
+		// Adiciona resposta da IA ao histórico
+		s.chatHistory = append(s.chatHistory, domain.Message{
+			Role:      domain.RoleAssistant,
+			Content:   currentResponse,
+			Timestamp: time.Now(),
+		})
+
+		// Atualiza resposta final (acumulativa ou última? Geralmente a última conversa é o que importa)
+		finalResponse = currentResponse
+
+		// PARSE COMMANDS
+		commands := s.ParseToolCommands(currentResponse)
+		if len(commands) == 0 {
+			// Sem comandos, terminamos o turno
+			break
+		}
+
+		// Executar Comandos
+		var executionResults string
+		for _, cmd := range commands {
+			result, err := s.ExecuteTool(cmd)
+			if err != nil {
+				executionResults += fmt.Sprintf("ERROR Executing %s: %v\n", cmd.Content, err)
+			} else {
+				executionResults += fmt.Sprintf("SUCCESS: %s\n", result)
+			}
+		}
+
+		// Adicionar resultados ao histórico como System Message para a IA ver
+		// Isso alimenta o próximo passo do loop
+		toolMsg := fmt.Sprintf("TOOL RESULTS:\n%s\nContinue your task based on these results.", executionResults)
+
+		s.chatHistory = append(s.chatHistory, domain.Message{
+			Role:      domain.RoleUser, // OpenAI usa 'function' role, mas 'user' funciona bem para modelos genéricos
+			Content:   toolMsg,
+			Timestamp: time.Now(),
+		})
+
+		// Notificar frontend que estamos processando (hackish: manda system log via chunk?)
+		// onChunk("\n\n[Processando resultados...]\n\n")
+
+		// THROTTLE: Aguardar um pouco para não estourar o Rate Limit da API (RPM)
+		// O loop é muito rápido no backend.
+		time.Sleep(2 * time.Second)
+
+		// Loop continua...
+	}
 
 	go s.saveCurrentConversation(contextStr)
 
-	return response, nil
+	return finalResponse, nil
 }
 
-// SendErrorFeedback envia um erro de execução para a IA e pede uma correção
+// SendErrorFeedback mantém a lógica simples de 1 turno
 func (s *Service) SendErrorFeedback(errorMessage string, onChunk func(string) error) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Adiciona mensagem de erro como feedback
-	feedbackMsg := fmt.Sprintf(`ERRO NA EXECUÇÃO DO COMANDO: %s
-
-IMPORTANTE: Para corrigir este erro, você DEVE enviar DOIS comandos separados :::excel-action em sequência:
-1. PRIMEIRO: Crie a aba com create-sheet
-2. SEGUNDO: Crie a tabela dinâmica com create-pivot
-
-Exemplo de resposta correta:
-:::excel-action
-{"op": "create-sheet", "name": "NOME_DA_ABA"}
-:::
-
-:::excel-action
-{"op": "create-pivot", "sourceSheet": "...", "sourceRange": "...", "destSheet": "NOME_DA_ABA", "destCell": "A1", "tableName": "..."}
-:::
-
-Por favor, envie os comandos corrigidos agora.`, errorMessage)
+	feedbackMsg := fmt.Sprintf("Feedback de Erro: %s", errorMessage)
 
 	s.chatHistory = append(s.chatHistory, domain.Message{
 		Role:      domain.RoleUser,
@@ -106,42 +153,42 @@ Por favor, envie os comandos corrigidos agora.`, errorMessage)
 		Timestamp: time.Now(),
 	})
 
-	// Criar context cancelável
+	// Reutiliza SendMessage logic? Não, pois SendMessage adiciona User msg.
+	// Vamos simplificar e copiar a chamada simples, ou refatorar para usar o loop também.
+	// Por enquanto, chamada direta simples para não complicar.
+
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancelFunc = cancel
+	defer cancel()
 
-	// Converter domain history para AI history
 	aiHistory := s.toAIMessages(s.chatHistory)
 
-	// Call AI para obter correção (use correct client based on provider)
 	var response string
 	var err error
 	if s.provider == "google" {
-		response, err = s.geminiClient.ChatStream(ctx, aiHistory, onChunk)
+		response, err = s.geminiClient.ChatStream(ctx, aiHistory, func(c string) error {
+			response += c
+			return onChunk(c)
+		})
 	} else {
-		response, err = s.client.ChatStream(ctx, aiHistory, onChunk)
-	}
-	s.cancelFunc = nil
-	if err != nil {
-		// Remove mensagem de erro on failure
-		if ctx.Err() != context.Canceled {
-			s.chatHistory = s.chatHistory[:len(s.chatHistory)-1]
-		}
-		return "", err
+		response, err = s.client.ChatStream(ctx, aiHistory, func(c string) error {
+			response += c
+			return onChunk(c)
+		})
 	}
 
-	s.chatHistory = append(s.chatHistory, domain.Message{
-		Role:      domain.RoleAssistant,
-		Content:   response,
-		Timestamp: time.Now(),
-	})
+	if err == nil {
+		s.chatHistory = append(s.chatHistory, domain.Message{
+			Role:      domain.RoleAssistant,
+			Content:   response,
+			Timestamp: time.Now(),
+		})
+		go s.saveCurrentConversation("")
+	}
 
-	go s.saveCurrentConversation("")
-
-	return response, nil
+	return response, err
 }
 
-// CancelChat cancela a requisição de chat em andamento
 func (s *Service) CancelChat() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -151,14 +198,10 @@ func (s *Service) CancelChat() {
 	}
 }
 
-// Helper methods refactored out of main body
 func (s *Service) refreshConfig() {
 	if s.storage != nil {
 		if cfg, err := s.storage.LoadConfig(); err == nil && cfg != nil {
-			// Update provider
 			s.provider = cfg.Provider
-
-			// Configure OpenAI-compatible client
 			if cfg.APIKey != "" {
 				s.client.SetAPIKey(cfg.APIKey)
 			}
@@ -170,8 +213,6 @@ func (s *Service) refreshConfig() {
 			} else if cfg.Provider == "groq" {
 				s.client.SetBaseURL("https://api.groq.com/openai/v1")
 			}
-
-			// Configure Gemini client
 			if cfg.Provider == "google" {
 				s.geminiClient.SetAPIKey(cfg.APIKey)
 				s.geminiClient.SetModel(cfg.Model)
@@ -183,7 +224,7 @@ func (s *Service) refreshConfig() {
 	}
 }
 
-func (s *Service) addSystemPrompt() {
+func (s *Service) ensureSystemPrompt() {
 	systemPrompt := `You are an intelligent Excel AGENT. You work autonomously to complete tasks.
 
 THINKING MODE:
@@ -266,9 +307,19 @@ User wants a chart. I need to:
 
 Use formulas in PT-BR (SOMA, MÉDIA, SE, PROCV). DO NOT generate VBA.`
 
-	s.chatHistory = append(s.chatHistory, domain.Message{
+	if len(s.chatHistory) > 0 {
+		if s.chatHistory[0].Role == domain.RoleSystem {
+			// Update existing system prompt
+			s.chatHistory[0].Content = systemPrompt
+			return
+		}
+	}
+
+	// Prepend system prompt
+	sysMsg := domain.Message{
 		Role:      domain.RoleSystem,
 		Content:   systemPrompt,
 		Timestamp: time.Now(),
-	})
+	}
+	s.chatHistory = append([]domain.Message{sysMsg}, s.chatHistory...)
 }

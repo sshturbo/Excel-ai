@@ -9,7 +9,12 @@ func (s *Service) CreateNewWorkbook() (string, error) {
 	if s.client == nil {
 		return "", fmt.Errorf("excel não conectado")
 	}
-	return s.client.CreateNewWorkbook()
+	wbName, err := s.client.CreateNewWorkbook()
+	if err == nil {
+		s.currentWorkbook = wbName
+		s.currentSheet = "Planilha1" // Assumindo default
+	}
+	return wbName, err
 }
 
 func (s *Service) CreateNewSheet(name string) error {
