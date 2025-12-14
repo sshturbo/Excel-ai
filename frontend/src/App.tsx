@@ -67,7 +67,8 @@ import {
     DeleteChartByName,
     CreateTable,
     ListTables,
-    DeleteTable
+    DeleteTable,
+    CancelChat
 } from "../wailsjs/go/main/App"
 import { EventsOn } from "../wailsjs/runtime/runtime"
 
@@ -499,15 +500,26 @@ export default function App() {
             cleanContent = cleanContent.replace(/:::excel-action\s*[\s\S]*?\s*:::/g, '')
             // Remove blocos excel-query completos
             cleanContent = cleanContent.replace(/:::excel-query\s*[\s\S]*?\s*:::/g, '')
-            // Remove blocos técnicos incompletos no final
-            cleanContent = cleanContent.replace(/:::(?:excel-action|excel-query)[\s\S]*$/, '')
+
+            // Verificar se há bloco técnico incompleto no final (NÃO thinking)
+            // Só ocultar se for excel-action ou excel-query incompleto
+            const incompleteActionMatch = cleanContent.match(/:::excel-action[\s\S]*$/)
+            const incompleteQueryMatch = cleanContent.match(/:::excel-query[\s\S]*$/)
+
+            if (incompleteActionMatch) {
+                cleanContent = cleanContent.replace(/:::excel-action[\s\S]*$/, '')
+            }
+            if (incompleteQueryMatch) {
+                cleanContent = cleanContent.replace(/:::excel-query[\s\S]*$/, '')
+            }
+
             cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n').trim()
 
-            // Se está vazio mas há atividade, mostrar status
-            const hasActions = /:::excel-action/.test(rawStreamBufferRef.current)
-            const hasQueries = /:::excel-query/.test(rawStreamBufferRef.current)
-            if (!cleanContent && (hasActions || hasQueries)) {
-                cleanContent = hasQueries ? '🔍 Consultando...' : '⏳ Executando...'
+            // Se está vazio mas há atividade técnica, mostrar status
+            const hasIncompleteAction = /:::excel-action(?![\s\S]*:::)/.test(rawStreamBufferRef.current)
+            const hasIncompleteQuery = /:::excel-query(?![\s\S]*:::)/.test(rawStreamBufferRef.current)
+            if (!cleanContent && (hasIncompleteAction || hasIncompleteQuery)) {
+                cleanContent = hasIncompleteQuery ? '🔍 Consultando...' : '⏳ Executando...'
             }
 
             setStreamingContent(cleanContent)
@@ -975,6 +987,18 @@ export default function App() {
         setMessages(prev => [...prev, { role: 'user', content: userMessage }])
 
         await processMessage(userMessage)
+    }
+
+    const handleCancelChat = async () => {
+        try {
+            await CancelChat()
+            setIsLoading(false)
+            rawStreamBufferRef.current = ''
+            setStreamingContent('')
+            toast.info('⏹️ Chat interrompido')
+        } catch (err) {
+            console.error('Erro ao cancelar:', err)
+        }
     }
 
     const handleRegenerate = async () => {
@@ -1692,15 +1716,28 @@ export default function App() {
                                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
                                 placeholder="Pergunte sobre seus dados..."
                                 className="flex-1 min-h-13 max-h-36 resize-none"
+                                disabled={isLoading}
                             />
-                            <Button
-                                onClick={handleSendMessage}
-                                disabled={isLoading || !inputMessage.trim()}
-                                size="icon-lg"
-                                className="rounded-lg"
-                            >
-                                ➤
-                            </Button>
+                            {isLoading ? (
+                                <Button
+                                    onClick={handleCancelChat}
+                                    variant="destructive"
+                                    size="icon-lg"
+                                    className="rounded-lg"
+                                    title="Parar"
+                                >
+                                    ⏹️
+                                </Button>
+                            ) : (
+                                <Button
+                                    onClick={handleSendMessage}
+                                    disabled={!inputMessage.trim()}
+                                    size="icon-lg"
+                                    className="rounded-lg"
+                                >
+                                    ➤
+                                </Button>
+                            )}
                         </div>
                     </div>
                 </section>
