@@ -1449,3 +1449,311 @@ func (c *Client) DeleteRows(workbookName, sheetName string, rowNumber, count int
 		return err
 	})
 }
+
+// MergeCells mescla células em um range
+func (c *Client) MergeCells(workbookName, sheetName, rangeAddr string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		rangeObj, err := oleutil.GetProperty(sheet, "Range", rangeAddr)
+		if err != nil {
+			return fmt.Errorf("range '%s' inválido: %w", rangeAddr, err)
+		}
+		rangeDisp := rangeObj.ToIDispatch()
+		defer rangeDisp.Release()
+
+		_, err = oleutil.CallMethod(rangeDisp, "Merge")
+		return err
+	})
+}
+
+// UnmergeCells desfaz mesclagem de células
+func (c *Client) UnmergeCells(workbookName, sheetName, rangeAddr string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		rangeObj, err := oleutil.GetProperty(sheet, "Range", rangeAddr)
+		if err != nil {
+			return fmt.Errorf("range '%s' inválido: %w", rangeAddr, err)
+		}
+		rangeDisp := rangeObj.ToIDispatch()
+		defer rangeDisp.Release()
+
+		_, err = oleutil.CallMethod(rangeDisp, "UnMerge")
+		return err
+	})
+}
+
+// SetBorders adiciona bordas a um range
+// style: "thin", "medium", "thick"
+func (c *Client) SetBorders(workbookName, sheetName, rangeAddr, style string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		rangeObj, err := oleutil.GetProperty(sheet, "Range", rangeAddr)
+		if err != nil {
+			return fmt.Errorf("range '%s' inválido: %w", rangeAddr, err)
+		}
+		rangeDisp := rangeObj.ToIDispatch()
+		defer rangeDisp.Release()
+
+		// Determinar peso da borda
+		weight := 2 // xlThin
+		if style == "medium" {
+			weight = -4138 // xlMedium
+		} else if style == "thick" {
+			weight = 4 // xlThick
+		}
+
+		// Aplicar bordas em todos os lados (xlEdgeLeft=7, xlEdgeTop=8, xlEdgeBottom=9, xlEdgeRight=10, xlInsideVertical=11, xlInsideHorizontal=12)
+		borders, _ := oleutil.GetProperty(rangeDisp, "Borders")
+		bordersDisp := borders.ToIDispatch()
+		defer bordersDisp.Release()
+
+		for _, edge := range []int{7, 8, 9, 10, 11, 12} {
+			border, err := oleutil.GetProperty(bordersDisp, "Item", edge)
+			if err != nil {
+				continue
+			}
+			borderDisp := border.ToIDispatch()
+			oleutil.PutProperty(borderDisp, "LineStyle", 1) // xlContinuous
+			oleutil.PutProperty(borderDisp, "Weight", weight)
+			borderDisp.Release()
+		}
+
+		return nil
+	})
+}
+
+// SetColumnWidth define largura de colunas
+func (c *Client) SetColumnWidth(workbookName, sheetName, rangeAddr string, width float64) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		rangeObj, err := oleutil.GetProperty(sheet, "Range", rangeAddr)
+		if err != nil {
+			return fmt.Errorf("range '%s' inválido: %w", rangeAddr, err)
+		}
+		rangeDisp := rangeObj.ToIDispatch()
+		defer rangeDisp.Release()
+
+		cols, _ := oleutil.GetProperty(rangeDisp, "Columns")
+		colsDisp := cols.ToIDispatch()
+		defer colsDisp.Release()
+
+		_, err = oleutil.PutProperty(colsDisp, "ColumnWidth", width)
+		return err
+	})
+}
+
+// SetRowHeight define altura de linhas
+func (c *Client) SetRowHeight(workbookName, sheetName, rangeAddr string, height float64) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		rangeObj, err := oleutil.GetProperty(sheet, "Range", rangeAddr)
+		if err != nil {
+			return fmt.Errorf("range '%s' inválido: %w", rangeAddr, err)
+		}
+		rangeDisp := rangeObj.ToIDispatch()
+		defer rangeDisp.Release()
+
+		rows, _ := oleutil.GetProperty(rangeDisp, "Rows")
+		rowsDisp := rows.ToIDispatch()
+		defer rowsDisp.Release()
+
+		_, err = oleutil.PutProperty(rowsDisp, "RowHeight", height)
+		return err
+	})
+}
+
+// ApplyFilter aplica filtro automático a um range
+func (c *Client) ApplyFilter(workbookName, sheetName, rangeAddr string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		rangeObj, err := oleutil.GetProperty(sheet, "Range", rangeAddr)
+		if err != nil {
+			return fmt.Errorf("range '%s' inválido: %w", rangeAddr, err)
+		}
+		rangeDisp := rangeObj.ToIDispatch()
+		defer rangeDisp.Release()
+
+		_, err = oleutil.CallMethod(rangeDisp, "AutoFilter")
+		return err
+	})
+}
+
+// ClearFilters remove todos os filtros de uma aba
+func (c *Client) ClearFilters(workbookName, sheetName string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		// Verificar se há AutoFilter ativo
+		autoFilter, err := oleutil.GetProperty(sheet, "AutoFilter")
+		if err != nil || autoFilter.Val == 0 {
+			return nil // Sem filtro ativo
+		}
+		autoFilterDisp := autoFilter.ToIDispatch()
+		if autoFilterDisp != nil {
+			defer autoFilterDisp.Release()
+			oleutil.CallMethod(autoFilterDisp, "ShowAllData")
+		}
+		return nil
+	})
+}
+
+// SortRange ordena dados em um range
+// ascending: true para A-Z, false para Z-A
+func (c *Client) SortRange(workbookName, sheetName, rangeAddr string, column int, ascending bool) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		rangeObj, err := oleutil.GetProperty(sheet, "Range", rangeAddr)
+		if err != nil {
+			return fmt.Errorf("range '%s' inválido: %w", rangeAddr, err)
+		}
+		rangeDisp := rangeObj.ToIDispatch()
+		defer rangeDisp.Release()
+
+		// Obter célula de ordenação
+		cells, _ := oleutil.GetProperty(rangeDisp, "Cells")
+		cellsDisp := cells.ToIDispatch()
+		defer cellsDisp.Release()
+
+		keyCell, _ := oleutil.GetProperty(cellsDisp, "Item", 1, column)
+		keyCellDisp := keyCell.ToIDispatch()
+		defer keyCellDisp.Release()
+
+		order := 1 // xlAscending
+		if !ascending {
+			order = 2 // xlDescending
+		}
+
+		_, err = oleutil.CallMethod(rangeDisp, "Sort", keyCellDisp, order)
+		return err
+	})
+}
+
+// CopyRange copia um range para outro local
+func (c *Client) CopyRange(workbookName, sheetName, sourceRange, destRange string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		srcObj, err := oleutil.GetProperty(sheet, "Range", sourceRange)
+		if err != nil {
+			return fmt.Errorf("range origem '%s' inválido: %w", sourceRange, err)
+		}
+		srcDisp := srcObj.ToIDispatch()
+		defer srcDisp.Release()
+
+		destObj, err := oleutil.GetProperty(sheet, "Range", destRange)
+		if err != nil {
+			return fmt.Errorf("range destino '%s' inválido: %w", destRange, err)
+		}
+		destDisp := destObj.ToIDispatch()
+		defer destDisp.Release()
+
+		_, err = oleutil.CallMethod(srcDisp, "Copy", destDisp)
+		return err
+	})
+}
+
+// ListCharts lista os gráficos em uma aba
+func (c *Client) ListCharts(workbookName, sheetName string) ([]string, error) {
+	return runOnCOMThreadWithResult(c, func() ([]string, error) {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return nil, err
+		}
+		defer sheet.Release()
+
+		chartObjs, err := oleutil.GetProperty(sheet, "ChartObjects")
+		if err != nil {
+			return []string{}, nil
+		}
+		chartObjsDisp := chartObjs.ToIDispatch()
+		defer chartObjsDisp.Release()
+
+		countVar, _ := oleutil.GetProperty(chartObjsDisp, "Count")
+		count := int(countVar.Val)
+
+		charts := make([]string, 0, count)
+		for i := 1; i <= count; i++ {
+			item, err := oleutil.GetProperty(chartObjsDisp, "Item", i)
+			if err != nil {
+				continue
+			}
+			itemDisp := item.ToIDispatch()
+			nameVar, _ := oleutil.GetProperty(itemDisp, "Name")
+			charts = append(charts, nameVar.ToString())
+			itemDisp.Release()
+		}
+
+		return charts, nil
+	})
+}
+
+// DeleteChart exclui um gráfico pelo nome
+func (c *Client) DeleteChart(workbookName, sheetName, chartName string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		chartObjs, err := oleutil.GetProperty(sheet, "ChartObjects")
+		if err != nil {
+			return fmt.Errorf("erro ao acessar gráficos: %w", err)
+		}
+		chartObjsDisp := chartObjs.ToIDispatch()
+		defer chartObjsDisp.Release()
+
+		chart, err := oleutil.GetProperty(chartObjsDisp, "Item", chartName)
+		if err != nil {
+			return fmt.Errorf("gráfico '%s' não encontrado: %w", chartName, err)
+		}
+		chartDisp := chart.ToIDispatch()
+		defer chartDisp.Release()
+
+		_, err = oleutil.CallMethod(chartDisp, "Delete")
+		return err
+	})
+}

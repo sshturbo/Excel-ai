@@ -53,7 +53,18 @@ import {
     ClearRange,
     AutoFitColumns,
     InsertRows,
-    DeleteRows
+    DeleteRows,
+    MergeCells,
+    UnmergeCells,
+    SetBorders,
+    SetColumnWidth,
+    SetRowHeight,
+    ApplyFilter,
+    ClearFilters,
+    SortRange,
+    CopyRange,
+    ListCharts,
+    DeleteChartByName
 } from "../wailsjs/go/main/App"
 import { EventsOn } from "../wailsjs/runtime/runtime"
 
@@ -580,6 +591,39 @@ export default function App() {
             } else if (action.op === 'delete-rows') {
                 await DeleteRows(action.sheet || '', action.row, action.count || 1)
                 toast.success(`${action.count || 1} linha(s) excluída(s)!`)
+            } else if (action.op === 'merge-cells') {
+                await MergeCells(action.sheet || '', action.range)
+                toast.success('Células mescladas!')
+            } else if (action.op === 'unmerge-cells') {
+                await UnmergeCells(action.sheet || '', action.range)
+                toast.success('Células desmescladas!')
+            } else if (action.op === 'set-borders') {
+                await SetBorders(action.sheet || '', action.range, action.style || 'thin')
+                toast.success('Bordas aplicadas!')
+            } else if (action.op === 'set-column-width') {
+                await SetColumnWidth(action.sheet || '', action.range, action.width || 15)
+                toast.success('Largura definida!')
+            } else if (action.op === 'set-row-height') {
+                await SetRowHeight(action.sheet || '', action.range, action.height || 20)
+                toast.success('Altura definida!')
+            } else if (action.op === 'apply-filter') {
+                await ApplyFilter(action.sheet || '', action.range)
+                toast.success('Filtro aplicado!')
+            } else if (action.op === 'clear-filters') {
+                await ClearFilters(action.sheet || '')
+                toast.success('Filtros limpos!')
+            } else if (action.op === 'sort') {
+                await SortRange(action.sheet || '', action.range, action.column || 1, action.ascending !== false)
+                toast.success('Dados ordenados!')
+            } else if (action.op === 'copy-range') {
+                await CopyRange(action.sheet || '', action.source, action.dest)
+                toast.success('Range copiado!')
+            } else if (action.op === 'list-charts') {
+                const charts = await ListCharts(action.sheet || '')
+                toast.info(`Gráficos encontrados: ${charts.join(', ') || 'nenhum'}`)
+            } else if (action.op === 'delete-chart') {
+                await DeleteChartByName(action.sheet || '', action.name)
+                toast.success(`Gráfico "${action.name}" excluído!`)
             }
             return { success: true }
         } catch (e: any) {

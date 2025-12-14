@@ -175,6 +175,61 @@ func (a *App) DeleteRows(sheet string, rowNumber, count int) error {
 	return a.excelService.DeleteRows(sheet, rowNumber, count)
 }
 
+// MergeCells mescla células
+func (a *App) MergeCells(sheet, rangeAddr string) error {
+	return a.excelService.MergeCells(sheet, rangeAddr)
+}
+
+// UnmergeCells desfaz mesclagem
+func (a *App) UnmergeCells(sheet, rangeAddr string) error {
+	return a.excelService.UnmergeCells(sheet, rangeAddr)
+}
+
+// SetBorders adiciona bordas
+func (a *App) SetBorders(sheet, rangeAddr, style string) error {
+	return a.excelService.SetBorders(sheet, rangeAddr, style)
+}
+
+// SetColumnWidth define largura
+func (a *App) SetColumnWidth(sheet, rangeAddr string, width float64) error {
+	return a.excelService.SetColumnWidth(sheet, rangeAddr, width)
+}
+
+// SetRowHeight define altura
+func (a *App) SetRowHeight(sheet, rangeAddr string, height float64) error {
+	return a.excelService.SetRowHeight(sheet, rangeAddr, height)
+}
+
+// ApplyFilter aplica filtro
+func (a *App) ApplyFilter(sheet, rangeAddr string) error {
+	return a.excelService.ApplyFilter(sheet, rangeAddr)
+}
+
+// ClearFilters limpa filtros
+func (a *App) ClearFilters(sheet string) error {
+	return a.excelService.ClearFilters(sheet)
+}
+
+// SortRange ordena dados
+func (a *App) SortRange(sheet, rangeAddr string, column int, ascending bool) error {
+	return a.excelService.SortRange(sheet, rangeAddr, column, ascending)
+}
+
+// CopyRange copia range
+func (a *App) CopyRange(sheet, sourceRange, destRange string) error {
+	return a.excelService.CopyRange(sheet, sourceRange, destRange)
+}
+
+// ListCharts lista gráficos
+func (a *App) ListCharts(sheet string) ([]string, error) {
+	return a.excelService.ListCharts(sheet)
+}
+
+// DeleteChartByName exclui gráfico
+func (a *App) DeleteChartByName(sheet, chartName string) error {
+	return a.excelService.DeleteChart(sheet, chartName)
+}
+
 // SetAPIKey configura a chave da API
 func (a *App) SetAPIKey(apiKey string) error {
 	a.chatService.SetAPIKey(apiKey)

@@ -5,17 +5,23 @@ import {excel} from '../models';
 import {storage} from '../models';
 import {main} from '../models';
 
+export function ApplyFilter(arg1:string,arg2:string):Promise<void>;
+
 export function ApplyFormula(arg1:number,arg2:number,arg3:string):Promise<void>;
 
 export function AutoFitColumns(arg1:string,arg2:string):Promise<void>;
 
 export function ClearChat():Promise<void>;
 
+export function ClearFilters(arg1:string):Promise<void>;
+
 export function ClearRange(arg1:string,arg2:string):Promise<void>;
 
 export function ConfigurePivotFields(arg1:string,arg2:string,arg3:Array<string>,arg4:Array<Record<string, string>>):Promise<void>;
 
 export function ConnectExcel():Promise<dto.ExcelStatus>;
+
+export function CopyRange(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function CreateChart(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
@@ -24,6 +30,8 @@ export function CreateNewSheet(arg1:string):Promise<void>;
 export function CreateNewWorkbook():Promise<string>;
 
 export function CreatePivotTable(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<void>;
+
+export function DeleteChartByName(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteConversation(arg1:string):Promise<void>;
 
@@ -53,6 +61,8 @@ export function GetUsedRange(arg1:string):Promise<string>;
 
 export function InsertRows(arg1:string,arg2:number,arg3:number):Promise<void>;
 
+export function ListCharts(arg1:string):Promise<Array<string>>;
+
 export function ListConversations():Promise<Array<dto.ConversationInfo>>;
 
 export function ListPivotTables(arg1:string):Promise<Array<string>>;
@@ -60,6 +70,8 @@ export function ListPivotTables(arg1:string):Promise<Array<string>>;
 export function ListSheets():Promise<Array<string>>;
 
 export function LoadConversation(arg1:string):Promise<Array<dto.ChatMessage>>;
+
+export function MergeCells(arg1:string,arg2:string):Promise<void>;
 
 export function NewConversation():Promise<string>;
 
@@ -75,17 +87,27 @@ export function SendMessage(arg1:string):Promise<string>;
 
 export function SetAPIKey(arg1:string):Promise<void>;
 
+export function SetBorders(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function SetColumnWidth(arg1:string,arg2:string,arg3:number):Promise<void>;
+
 export function SetExcelContext(arg1:string,arg2:string):Promise<string>;
 
 export function SetModel(arg1:string):Promise<void>;
 
+export function SetRowHeight(arg1:string,arg2:string,arg3:number):Promise<void>;
+
 export function SheetExists(arg1:string):Promise<boolean>;
+
+export function SortRange(arg1:string,arg2:string,arg3:number,arg4:boolean):Promise<void>;
 
 export function StartUndoBatch():Promise<void>;
 
 export function SwitchProvider(arg1:string):Promise<storage.Config>;
 
 export function UndoLastChange():Promise<void>;
+
+export function UnmergeCells(arg1:string,arg2:string):Promise<void>;
 
 export function UpdateConfig(arg1:number,arg2:number,arg3:boolean,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string):Promise<void>;
 

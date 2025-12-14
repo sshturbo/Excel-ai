@@ -633,3 +633,146 @@ func (s *Service) DeleteRows(sheet string, rowNumber, count int) error {
 	}
 	return s.client.DeleteRows(s.currentWorkbook, sheet, rowNumber, count)
 }
+
+// MergeCells mescla células
+func (s *Service) MergeCells(sheet, rangeAddr string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.MergeCells(s.currentWorkbook, sheet, rangeAddr)
+}
+
+// UnmergeCells desfaz mesclagem
+func (s *Service) UnmergeCells(sheet, rangeAddr string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.UnmergeCells(s.currentWorkbook, sheet, rangeAddr)
+}
+
+// SetBorders adiciona bordas
+func (s *Service) SetBorders(sheet, rangeAddr, style string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.SetBorders(s.currentWorkbook, sheet, rangeAddr, style)
+}
+
+// SetColumnWidth define largura de colunas
+func (s *Service) SetColumnWidth(sheet, rangeAddr string, width float64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.SetColumnWidth(s.currentWorkbook, sheet, rangeAddr, width)
+}
+
+// SetRowHeight define altura de linhas
+func (s *Service) SetRowHeight(sheet, rangeAddr string, height float64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.SetRowHeight(s.currentWorkbook, sheet, rangeAddr, height)
+}
+
+// ApplyFilter aplica filtro automático
+func (s *Service) ApplyFilter(sheet, rangeAddr string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.ApplyFilter(s.currentWorkbook, sheet, rangeAddr)
+}
+
+// ClearFilters limpa filtros
+func (s *Service) ClearFilters(sheet string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.ClearFilters(s.currentWorkbook, sheet)
+}
+
+// SortRange ordena dados
+func (s *Service) SortRange(sheet, rangeAddr string, column int, ascending bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.SortRange(s.currentWorkbook, sheet, rangeAddr, column, ascending)
+}
+
+// CopyRange copia range
+func (s *Service) CopyRange(sheet, sourceRange, destRange string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.CopyRange(s.currentWorkbook, sheet, sourceRange, destRange)
+}
+
+// ListCharts lista gráficos
+func (s *Service) ListCharts(sheet string) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return nil, fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return nil, fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.ListCharts(s.currentWorkbook, sheet)
+}
+
+// DeleteChart exclui gráfico
+func (s *Service) DeleteChart(sheet, chartName string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.DeleteChart(s.currentWorkbook, sheet, chartName)
+}

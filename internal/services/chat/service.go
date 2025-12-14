@@ -233,6 +233,17 @@ ACTIONS (modify Excel):
 {"op": "autofit", "range": "A:D"}
 {"op": "insert-rows", "row": 5, "count": 3}
 {"op": "delete-rows", "row": 5, "count": 2}
+{"op": "merge-cells", "range": "A1:C1"}
+{"op": "unmerge-cells", "range": "A1:C1"}
+{"op": "set-borders", "range": "A1:D10", "style": "thin"}
+{"op": "set-column-width", "range": "A:B", "width": 20}
+{"op": "set-row-height", "range": "1:5", "height": 25}
+{"op": "apply-filter", "range": "A1:D100"}
+{"op": "clear-filters"}
+{"op": "sort", "range": "A1:D100", "column": 1, "ascending": true}
+{"op": "copy-range", "source": "A1:B10", "dest": "D1"}
+{"op": "list-charts"}
+{"op": "delete-chart", "name": "Chart1"}
 :::
 
 AGENT RULES:
