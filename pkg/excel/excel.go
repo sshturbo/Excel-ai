@@ -1511,9 +1511,10 @@ func (c *Client) SetBorders(workbookName, sheetName, rangeAddr, style string) er
 
 		// Determinar peso da borda
 		weight := 2 // xlThin
-		if style == "medium" {
+		switch style {
+		case "medium":
 			weight = -4138 // xlMedium
-		} else if style == "thick" {
+		case "thick":
 			weight = 4 // xlThick
 		}
 
@@ -1617,15 +1618,21 @@ func (c *Client) ClearFilters(workbookName, sheetName string) error {
 		}
 		defer sheet.Release()
 
-		// Verificar se há AutoFilter ativo
-		autoFilter, err := oleutil.GetProperty(sheet, "AutoFilter")
-		if err != nil || autoFilter.Val == 0 {
-			return nil // Sem filtro ativo
-		}
-		autoFilterDisp := autoFilter.ToIDispatch()
-		if autoFilterDisp != nil {
-			defer autoFilterDisp.Release()
-			oleutil.CallMethod(autoFilterDisp, "ShowAllData")
+		// Verificar se há AutoFilterMode ativo
+		autoFilterMode, _ := oleutil.GetProperty(sheet, "AutoFilterMode")
+		if autoFilterMode.Val != 0 {
+			// Obter o AutoFilter e desativar chamando AutoFilter novamente no range
+			autoFilter, _ := oleutil.GetProperty(sheet, "AutoFilter")
+			if autoFilter.Val != 0 {
+				autoFilterDisp := autoFilter.ToIDispatch()
+				rangeObj, _ := oleutil.GetProperty(autoFilterDisp, "Range")
+				if rangeObj.Val != 0 {
+					rangeDisp := rangeObj.ToIDispatch()
+					oleutil.CallMethod(rangeDisp, "AutoFilter") // Desativa o filtro
+					rangeDisp.Release()
+				}
+				autoFilterDisp.Release()
+			}
 		}
 		return nil
 	})
