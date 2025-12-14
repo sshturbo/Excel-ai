@@ -393,6 +393,9 @@ func (s *Storage) SwitchProvider(providerName string) (*Config, error) {
 			cfg.BaseURL = "https://api.groq.com/openai/v1"
 		case "openrouter":
 			cfg.BaseURL = "https://openrouter.ai/api/v1"
+		case "google":
+			cfg.BaseURL = "https://generativelanguage.googleapis.com/v1beta"
+			cfg.Model = "gemini-1.5-flash" // Default model for Google
 		default:
 			cfg.BaseURL = ""
 		}

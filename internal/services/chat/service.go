@@ -13,6 +13,8 @@ import (
 
 type Service struct {
 	client        *ai.Client
+	geminiClient  *ai.GeminiClient
+	provider      string // "openrouter", "groq", "google", "custom"
 	storage       *storage.Storage
 	mu            sync.Mutex
 	chatHistory   []ai.Message
@@ -22,9 +24,11 @@ type Service struct {
 
 func NewService(storage *storage.Storage) *Service {
 	return &Service{
-		client:      ai.NewClient("", "", ""), // API Key, Model, BaseURL set later
-		storage:     storage,
-		chatHistory: []ai.Message{},
+		client:       ai.NewClient("", "", ""), // API Key, Model, BaseURL set later
+		geminiClient: ai.NewGeminiClient("", ""),
+		provider:     "openrouter",
+		storage:      storage,
+		chatHistory:  []ai.Message{},
 	}
 }
 
@@ -47,6 +51,34 @@ func (s *Service) SetBaseURL(url string) {
 }
 
 func (s *Service) GetAvailableModels(apiKey, baseURL string) []dto.ModelInfo {
+	// Check if this is a Google/Gemini API URL
+	if strings.Contains(baseURL, "generativelanguage.googleapis.com") {
+		geminiClient := ai.NewGeminiClient(apiKey, "")
+		if baseURL != "" {
+			geminiClient.SetBaseURL(baseURL)
+		}
+		models, err := geminiClient.GetAvailableModels()
+		if err != nil {
+			// Return fallback Gemini models
+			return []dto.ModelInfo{
+				{ID: "gemini-2.0-flash-exp", Name: "Gemini 2.0 Flash (Experimental)", ContextLength: 1000000},
+				{ID: "gemini-1.5-flash", Name: "Gemini 1.5 Flash", ContextLength: 1000000},
+				{ID: "gemini-1.5-flash-8b", Name: "Gemini 1.5 Flash 8B", ContextLength: 1000000},
+				{ID: "gemini-1.5-pro", Name: "Gemini 1.5 Pro", ContextLength: 2000000},
+			}
+		}
+		var result []dto.ModelInfo
+		for _, m := range models {
+			result = append(result, dto.ModelInfo{
+				ID:            m.ID,
+				Name:          m.Name,
+				ContextLength: m.ContextLength,
+			})
+		}
+		return result
+	}
+
+	// OpenAI-compatible providers (OpenRouter, Groq, custom)
 	var client *ai.Client
 	// Se uma URL base for fornecida, cria um cliente temporário para buscar os modelos
 	if baseURL != "" {
@@ -172,6 +204,10 @@ func (s *Service) SendMessage(message string, contextStr string, onChunk func(st
 	// Recarregar configurações do storage para garantir API key atualizada
 	if s.storage != nil {
 		if cfg, err := s.storage.LoadConfig(); err == nil && cfg != nil {
+			// Update provider
+			s.provider = cfg.Provider
+
+			// Configure OpenAI-compatible client
 			if cfg.APIKey != "" {
 				s.client.SetAPIKey(cfg.APIKey)
 			}
@@ -182,6 +218,15 @@ func (s *Service) SendMessage(message string, contextStr string, onChunk func(st
 				s.client.SetBaseURL(cfg.BaseURL)
 			} else if cfg.Provider == "groq" {
 				s.client.SetBaseURL("https://api.groq.com/openai/v1")
+			}
+
+			// Configure Gemini client
+			if cfg.Provider == "google" {
+				s.geminiClient.SetAPIKey(cfg.APIKey)
+				s.geminiClient.SetModel(cfg.Model)
+				if cfg.BaseURL != "" {
+					s.geminiClient.SetBaseURL(cfg.BaseURL)
+				}
 			}
 		}
 	}
@@ -301,8 +346,14 @@ Use formulas in PT-BR (SOMA, MÉDIA, SE, PROCV). DO NOT generate VBA.`
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancelFunc = cancel
 
-	// Call AI
-	response, err := s.client.ChatStream(ctx, s.chatHistory, onChunk)
+	// Call AI (use correct client based on provider)
+	var response string
+	var err error
+	if s.provider == "google" {
+		response, err = s.geminiClient.ChatStream(ctx, s.chatHistory, onChunk)
+	} else {
+		response, err = s.client.ChatStream(ctx, s.chatHistory, onChunk)
+	}
 	s.cancelFunc = nil
 	if err != nil {
 		// Remove user message on error (exceto se foi cancelado)
@@ -354,8 +405,14 @@ Por favor, envie os comandos corrigidos agora.`, errorMessage)
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancelFunc = cancel
 
-	// Call AI para obter correção
-	response, err := s.client.ChatStream(ctx, s.chatHistory, onChunk)
+	// Call AI para obter correção (use correct client based on provider)
+	var response string
+	var err error
+	if s.provider == "google" {
+		response, err = s.geminiClient.ChatStream(ctx, s.chatHistory, onChunk)
+	} else {
+		response, err = s.client.ChatStream(ctx, s.chatHistory, onChunk)
+	}
 	s.cancelFunc = nil
 	if err != nil {
 		// Remove mensagem de erro on failure

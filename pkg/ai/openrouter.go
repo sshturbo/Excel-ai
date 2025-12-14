@@ -344,12 +344,12 @@ func (c *Client) ChatStream(ctx context.Context, messages []Message, onChunk fun
 
 		// Tratamento amigável para erro de política de dados em modelos gratuitos
 		if strings.Contains(errorMsg, "No endpoints found matching your data policy") {
-			return "", fmt.Errorf("Para usar modelos gratuitos, você precisa habilitar a coleta de dados no OpenRouter.\nAcesse: https://openrouter.ai/settings/privacy")
+			return "", fmt.Errorf("para usar modelos gratuitos, habilite a coleta de dados no OpenRouter: https://openrouter.ai/settings/privacy")
 		}
 
 		// Tratamento amigável para erro de autenticação
 		if resp.StatusCode == 401 || strings.Contains(errorMsg, "Unauthorized") || strings.Contains(errorMsg, "cookie auth") {
-			return "", fmt.Errorf("API Key inválida ou não autorizada. Verifique:\n1. A chave está correta para o provedor selecionado\n2. Se mudou de Groq para OpenRouter (ou vice-versa), atualize a API Key")
+			return "", fmt.Errorf("API key inválida ou não autorizada - verifique se a chave está correta para o provedor selecionado")
 		}
 
 		return "", fmt.Errorf("erro na API: %s - %s", resp.Status, errorMsg)

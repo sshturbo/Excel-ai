@@ -98,6 +98,8 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
             if (!url) {
                 if (provider === 'groq') {
                     url = 'https://api.groq.com/openai/v1'
+                } else if (provider === 'google') {
+                    url = 'https://generativelanguage.googleapis.com/v1beta'
                 } else {
                     url = 'https://openrouter.ai/api/v1'
                 }
@@ -173,6 +175,8 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
                         setBaseUrl('https://api.groq.com/openai/v1')
                     } else if (val === 'openrouter') {
                         setBaseUrl('https://openrouter.ai/api/v1')
+                    } else if (val === 'google') {
+                        setBaseUrl('https://generativelanguage.googleapis.com/v1beta')
                     } else {
                         setBaseUrl('')
                     }
@@ -190,6 +194,8 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
                 setBaseUrl('https://api.groq.com/openai/v1')
             } else if (val === 'openrouter') {
                 setBaseUrl('https://openrouter.ai/api/v1')
+            } else if (val === 'google') {
+                setBaseUrl('https://generativelanguage.googleapis.com/v1beta')
             }
             setApiKey('')
         }

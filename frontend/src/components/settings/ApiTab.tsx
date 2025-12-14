@@ -69,6 +69,7 @@ export function ApiTab({
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="openrouter">OpenRouter (Recomendado)</SelectItem>
+                                <SelectItem value="google">Google AI (Gemini)</SelectItem>
                                 <SelectItem value="groq">Groq (Rápido e Gratuito)</SelectItem>
                                 <SelectItem value="custom">Personalizado (OpenAI Compatible)</SelectItem>
                             </SelectContent>
@@ -98,6 +99,8 @@ export function ApiTab({
                         <p className="text-sm text-muted-foreground">
                             {provider === 'groq' ? (
                                 <>Obtenha em <a href="https://console.groq.com/keys" target="_blank" className="text-primary hover:underline">console.groq.com/keys</a></>
+                            ) : provider === 'google' ? (
+                                <>Obtenha em <a href="https://aistudio.google.com/apikey" target="_blank" className="text-primary hover:underline">aistudio.google.com/apikey</a></>
                             ) : (
                                 <>Obtenha em <a href="https://openrouter.ai/keys" target="_blank" className="text-primary hover:underline">openrouter.ai/keys</a></>
                             )}
@@ -156,7 +159,7 @@ export function ApiTab({
                                             Carregando...
                                         </>
                                     ) : (
-                                        <>🔄 Carregar Modelos {provider === 'groq' ? 'da Groq' : provider === 'openrouter' ? 'da OpenRouter' : 'da API'}</>
+                                        <>🔄 Carregar Modelos {provider === 'groq' ? 'da Groq' : provider === 'openrouter' ? 'da OpenRouter' : provider === 'google' ? 'do Google' : 'da API'}</>
                                     )}
                                 </Button>
                             </div>
