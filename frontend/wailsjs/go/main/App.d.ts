@@ -111,6 +111,10 @@ export function SortRange(arg1:string,arg2:string,arg3:number,arg4:boolean):Prom
 
 export function StartUndoBatch():Promise<void>;
 
+export function StartWorkbookWatcher():Promise<void>;
+
+export function StopWorkbookWatcher():Promise<void>;
+
 export function SwitchProvider(arg1:string):Promise<storage.Config>;
 
 export function UndoLastChange():Promise<void>;

@@ -214,6 +214,14 @@ export function StartUndoBatch() {
   return window['go']['main']['App']['StartUndoBatch']();
 }
 
+export function StartWorkbookWatcher() {
+  return window['go']['main']['App']['StartWorkbookWatcher']();
+}
+
+export function StopWorkbookWatcher() {
+  return window['go']['main']['App']['StopWorkbookWatcher']();
+}
+
 export function SwitchProvider(arg1) {
   return window['go']['main']['App']['SwitchProvider'](arg1);
 }

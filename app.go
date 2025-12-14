@@ -2,22 +2,26 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"excel-ai/internal/dto"
 	chatService "excel-ai/internal/services/chat"
 	excelService "excel-ai/internal/services/excel"
 	"excel-ai/pkg/excel"
 	"excel-ai/pkg/storage"
 	"fmt"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct principal da aplicação
 type App struct {
-	ctx          context.Context
-	excelService *excelService.Service
-	chatService  *chatService.Service
-	storage      *storage.Storage
+	ctx                context.Context
+	excelService       *excelService.Service
+	chatService        *chatService.Service
+	storage            *storage.Storage
+	watcherCancel      context.CancelFunc
+	lastWorkbooksState string
 }
 
 // NewApp cria uma nova instância do App
@@ -59,12 +63,63 @@ func (a *App) startup(ctx context.Context) {
 
 // shutdown é chamado quando o app fecha
 func (a *App) shutdown(ctx context.Context) {
+	a.StopWorkbookWatcher()
 	a.excelService.Close()
+}
+
+// StartWorkbookWatcher inicia o monitoramento de mudanças nas planilhas
+func (a *App) StartWorkbookWatcher() {
+	// Para qualquer watcher existente
+	a.StopWorkbookWatcher()
+
+	ctx, cancel := context.WithCancel(a.ctx)
+	a.watcherCancel = cancel
+
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				// Verificar se ainda está conectado
+				status, err := a.excelService.RefreshWorkbooks()
+				if err != nil || status == nil {
+					continue
+				}
+
+				// Serializar estado atual para comparar
+				currentState, _ := json.Marshal(status.Workbooks)
+				currentStateStr := string(currentState)
+
+				// Se mudou, emitir evento
+				if currentStateStr != a.lastWorkbooksState {
+					a.lastWorkbooksState = currentStateStr
+					runtime.EventsEmit(a.ctx, "excel:workbooks-changed", status)
+				}
+			}
+		}
+	}()
+}
+
+// StopWorkbookWatcher para o monitoramento
+func (a *App) StopWorkbookWatcher() {
+	if a.watcherCancel != nil {
+		a.watcherCancel()
+		a.watcherCancel = nil
+	}
 }
 
 // ConnectExcel tenta conectar a uma instância do Excel
 func (a *App) ConnectExcel() (*dto.ExcelStatus, error) {
-	return a.excelService.Connect()
+	result, err := a.excelService.Connect()
+	if err == nil && result.Connected {
+		// Iniciar watcher automaticamente ao conectar
+		a.StartWorkbookWatcher()
+	}
+	return result, err
 }
 
 // RefreshWorkbooks atualiza a lista de pastas de trabalho

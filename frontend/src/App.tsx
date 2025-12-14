@@ -527,6 +527,18 @@ export default function App() {
         return () => cleanup()
     }, [])
 
+    // Listener para atualizações em tempo real das planilhas
+    useEffect(() => {
+        const cleanup = EventsOn("excel:workbooks-changed", (data: any) => {
+            if (data?.workbooks) {
+                setWorkbooks(data.workbooks)
+                // Atualizar status de conexão
+                setConnected(data.connected ?? true)
+            }
+        })
+        return () => cleanup()
+    }, [])
+
     // Resetar buffer quando não está carregando
     useEffect(() => {
         if (!isLoading) {
