@@ -1,25 +1,14 @@
-import { useState, useEffect, useMemo } from 'react'
-import { toast } from 'sonner'
-import {
-    SetAPIKey,
-    SetModel,
-    GetSavedConfig,
-    UpdateConfig,
-    GetAvailableModels,
-    SwitchProvider
-} from "../wailsjs/go/main/App"
-import { dto } from "../wailsjs/go/models"
-
-// shadcn components
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+// Settings.tsx - Refactored settings page using modular components and hooks
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Slider } from "@/components/ui/slider"
-import { Switch } from "@/components/ui/switch"
+
+// Custom hook
+import { useSettings } from '@/hooks/useSettings'
+
+// Components
+import { SettingsHeader } from '@/components/settings/SettingsHeader'
+import { ApiTab } from '@/components/settings/ApiTab'
+import { DataTab } from '@/components/settings/DataTab'
+import { AboutTab } from '@/components/settings/AboutTab'
 
 interface SettingsProps {
     onClose: () => void
@@ -27,137 +16,8 @@ interface SettingsProps {
     onAskBeforeApplyChange: (value: boolean) => void
 }
 
-// Modelos populares de fallback
-const popularModels = [
-    { value: 'openai/gpt-4o-mini', label: 'GPT-4o Mini', desc: 'Rápido e econômico' },
-    { value: 'openai/gpt-4o', label: 'GPT-4o', desc: 'Avançado' },
-    { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet', desc: 'Análise excelente' },
-    { value: 'anthropic/claude-3-haiku', label: 'Claude 3 Haiku', desc: 'Ultra rápido' },
-    { value: 'google/gemini-pro-1.5', label: 'Gemini Pro 1.5', desc: 'Contexto longo' },
-    { value: 'deepseek/deepseek-chat', label: 'DeepSeek Chat', desc: 'Ótimo custo' },
-]
-
 export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChange }: SettingsProps) {
-    const [apiKey, setApiKey] = useState('')
-    const [model, setModel] = useState('openai/gpt-4o-mini')
-    const [provider, setProvider] = useState('openrouter')
-    const [baseUrl, setBaseUrl] = useState('')
-    const [customModel, setCustomModel] = useState('')
-    const [useCustomModel, setUseCustomModel] = useState(false)
-    const [maxRowsContext, setMaxRowsContext] = useState(50)
-    const [maxRowsPreview, setMaxRowsPreview] = useState(100)
-    const [includeHeaders, setIncludeHeaders] = useState(true)
-    const [isSaving, setIsSaving] = useState(false)
-    const [availableModels, setAvailableModels] = useState<dto.ModelInfo[]>([])
-    const [isLoadingModels, setIsLoadingModels] = useState(false)
-    const [modelFilter, setModelFilter] = useState('')
-
-    useEffect(() => {
-        const hasWailsRuntime = typeof (window as any)?.go !== 'undefined'
-        if (hasWailsRuntime) {
-            loadConfig()
-        } else {
-            console.warn('Wails runtime não detectado. Settings em modo somente UI (Vite puro).')
-        }
-    }, [])
-
-    // Limpar modelos quando mudar de provedor
-    useEffect(() => {
-        setAvailableModels([])
-        setModelFilter('')
-    }, [provider])
-
-    const loadConfig = async () => {
-        try {
-            const cfg = await GetSavedConfig()
-            if (cfg) {
-                if (cfg.apiKey) {
-                    setApiKey(cfg.apiKey)
-                    // Carregar modelos automaticamente se tiver API key
-                    loadModels()
-                }
-                if (cfg.provider) setProvider(cfg.provider)
-                if (cfg.baseUrl) setBaseUrl(cfg.baseUrl)
-                if (cfg.model) {
-                    setModel(cfg.model)
-                    // Verificar se é um modelo personalizado
-                    const isPopular = popularModels.some(m => m.value === cfg.model)
-                    if (!isPopular) {
-                        setCustomModel(cfg.model)
-                        setUseCustomModel(true)
-                    }
-                }
-                if (cfg.maxRowsContext) setMaxRowsContext(cfg.maxRowsContext)
-                if (cfg.maxRowsPreview) setMaxRowsPreview(cfg.maxRowsPreview)
-                setIncludeHeaders(cfg.includeHeaders !== false)
-            }
-        } catch (err) {
-            toast.error('Erro ao carregar configurações')
-        }
-    }
-
-    const loadModels = async () => {
-        if (typeof (window as any)?.go === 'undefined') return
-
-        setIsLoadingModels(true)
-        try {
-            // Garantir que temos uma URL base válida
-            let url = baseUrl
-            if (!url) {
-                if (provider === 'groq') {
-                    url = 'https://api.groq.com/openai/v1'
-                } else {
-                    url = 'https://openrouter.ai/api/v1'
-                }
-            }
-            console.log('[DEBUG] Carregando modelos de:', url, 'com apiKey:', apiKey ? 'presente' : 'vazia')
-            const models = await GetAvailableModels(apiKey, url)
-            if (models && models.length > 0) {
-                setAvailableModels(models)
-                toast.success(`${models.length} modelos carregados!`)
-            } else {
-                toast.warning('Nenhum modelo retornado pela API')
-            }
-        } catch (err) {
-            console.error('Erro ao carregar modelos:', err)
-            toast.error('Erro ao carregar modelos. Usando lista padrão.')
-        } finally {
-            setIsLoadingModels(false)
-        }
-    }
-
-    // Filtrar modelos
-    const filteredModels = useMemo(() => {
-        if (!modelFilter.trim()) return availableModels.slice(0, 50) // Limitar para performance
-        const search = modelFilter.toLowerCase()
-        return availableModels.filter(m =>
-            m.id.toLowerCase().includes(search) ||
-            m.name.toLowerCase().includes(search)
-        ).slice(0, 50)
-    }, [availableModels, modelFilter])
-
-    const handleSave = async () => {
-        if (typeof (window as any)?.go === 'undefined') {
-            toast.error('Wails não detectado. Não é possível salvar fora do app.')
-            return
-        }
-        setIsSaving(true)
-        try {
-            await SetAPIKey(apiKey)
-            const selectedModel = useCustomModel ? customModel : model
-            await SetModel(selectedModel)
-            await UpdateConfig(maxRowsContext, maxRowsPreview, includeHeaders, 'normal', '', 'pt-BR', provider, baseUrl)
-            toast.success('✅ Configurações salvas!')
-
-            // Recarregar modelos com a nova configuração
-            await loadModels()
-        } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : String(err)
-            toast.error('❌ Erro ao salvar: ' + errorMessage)
-        } finally {
-            setIsSaving(false)
-        }
-    }
+    const settings = useSettings({ askBeforeApply, onAskBeforeApplyChange })
 
     return (
         <div className="min-h-screen bg-background text-foreground">
@@ -169,27 +29,11 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
 
             <div className="relative max-w-4xl mx-auto py-8 px-4">
                 {/* Header */}
-                <header className="flex items-center justify-between mb-8 pb-6 border-b border-border">
-                    <Button variant="ghost" onClick={onClose} className="gap-2">
-                        ← Voltar
-                    </Button>
-                    <div className="flex items-center gap-3">
-                        <span className="text-3xl">⚙️</span>
-                        <h1 className="text-2xl font-semibold tracking-tight">
-                            Configurações
-                        </h1>
-                    </div>
-                    <Button onClick={handleSave} disabled={isSaving} className="gap-2">
-                        {isSaving ? (
-                            <>
-                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                Salvando
-                            </>
-                        ) : (
-                            <>💾 Salvar</>
-                        )}
-                    </Button>
-                </header>
+                <SettingsHeader
+                    onClose={onClose}
+                    onSave={settings.handleSave}
+                    isSaving={settings.isSaving}
+                />
 
                 {/* Tabs */}
                 <Tabs defaultValue="api" className="space-y-6">
@@ -200,332 +44,46 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
                     </TabsList>
 
                     {/* API Tab */}
-                    <TabsContent value="api" className="space-y-6">
-                        <Card className="bg-card/60">
-                            <CardHeader>
-                                <div className="w-12 h-12 bg-primary text-primary-foreground rounded-xl flex items-center justify-center text-2xl mb-2">
-                                    🔑
-                                </div>
-                                <CardTitle>Provedor e Chave de API</CardTitle>
-                                <CardDescription>Configure o provedor de IA e sua chave de acesso</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label>Provedor</Label>
-                                    <Select value={provider} onValueChange={async (val) => {
-                                        setProvider(val)
-                                        setAvailableModels([]) // Limpar modelos ao mudar
-
-                                        // Carregar configurações salvas deste provedor
-                                        try {
-                                            const cfg = await SwitchProvider(val)
-                                            if (cfg) {
-                                                // Se tem configurações salvas, usar
-                                                if (cfg.apiKey) {
-                                                    setApiKey(cfg.apiKey)
-                                                } else {
-                                                    setApiKey('') // Limpar se não tem config
-                                                }
-                                                if (cfg.model) {
-                                                    setModel(cfg.model)
-                                                } else {
-                                                    setModel('')
-                                                }
-                                                if (cfg.baseUrl) {
-                                                    setBaseUrl(cfg.baseUrl)
-                                                } else {
-                                                    // Default baseURL por provider
-                                                    if (val === 'groq') {
-                                                        setBaseUrl('https://api.groq.com/openai/v1')
-                                                    } else if (val === 'openrouter') {
-                                                        setBaseUrl('https://openrouter.ai/api/v1')
-                                                    } else {
-                                                        setBaseUrl('')
-                                                    }
-                                                }
-
-                                                // Indicar se é config nova ou existente
-                                                if (cfg.apiKey) {
-                                                    toast.success(`Configurações do ${val} carregadas!`)
-                                                } else {
-                                                    toast.info(`Configure a API Key para ${val}`)
-                                                }
-                                            }
-                                        } catch (err) {
-                                            console.error('Erro ao trocar provider:', err)
-                                            // Fallback: só trocar o baseURL
-                                            if (val === 'groq') {
-                                                setBaseUrl('https://api.groq.com/openai/v1')
-                                            } else if (val === 'openrouter') {
-                                                setBaseUrl('https://openrouter.ai/api/v1')
-                                            }
-                                            setApiKey('')
-                                        }
-                                    }}>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Selecione o provedor" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="openrouter">OpenRouter (Recomendado)</SelectItem>
-                                            <SelectItem value="groq">Groq (Rápido e Gratuito)</SelectItem>
-                                            <SelectItem value="custom">Personalizado (OpenAI Compatible)</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                {provider === 'custom' && (
-                                    <div className="space-y-2">
-                                        <Label>Base URL</Label>
-                                        <Input
-                                            type="text"
-                                            value={baseUrl}
-                                            onChange={(e) => setBaseUrl(e.target.value)}
-                                            placeholder="https://api.exemplo.com/v1"
-                                        />
-                                    </div>
-                                )}
-
-                                <div className="space-y-2">
-                                    <Label>API Key</Label>
-                                    <Input
-                                        type="password"
-                                        value={apiKey}
-                                        onChange={(e) => setApiKey(e.target.value)}
-                                        placeholder="sk-or-v1-..."
-                                    />
-                                    <p className="text-sm text-muted-foreground">
-                                        {provider === 'groq' ? (
-                                            <>Obtenha em <a href="https://console.groq.com/keys" target="_blank" className="text-primary hover:underline">console.groq.com/keys</a></>
-                                        ) : (
-                                            <>Obtenha em <a href="https://openrouter.ai/keys" target="_blank" className="text-primary hover:underline">openrouter.ai/keys</a></>
-                                        )}
-                                    </p>
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        <Card className="bg-card/60">
-                            <CardHeader>
-                                <div className="w-12 h-12 bg-muted rounded-xl flex items-center justify-center text-2xl mb-2">
-                                    🤖
-                                </div>
-                                <CardTitle>Modelo de IA</CardTitle>
-                                <CardDescription>Escolha o modelo que melhor atende suas necessidades</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                {/* Toggle para modelo manual */}
-                                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                                    <div>
-                                        <Label className="font-medium">Usar modelo personalizado</Label>
-                                        <p className="text-xs text-muted-foreground">Digite o ID do modelo manualmente</p>
-                                    </div>
-                                    <Switch
-                                        checked={useCustomModel}
-                                        onCheckedChange={setUseCustomModel}
-                                    />
-                                </div>
-
-                                {useCustomModel ? (
-                                    /* Input para modelo personalizado */
-                                    <div className="space-y-2">
-                                        <Label>ID do Modelo</Label>
-                                        <Input
-                                            value={customModel}
-                                            onChange={(e) => setCustomModel(e.target.value)}
-                                            placeholder="ex: anthropic/claude-3.5-sonnet"
-                                        />
-                                        <p className="text-xs text-muted-foreground">
-                                            Veja modelos disponíveis em <a href="https://openrouter.ai/models" target="_blank" className="text-primary hover:underline">openrouter.ai/models</a>
-                                        </p>
-                                    </div>
-                                ) : (
-                                    <>
-                                        {/* Botão para carregar modelos da API */}
-                                        <div className="flex gap-2">
-                                            <Button
-                                                variant="outline"
-                                                onClick={loadModels}
-                                                disabled={isLoadingModels || !apiKey}
-                                                className="flex-1"
-                                            >
-                                                {isLoadingModels ? (
-                                                    <>
-                                                        <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin mr-2" />
-                                                        Carregando...
-                                                    </>
-                                                ) : (
-                                                    <>🔄 Carregar Modelos {provider === 'groq' ? 'da Groq' : provider === 'openrouter' ? 'da OpenRouter' : 'da API'}</>
-                                                )}
-                                            </Button>
-                                        </div>
-
-                                        {!apiKey && (
-                                            <p className="text-xs text-amber-500">⚠️ Configure a API Key primeiro para carregar os modelos</p>
-                                        )}
-
-                                        {/* Filtro de modelos */}
-                                        {availableModels.length > 0 && (
-                                            <div className="space-y-2">
-                                                <Label>Buscar modelo</Label>
-                                                <Input
-                                                    value={modelFilter}
-                                                    onChange={(e) => setModelFilter(e.target.value)}
-                                                    placeholder="Digite para filtrar... (ex: gpt, claude, gemini)"
-                                                />
-                                            </div>
-                                        )}
-
-                                        {/* Lista de modelos da API */}
-                                        {availableModels.length > 0 ? (
-                                            <div className="space-y-2">
-                                                <Label className="text-muted-foreground">
-                                                    {filteredModels.length} de {availableModels.length} modelos
-                                                </Label>
-                                                <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto pr-2">
-                                                    {filteredModels.map((m) => (
-                                                        <button
-                                                            key={m.id}
-                                                            onClick={() => setModel(m.id)}
-                                                            className={`p-3 rounded-lg text-left transition-all ${model === m.id
-                                                                ? 'bg-primary/10 border-2 border-primary/50'
-                                                                : 'bg-background/40 border border-border hover:bg-muted/40'
-                                                                }`}
-                                                        >
-                                                            <div className="flex items-center justify-between">
-                                                                <div className="font-medium text-sm truncate flex-1">{m.name || m.id}</div>
-                                                                {m.contextLength > 0 && (
-                                                                    <span className="text-xs text-muted-foreground ml-2">
-                                                                        {(m.contextLength / 1000).toFixed(0)}K ctx
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                            <div className="text-xs text-muted-foreground truncate">{m.id}</div>
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            /* Modelos populares de fallback */
-                                            <div className="space-y-2">
-                                                <Label className="text-muted-foreground">Modelos populares</Label>
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    {popularModels.map((m) => (
-                                                        <button
-                                                            key={m.value}
-                                                            onClick={() => setModel(m.value)}
-                                                            className={`p-3 rounded-lg text-left transition-all ${model === m.value
-                                                                ? 'bg-primary/10 border-2 border-primary/50'
-                                                                : 'bg-background/40 border border-border hover:bg-muted/40'
-                                                                }`}
-                                                        >
-                                                            <div className="font-medium text-sm">{m.label}</div>
-                                                            <div className="text-xs text-muted-foreground">{m.desc}</div>
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-
-                                {/* Modelo selecionado */}
-                                <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
-                                    <Label className="text-xs text-muted-foreground">Modelo selecionado:</Label>
-                                    <div className="font-mono text-sm text-primary mt-1">
-                                        {useCustomModel ? customModel || 'Nenhum' : model}
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
+                    <TabsContent value="api">
+                        <ApiTab
+                            provider={settings.provider}
+                            apiKey={settings.apiKey}
+                            baseUrl={settings.baseUrl}
+                            model={settings.model}
+                            customModel={settings.customModel}
+                            useCustomModel={settings.useCustomModel}
+                            availableModels={settings.availableModels}
+                            filteredModels={settings.filteredModels}
+                            modelFilter={settings.modelFilter}
+                            isLoadingModels={settings.isLoadingModels}
+                            onProviderChange={settings.handleProviderChange}
+                            onApiKeyChange={settings.setApiKey}
+                            onBaseUrlChange={settings.setBaseUrl}
+                            onModelChange={settings.setModel}
+                            onCustomModelChange={settings.setCustomModel}
+                            onUseCustomModelChange={settings.setUseCustomModel}
+                            onModelFilterChange={settings.setModelFilter}
+                            onLoadModels={settings.loadModels}
+                        />
                     </TabsContent>
 
                     {/* Data Tab */}
-                    <TabsContent value="data" className="space-y-6">
-                        <Card className="bg-card/60">
-                            <CardHeader>
-                                <div className="w-12 h-12 bg-muted rounded-xl flex items-center justify-center text-2xl mb-2">
-                                    📈
-                                </div>
-                                <CardTitle>Quantidade de Dados</CardTitle>
-                                <CardDescription>Configure quantas linhas serão enviadas para análise</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-6">
-                                <div className="space-y-4">
-                                    <div className="flex justify-between">
-                                        <Label>Linhas para IA</Label>
-                                        <span className="text-sm text-primary font-medium">{maxRowsContext}</span>
-                                    </div>
-                                    <Slider
-                                        value={[maxRowsContext]}
-                                        onValueChange={(v) => setMaxRowsContext(v[0])}
-                                        min={10}
-                                        max={200}
-                                        step={10}
-                                    />
-                                    <div className="flex justify-between text-xs text-muted-foreground">
-                                        <span>10 (Rápido)</span>
-                                        <span>200 (Detalhado)</span>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-4">
-                                    <div className="flex justify-between">
-                                        <Label>Linhas no Preview</Label>
-                                        <span className="text-sm text-blue-400 font-medium">{maxRowsPreview}</span>
-                                    </div>
-                                    <Slider
-                                        value={[maxRowsPreview]}
-                                        onValueChange={(v) => setMaxRowsPreview(v[0])}
-                                        min={50}
-                                        max={500}
-                                        step={50}
-                                    />
-                                </div>
-
-                                <div className="flex items-center justify-between p-4 bg-muted/30 border border-border rounded-lg">
-                                    <Label>Incluir cabeçalhos no contexto</Label>
-                                    <Switch checked={includeHeaders} onCheckedChange={setIncludeHeaders} />
-                                </div>
-
-                                <div className="flex items-center justify-between p-4 bg-muted/30 border border-border rounded-lg">
-                                    <div className="space-y-1">
-                                        <Label>Perguntar antes de aplicar</Label>
-                                        <p className="text-xs text-muted-foreground">
-                                            A IA pedirá confirmação antes de modificar a planilha
-                                        </p>
-                                    </div>
-                                    <Switch checked={askBeforeApply} onCheckedChange={onAskBeforeApplyChange} />
-                                </div>
-                            </CardContent>
-                        </Card>
-
+                    <TabsContent value="data">
+                        <DataTab
+                            maxRowsContext={settings.maxRowsContext}
+                            maxRowsPreview={settings.maxRowsPreview}
+                            includeHeaders={settings.includeHeaders}
+                            askBeforeApply={settings.askBeforeApply}
+                            onMaxRowsContextChange={settings.setMaxRowsContext}
+                            onMaxRowsPreviewChange={settings.setMaxRowsPreview}
+                            onIncludeHeadersChange={settings.setIncludeHeaders}
+                            onAskBeforeApplyChange={settings.onAskBeforeApplyChange}
+                        />
                     </TabsContent>
-
 
                     {/* About Tab */}
                     <TabsContent value="about">
-                        <Card className="bg-card/60 text-center py-8">
-                            <CardContent className="space-y-4">
-                                <div className="text-6xl animate-bounce">📊</div>
-                                <h2 className="text-3xl font-bold bg-linear-to-r from-primary to-blue-500 bg-clip-text text-transparent">
-                                    HipoSystem
-                                </h2>
-                                <p className="text-muted-foreground">✨ Inteligência Artificial ao alcance da sua planilha</p>
-                                <span className="inline-block px-3 py-1 bg-muted rounded-full text-sm text-primary">
-                                    v2.0.0
-                                </span>
-                                <div className="pt-6 space-y-2">
-                                    <p className="text-sm text-muted-foreground">Desenvolvido por</p>
-                                    <p className="text-lg font-semibold text-primary">
-                                        Jefferson Hipolito de Oliveira
-                                    </p>
-                                    <p className="text-sm text-muted-foreground">HipoSystem</p>
-                                </div>
-                                <p className="text-xs text-muted-foreground pt-4">
-                                    Dados em <code className="bg-muted px-1 rounded">~/.excel-ai/</code>
-                                </p>
-                            </CardContent>
-                        </Card>
+                        <AboutTab />
                     </TabsContent>
                 </Tabs>
             </div>
