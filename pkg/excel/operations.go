@@ -53,11 +53,17 @@ func (c *Client) SortRange(workbookName, sheetName, rangeAddr string, column int
 		defer rangeDisp.Release()
 
 		// Obter célula de ordenação
-		cells, _ := oleutil.GetProperty(rangeDisp, "Cells")
+		cells, err := oleutil.GetProperty(rangeDisp, "Cells")
+		if err != nil {
+			return err
+		}
 		cellsDisp := cells.ToIDispatch()
 		defer cellsDisp.Release()
 
-		keyCell, _ := oleutil.GetProperty(cellsDisp, "Item", 1, column)
+		keyCell, err := oleutil.GetProperty(cellsDisp, "Item", 1, column)
+		if err != nil {
+			return fmt.Errorf("falha ao obter KeyCell para sort: %w", err)
+		}
 		keyCellDisp := keyCell.ToIDispatch()
 		defer keyCellDisp.Release()
 
@@ -101,22 +107,14 @@ func (c *Client) ClearFilters(workbookName, sheetName string) error {
 		}
 		defer sheet.Release()
 
-		// Verificar se há AutoFilterMode ativo
-		autoFilterMode, _ := oleutil.GetProperty(sheet, "AutoFilterMode")
-		if autoFilterMode.Val != 0 {
-			// Obter o AutoFilter e desativar chamando AutoFilter novamente no range
-			autoFilter, _ := oleutil.GetProperty(sheet, "AutoFilter")
-			if autoFilter.Val != 0 {
-				autoFilterDisp := autoFilter.ToIDispatch()
-				rangeObj, _ := oleutil.GetProperty(autoFilterDisp, "Range")
-				if rangeObj.Val != 0 {
-					rangeDisp := rangeObj.ToIDispatch()
-					oleutil.CallMethod(rangeDisp, "AutoFilter") // Desativa o filtro
-					rangeDisp.Release()
-				}
-				autoFilterDisp.Release()
-			}
-		}
+		// Tentar desativar filtro (AutoFilterMode = false) blindamente.
+		// Se não houver suporte ou falhar, ignoramos.
+		oleutil.PutProperty(sheet, "AutoFilterMode", false)
+
+		// Tenta ShowAllData para garantir que linhas ocultas sejam mostradas.
+		// CallMethod retornará erro se não houver dados filtrados, ignoramos.
+		oleutil.CallMethod(sheet, "ShowAllData")
+
 		return nil
 	})
 }
