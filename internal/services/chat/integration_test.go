@@ -167,14 +167,19 @@ func TestAllTools(t *testing.T) {
 	})
 	exec("Listar Gráficos", "list-charts", map[string]interface{}{"sheet": sheet1})
 
-	// Pivot (Complexo, exige source data valido)
-	// Vamos tentar criar na sheet2 usando dados da sheet1
-	// Pivot creation logic is tricky via COM regarding destination string
-	// exec("Criar Pivot", "create-pivot", map[string]interface{}{
-	// 	"sourceSheet": sheet1, "sourceRange": "A1:B5",
-	// 	"destSheet": sheet2, "destCell": "E5",
-	// 	"rowFields": []string{"Produto"}, "dataFields": []string{"Valor"},
-	// })
+	// Headers
+	exec("Get Headers", "get-headers", map[string]interface{}{
+		"sheet": sheet1, "range": "A1:B1",
+	})
+
+	// Pivot
+	// Usar Dados (sheet1) -> Relatorio (sheet2)
+	exec("Criar Pivot", "create-pivot", map[string]interface{}{
+		"sourceSheet": sheet1, "sourceRange": "A1:B5",
+		"destSheet": sheet2, "destCell": "A10",
+		"tableName": "PivotVendas",
+	})
+	exec("Listar Pivot Tables", "list-pivot-tables", map[string]interface{}{"sheet": sheet2})
 
 	// GRUPO 7: CLEANUP ACTIONS
 	//	exec("Deletar Gráfico", "delete-chart", map[string]interface{}{

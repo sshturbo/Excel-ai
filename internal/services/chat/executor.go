@@ -99,6 +99,14 @@ func (s *Service) executeQuery(params map[string]interface{}) (string, error) {
 			return "", err
 		}
 		return fmt.Sprintf("CHARTS: %v", charts), nil
+
+	case "list-pivot-tables":
+		sheet, _ := params["sheet"].(string)
+		pivots, err := s.excelService.ListPivotTables(sheet)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("PIVOTS: %v", pivots), nil
 	}
 
 	return "", fmt.Errorf("unknown query type: %s", queryType)
@@ -360,14 +368,6 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 			return "", err
 		}
 		return "DELETE CHART OK", nil
-
-	case "list-pivot-tables":
-		sheet, _ := params["sheet"].(string)
-		pivots, err := s.excelService.ListPivotTables(sheet)
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("PIVOTS: %v", pivots), nil
 
 	case "create-table":
 		sheet, _ := params["sheet"].(string)
