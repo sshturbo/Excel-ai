@@ -155,6 +155,14 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 			return "", fmt.Errorf("macro requires 'actions' array")
 		}
 
+		// DEBUG: Log macro execution
+		fmt.Printf("[DEBUG] 🎯 MACRO detected with %d actions:\n", len(actions))
+		for i, action := range actions {
+			if actionMap, ok := action.(map[string]interface{}); ok {
+				fmt.Printf("[DEBUG]   Action %d: op=%s\n", i+1, actionMap["op"])
+			}
+		}
+
 		var results []string
 		for i, action := range actions {
 			actionMap, ok := action.(map[string]interface{})
@@ -171,6 +179,7 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 			}
 		}
 
+		fmt.Printf("[DEBUG] ✅ MACRO completed: %d actions executed\n", len(actions))
 		return fmt.Sprintf("MACRO OK (%d actions):\n%s", len(actions), joinResults(results)), nil
 
 	case "write":
