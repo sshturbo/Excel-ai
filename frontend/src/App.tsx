@@ -9,6 +9,7 @@ import { useExcelConnection } from '@/hooks/useExcelConnection'
 import { useChat } from '@/hooks/useChat'
 import { useConversations } from '@/hooks/useConversations'
 import { useStreamingMessage } from '@/hooks/useStreamingMessage'
+import { useTheme } from '@/hooks/useTheme'
 
 // Components
 import { Header } from '@/components/layout/Header'
@@ -42,6 +43,9 @@ import {
 } from "../wailsjs/go/main/App"
 
 export default function App() {
+    // Theme
+    const { theme, toggleTheme } = useTheme()
+
     // Settings state
     const [showSettings, setShowSettings] = useState(false)
     const [askBeforeApply, setAskBeforeApply] = useState(true)
@@ -218,9 +222,11 @@ export default function App() {
             {/* Header */}
             <Header
                 connected={excel.connected}
+                theme={theme}
                 onNewConversation={handleNewConversation}
                 onOpenSettings={() => setShowSettings(true)}
                 onConnect={excel.handleConnect}
+                onToggleTheme={toggleTheme}
             />
 
             {/* Main */}

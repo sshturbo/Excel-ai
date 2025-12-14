@@ -1,18 +1,22 @@
-// Header component - Top navigation bar
+// Header component - Top navigation bar with theme toggle
 import { Button } from "@/components/ui/button"
 
 interface HeaderProps {
     connected: boolean
+    theme: 'light' | 'dark'
     onNewConversation: () => void
     onOpenSettings: () => void
     onConnect: () => void
+    onToggleTheme: () => void
 }
 
 export function Header({
     connected,
+    theme,
     onNewConversation,
     onOpenSettings,
-    onConnect
+    onConnect,
+    onToggleTheme
 }: HeaderProps) {
     return (
         <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/60 backdrop-blur supports-backdrop-filter:bg-card/40">
@@ -26,6 +30,15 @@ export function Header({
             </div>
 
             <div className="flex items-center gap-3">
+                {/* Theme toggle */}
+                <button
+                    onClick={onToggleTheme}
+                    className="p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                    title={theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+                >
+                    {theme === 'dark' ? '☀️' : '🌙'}
+                </button>
+
                 <Button onClick={onNewConversation} variant="default">
                     ➕ Nova Conversa
                 </Button>
