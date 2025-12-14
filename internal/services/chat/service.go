@@ -2,13 +2,15 @@ package chat
 
 import (
 	"context"
-	"excel-ai/internal/dto"
-	"excel-ai/pkg/ai"
-	"excel-ai/pkg/storage"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
+
+	"excel-ai/internal/domain"
+	"excel-ai/internal/dto"
+	"excel-ai/pkg/ai"
+	"excel-ai/pkg/storage"
 )
 
 type Service struct {
@@ -17,7 +19,7 @@ type Service struct {
 	provider      string // "openrouter", "groq", "google", "custom"
 	storage       *storage.Storage
 	mu            sync.Mutex
-	chatHistory   []ai.Message
+	chatHistory   []domain.Message
 	currentConvID string
 	cancelFunc    context.CancelFunc
 }
@@ -28,7 +30,7 @@ func NewService(storage *storage.Storage) *Service {
 		geminiClient: ai.NewGeminiClient("", ""),
 		provider:     "openrouter",
 		storage:      storage,
-		chatHistory:  []ai.Message{},
+		chatHistory:  []domain.Message{},
 	}
 }
 
@@ -184,6 +186,7 @@ func (s *Service) GetAvailableModels(apiKey, baseURL string) []dto.ModelInfo {
 
 	var result []dto.ModelInfo
 	for _, m := range models {
+		// Map pricing from strings to strings (could use domain.ModelPricing here too if updated)
 		result = append(result, dto.ModelInfo{
 			ID:            m.ID,
 			Name:          m.Name,
@@ -325,9 +328,10 @@ User wants a chart. I need to:
 
 Use formulas in PT-BR (SOMA, MÉDIA, SE, PROCV). DO NOT generate VBA.`
 
-		s.chatHistory = append(s.chatHistory, ai.Message{
-			Role:    "system",
-			Content: systemPrompt,
+		s.chatHistory = append(s.chatHistory, domain.Message{
+			Role:      domain.RoleSystem,
+			Content:   systemPrompt,
+			Timestamp: time.Now(),
 		})
 	}
 
@@ -337,22 +341,26 @@ Use formulas in PT-BR (SOMA, MÉDIA, SE, PROCV). DO NOT generate VBA.`
 		fullContent = fmt.Sprintf("Contexto do Excel:\n%s\n\nPergunta do usuário: %s", contextStr, message)
 	}
 
-	s.chatHistory = append(s.chatHistory, ai.Message{
-		Role:    "user",
-		Content: fullContent,
+	s.chatHistory = append(s.chatHistory, domain.Message{
+		Role:      domain.RoleUser,
+		Content:   fullContent,
+		Timestamp: time.Now(),
 	})
 
 	// Criar context cancelável
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancelFunc = cancel
 
+	// Converter domain history para AI history
+	aiHistory := s.toAIMessages(s.chatHistory)
+
 	// Call AI (use correct client based on provider)
 	var response string
 	var err error
 	if s.provider == "google" {
-		response, err = s.geminiClient.ChatStream(ctx, s.chatHistory, onChunk)
+		response, err = s.geminiClient.ChatStream(ctx, aiHistory, onChunk)
 	} else {
-		response, err = s.client.ChatStream(ctx, s.chatHistory, onChunk)
+		response, err = s.client.ChatStream(ctx, aiHistory, onChunk)
 	}
 	s.cancelFunc = nil
 	if err != nil {
@@ -363,9 +371,10 @@ Use formulas in PT-BR (SOMA, MÉDIA, SE, PROCV). DO NOT generate VBA.`
 		return "", err
 	}
 
-	s.chatHistory = append(s.chatHistory, ai.Message{
-		Role:    "assistant",
-		Content: response,
+	s.chatHistory = append(s.chatHistory, domain.Message{
+		Role:      domain.RoleAssistant,
+		Content:   response,
+		Timestamp: time.Now(),
 	})
 
 	go s.saveCurrentConversation(contextStr)
@@ -396,22 +405,26 @@ Exemplo de resposta correta:
 
 Por favor, envie os comandos corrigidos agora.`, errorMessage)
 
-	s.chatHistory = append(s.chatHistory, ai.Message{
-		Role:    "user",
-		Content: feedbackMsg,
+	s.chatHistory = append(s.chatHistory, domain.Message{
+		Role:      domain.RoleUser,
+		Content:   feedbackMsg,
+		Timestamp: time.Now(),
 	})
 
 	// Criar context cancelável
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancelFunc = cancel
 
+	// Converter domain history para AI history
+	aiHistory := s.toAIMessages(s.chatHistory)
+
 	// Call AI para obter correção (use correct client based on provider)
 	var response string
 	var err error
 	if s.provider == "google" {
-		response, err = s.geminiClient.ChatStream(ctx, s.chatHistory, onChunk)
+		response, err = s.geminiClient.ChatStream(ctx, aiHistory, onChunk)
 	} else {
-		response, err = s.client.ChatStream(ctx, s.chatHistory, onChunk)
+		response, err = s.client.ChatStream(ctx, aiHistory, onChunk)
 	}
 	s.cancelFunc = nil
 	if err != nil {
@@ -422,9 +435,10 @@ Por favor, envie os comandos corrigidos agora.`, errorMessage)
 		return "", err
 	}
 
-	s.chatHistory = append(s.chatHistory, ai.Message{
-		Role:    "assistant",
-		Content: response,
+	s.chatHistory = append(s.chatHistory, domain.Message{
+		Role:      domain.RoleAssistant,
+		Content:   response,
+		Timestamp: time.Now(),
 	})
 
 	go s.saveCurrentConversation("")
@@ -445,7 +459,7 @@ func (s *Service) CancelChat() {
 func (s *Service) ClearChat() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.chatHistory = []ai.Message{}
+	s.chatHistory = []domain.Message{}
 }
 
 func (s *Service) GetChatHistory() []dto.ChatMessage {
@@ -455,7 +469,7 @@ func (s *Service) GetChatHistory() []dto.ChatMessage {
 	var result []dto.ChatMessage
 	for _, m := range s.chatHistory {
 		result = append(result, dto.ChatMessage{
-			Role:    m.Role,
+			Role:    string(m.Role),
 			Content: m.Content,
 		})
 	}
@@ -471,7 +485,7 @@ func (s *Service) DeleteLastMessages(count int) error {
 	}
 
 	if count > len(s.chatHistory) {
-		s.chatHistory = []ai.Message{}
+		s.chatHistory = []domain.Message{}
 	} else {
 		s.chatHistory = s.chatHistory[:len(s.chatHistory)-count]
 	}
@@ -488,7 +502,7 @@ func (s *Service) NewConversation() string {
 		s.saveCurrentConversation("")
 	}
 
-	s.chatHistory = []ai.Message{}
+	s.chatHistory = []domain.Message{}
 	s.currentConvID = storage.GenerateID()
 	return s.currentConvID
 }
@@ -529,14 +543,17 @@ func (s *Service) LoadConversation(id string) ([]dto.ChatMessage, error) {
 	}
 
 	s.currentConvID = conv.ID
-	s.chatHistory = []ai.Message{}
+	s.chatHistory = []domain.Message{}
 
 	var result []dto.ChatMessage
 	for _, m := range conv.Messages {
-		s.chatHistory = append(s.chatHistory, ai.Message{
-			Role:    m.Role,
-			Content: m.Content,
-		})
+		domainMsg := domain.Message{
+			Role:      domain.MessageRole(m.Role),
+			Content:   m.Content,
+			Timestamp: m.Timestamp,
+		}
+		s.chatHistory = append(s.chatHistory, domainMsg)
+
 		result = append(result, dto.ChatMessage{
 			Role:      m.Role,
 			Content:   m.Content,
@@ -562,9 +579,9 @@ func (s *Service) saveCurrentConversation(contextStr string) {
 	var msgs []storage.Message
 	for _, m := range s.chatHistory {
 		msgs = append(msgs, storage.Message{
-			Role:      m.Role,
+			Role:      string(m.Role),
 			Content:   m.Content,
-			Timestamp: time.Now(),
+			Timestamp: m.Timestamp,
 		})
 	}
 
@@ -575,4 +592,16 @@ func (s *Service) saveCurrentConversation(contextStr string) {
 	}
 
 	s.storage.SaveConversation(conv)
+}
+
+// Helper to convert domain messages to AI messages
+func (s *Service) toAIMessages(msgs []domain.Message) []ai.Message {
+	var result []ai.Message
+	for _, m := range msgs {
+		result = append(result, ai.Message{
+			Role:    string(m.Role),
+			Content: m.Content,
+		})
+	}
+	return result
 }
