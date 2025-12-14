@@ -46,14 +46,18 @@ func (s *Service) SendMessage(message string, contextStr string, onChunk func(st
 
 	// Criar context cancelável
 	ctx, cancel := context.WithCancel(context.Background())
+	s.cancelMu.Lock()
 	s.cancelFunc = cancel
+	s.cancelMu.Unlock()
 	defer func() {
+		s.cancelMu.Lock()
 		s.cancelFunc = nil
+		s.cancelMu.Unlock()
 		cancel() // Garante limpeza
 	}()
 
-	// LOOP AUTÔNOMO (Max 10 passos para evitar loops infinitos)
-	maxSteps := 10
+	// LOOP AUTÔNOMO (Max 5 passos para economizar quota no tier gratuito)
+	maxSteps := 5
 	var finalResponse string
 
 	for step := 0; step < maxSteps; step++ {
@@ -99,10 +103,25 @@ func (s *Service) SendMessage(message string, contextStr string, onChunk func(st
 
 		// PARSE COMMANDS
 		commands := s.ParseToolCommands(currentResponse)
+
+		// DEBUG: Log para ver se comandos foram parseados
+		if len(commands) > 0 {
+			fmt.Printf("[DEBUG] Parsed %d command(s) from AI response\n", len(commands))
+			for i, cmd := range commands {
+				fmt.Printf("[DEBUG] Command %d: Type=%s\n", i+1, cmd.Type)
+			}
+		} else {
+			fmt.Println("[DEBUG] No commands parsed from AI response")
+		}
+
 		if len(commands) == 0 {
 			// Sem comandos, terminamos o turno
 			break
 		}
+
+		// Notificar usuário sobre progresso do passo
+		stepMsg := fmt.Sprintf("\n\n🔄 *[Passo %d/%d] Executando %d ação(ões)...*\n\n", step+1, maxSteps, len(commands))
+		onChunk(stepMsg)
 
 		// Executar Comandos
 		var executionResults string
@@ -125,15 +144,23 @@ func (s *Service) SendMessage(message string, contextStr string, onChunk func(st
 			Timestamp: time.Now(),
 		})
 
-		// Notificar frontend que estamos processando (hackish: manda system log via chunk?)
-		// onChunk("\n\n[Processando resultados...]\n\n")
+		// Verificar se atingimos o limite de passos
+		if step == maxSteps-1 {
+			pauseMsg := "\n\n⚠️ *[Limite de Passos Atingido]* O agente atingiu o máximo de 5 passos por turno.\n\n:::agent-paused:::\n"
+			onChunk(pauseMsg)
+			finalResponse += pauseMsg // Incluir na resposta final para detecção
+		}
 
-		// THROTTLE: Aguardar um pouco para não estourar o Rate Limit da API (RPM)
-		// O loop é muito rápido no backend.
-		time.Sleep(2 * time.Second)
+		// THROTTLE: Aguardar para não estourar o Rate Limit da API (RPM)
+		// Aumentado para 6s para melhor compatibilidade com tier gratuito
+		time.Sleep(6 * time.Second)
 
 		// Loop continua...
 	}
+
+	// Verificar se saímos por limite de passos (não por falta de comandos)
+	// Se o loop rodou todas as iterações possíveis, emitir marcador de pausa
+	// Note: Este código é alcançado apenas pelo for loop normal, não pelo break
 
 	go s.saveCurrentConversation(contextStr)
 
@@ -190,8 +217,8 @@ func (s *Service) SendErrorFeedback(errorMessage string, onChunk func(string) er
 }
 
 func (s *Service) CancelChat() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.cancelMu.Lock()
+	defer s.cancelMu.Unlock()
 	if s.cancelFunc != nil {
 		s.cancelFunc()
 		s.cancelFunc = nil

@@ -8,8 +8,30 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 )
+
+// parseRetryAfter tenta extrair o tempo de espera do header
+func parseRetryAfter(resp *http.Response) time.Duration {
+	retryAfter := resp.Header.Get("Retry-After")
+	if retryAfter == "" {
+		return 60 * time.Second // Default fallback
+	}
+
+	// Tentar parsear como segundos
+	if seconds, err := strconv.Atoi(retryAfter); err == nil {
+		return time.Duration(seconds) * time.Second
+	}
+
+	// Tentar parsear como data (RFC1123)
+	if date, err := time.Parse(time.RFC1123, retryAfter); err == nil {
+		return time.Until(date)
+	}
+
+	return 60 * time.Second
+}
 
 // formatGeminiError formata erros da API Gemini de forma amigável
 func formatGeminiError(statusCode int, body string, model string) error {
@@ -187,148 +209,262 @@ func (c *GeminiClient) Chat(messages []Message) (string, error) {
 		return "", fmt.Errorf("API key não configurada")
 	}
 
-	contents, systemInstruction := c.convertToGeminiFormat(messages)
+	// Strategy:
+	// Attempt 0: Original Model
+	// Wait (Retry-After or 60s)
+	// Attempt 1: Original Model (Retry)
+	// Wait (Retry-After or 60s)
+	// Attempt 2: Flash Model (Last Resort)
 
-	reqBody := GeminiRequest{
-		Contents:          contents,
-		SystemInstruction: systemInstruction,
-		GenerationConfig: &GenerationConfig{
-			MaxOutputTokens: 8192,
-		},
+	maxRetries := 2
+	var lastErr error
+
+	// Guardar modelo original para restaurar se precisarmos trocar
+	originalModel := c.model
+	defer func() { c.model = originalModel }()
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Preparar request
+		contents, systemInstruction := c.convertToGeminiFormat(messages)
+
+		reqBody := GeminiRequest{
+			Contents:          contents,
+			SystemInstruction: systemInstruction,
+			GenerationConfig: &GenerationConfig{
+				MaxOutputTokens: 8192,
+			},
+		}
+
+		jsonData, err := json.Marshal(reqBody)
+		if err != nil {
+			return "", err
+		}
+
+		// Se for a última tentativa (índice 2), forçar Flash como fallback
+		currentModel := c.model
+		if attempt == 2 {
+			currentModel = "gemini-1.5-flash"
+			c.model = currentModel // Atualizar struct para erro formatado sair correto
+		}
+
+		url := fmt.Sprintf("%s/models/%s:generateContent?key=%s", c.baseURL, currentModel, c.apiKey)
+
+		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+		if err != nil {
+			return "", err
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			// Network err, maybe retry?
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			errStr := string(body)
+
+			// Check for Quota/Rate Limit
+			if resp.StatusCode == 429 || strings.Contains(errStr, "RESOURCE_EXHAUSTED") || strings.Contains(errStr, "Quota exceeded") {
+				lastErr = formatGeminiError(resp.StatusCode, errStr, currentModel)
+
+				// Se ainda temos tentativas, aguardar e tentar de novo
+				if attempt < maxRetries {
+					waitDuration := parseRetryAfter(resp)
+					time.Sleep(waitDuration)
+					continue
+				}
+			}
+			return "", formatGeminiError(resp.StatusCode, errStr, currentModel)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if err != nil {
+			return "", err
+		}
+
+		var geminiResp GeminiResponse
+		if err := json.Unmarshal(body, &geminiResp); err != nil {
+			return "", fmt.Errorf("erro ao parsear resposta: %w", err)
+		}
+
+		if geminiResp.Error != nil {
+			// Se erro vier no corpo JSON
+			errMsg := geminiResp.Error.Message
+			if strings.Contains(errMsg, "RESOURCE_EXHAUSTED") || strings.Contains(errMsg, "Quota exceeded") {
+				lastErr = formatGeminiError(resp.StatusCode, errMsg, currentModel)
+				if attempt < maxRetries {
+					time.Sleep(60 * time.Second) // JSON error geralmente não tem header, safe fallback
+					continue
+				}
+			}
+			return "", formatGeminiError(resp.StatusCode, errMsg, currentModel)
+		}
+
+		if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
+			return "", fmt.Errorf("nenhuma resposta recebida do Gemini")
+		}
+
+		return geminiResp.Candidates[0].Content.Parts[0].Text, nil
 	}
-
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", err
-	}
-
-	url := fmt.Sprintf("%s/models/%s:generateContent?key=%s", c.baseURL, c.model, c.apiKey)
-
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	var geminiResp GeminiResponse
-	if err := json.Unmarshal(body, &geminiResp); err != nil {
-		return "", fmt.Errorf("erro ao parsear resposta: %w", err)
-	}
-
-	if geminiResp.Error != nil {
-		return "", formatGeminiError(resp.StatusCode, geminiResp.Error.Message, c.model)
-	}
-
-	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("nenhuma resposta recebida do Gemini")
-	}
-
-	return geminiResp.Candidates[0].Content.Parts[0].Text, nil
+	return "", lastErr
 }
 
-// ChatStream envia mensagens para o Gemini com streaming
+// ChatStream envia mensagens para o Gemini com streaming e retry logic
 func (c *GeminiClient) ChatStream(ctx context.Context, messages []Message, onChunk func(string) error) (string, error) {
 	if c.apiKey == "" {
 		return "", fmt.Errorf("API key não configurada")
 	}
 
-	contents, systemInstruction := c.convertToGeminiFormat(messages)
+	maxRetries := 2
+	var lastErr error
 
-	reqBody := GeminiRequest{
-		Contents:          contents,
-		SystemInstruction: systemInstruction,
-		GenerationConfig: &GenerationConfig{
-			MaxOutputTokens: 8192,
-		},
-	}
+	// Guardar modelo original
+	originalModel := c.model
+	defer func() { c.model = originalModel }()
 
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", err
-	}
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Logica de Fallback (Mudança de modelo APENAS na tentativa 3/índice 2)
+		if attempt == 2 {
+			c.model = "gemini-1.5-flash"
+		}
 
-	// Usar endpoint de streaming
-	url := fmt.Sprintf("%s/models/%s:streamGenerateContent?alt=sse&key=%s", c.baseURL, c.model, c.apiKey)
+		contents, systemInstruction := c.convertToGeminiFormat(messages)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", err
-	}
+		reqBody := GeminiRequest{
+			Contents:          contents,
+			SystemInstruction: systemInstruction,
+			GenerationConfig: &GenerationConfig{
+				MaxOutputTokens: 8192,
+			},
+		}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Close = true
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", formatGeminiError(resp.StatusCode, string(body), c.model)
-	}
-
-	reader := bufio.NewReader(resp.Body)
-	var fullResponse strings.Builder
-
-	for {
-		line, err := reader.ReadBytes('\n')
+		jsonData, err := json.Marshal(reqBody)
 		if err != nil {
-			if err == io.EOF {
-				break
-			}
 			return "", err
 		}
 
-		line = bytes.TrimSpace(line)
-		if !bytes.HasPrefix(line, []byte("data: ")) {
+		url := fmt.Sprintf("%s/models/%s:streamGenerateContent?alt=sse&key=%s", c.baseURL, c.model, c.apiKey)
+
+		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+		if err != nil {
+			return "", err
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			// Network err - retry immediate? Let's just continue
 			continue
 		}
 
-		data := bytes.TrimPrefix(line, []byte("data: "))
-		if len(data) == 0 {
-			continue
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+
+			errStr := string(body)
+
+			// Check for Quota/Rate Limit
+			if resp.StatusCode == 429 || strings.Contains(errStr, "RESOURCE_EXHAUSTED") || strings.Contains(errStr, "Quota exceeded") {
+				lastErr = formatGeminiError(resp.StatusCode, errStr, c.model)
+
+				if attempt < maxRetries {
+					waitDuration := parseRetryAfter(resp)
+
+					// Logs Específicos do Plano
+					var msg string
+					switch attempt {
+					case 0:
+						msg = fmt.Sprintf("\n\n⏳ Quota excedida (%d). Aguardando %.0fs antes de nova tentativa com modelo '%s'...\n\n", resp.StatusCode, waitDuration.Seconds(), c.model)
+					case 1:
+						msg = fmt.Sprintf("\n\n⚠️ Nova falha de quota com modelo '%s'. Tentando fallback para 'gemini-1.5-flash'...\n\n", c.model)
+					}
+					onChunk(msg)
+
+					// Sleep respeitando Context
+					select {
+					case <-time.After(waitDuration):
+						continue
+					case <-ctx.Done():
+						return "", ctx.Err()
+					}
+				} else {
+					// Falha final após fallback
+					onChunk("\n\n❌ Quota excedida mesmo após fallback. Possível limite diário atingido.\n\n")
+				}
+			}
+
+			return "", formatGeminiError(resp.StatusCode, errStr, c.model)
 		}
 
-		var chunk struct {
-			Candidates []struct {
-				Content struct {
-					Parts []struct {
-						Text string `json:"text"`
-					} `json:"parts"`
-				} `json:"content"`
-			} `json:"candidates"`
-		}
+		reader := bufio.NewReader(resp.Body)
+		var fullResponse strings.Builder
 
-		if err := json.Unmarshal(data, &chunk); err != nil {
-			continue
-		}
+		// Read stream
+		streamSuccess := true
+		for {
+			line, err := reader.ReadBytes('\n')
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				resp.Body.Close()
+				return fullResponse.String(), err
+			}
 
-		if len(chunk.Candidates) > 0 && len(chunk.Candidates[0].Content.Parts) > 0 {
-			text := chunk.Candidates[0].Content.Parts[0].Text
-			if text != "" {
-				fullResponse.WriteString(text)
-				if err := onChunk(text); err != nil {
-					return "", err
+			line = bytes.TrimSpace(line)
+			if !bytes.HasPrefix(line, []byte("data: ")) {
+				continue
+			}
+
+			data := bytes.TrimPrefix(line, []byte("data: "))
+			if len(data) == 0 {
+				continue
+			}
+
+			var chunk struct {
+				Candidates []struct {
+					Content struct {
+						Parts []struct {
+							Text string `json:"text"`
+						} `json:"parts"`
+					} `json:"content"`
+				} `json:"candidates"`
+			}
+
+			if err := json.Unmarshal(data, &chunk); err != nil {
+				continue
+			}
+
+			if len(chunk.Candidates) > 0 {
+				if len(chunk.Candidates[0].Content.Parts) > 0 {
+					text := chunk.Candidates[0].Content.Parts[0].Text
+					if text != "" {
+						fullResponse.WriteString(text)
+						if err := onChunk(text); err != nil {
+							resp.Body.Close()
+							return "", err
+						}
+					}
 				}
 			}
 		}
+		resp.Body.Close()
+
+		if streamSuccess {
+			return fullResponse.String(), nil
+		}
 	}
 
-	return fullResponse.String(), nil
+	return "", lastErr
 }
 
 // GetAvailableModels retorna modelos Gemini disponíveis
@@ -395,6 +531,7 @@ func (c *GeminiClient) GetAvailableModels() ([]ModelInfo, error) {
 			ID:            id,
 			Name:          m.DisplayName,
 			ContextLength: m.InputTokenLimit,
+			// Excluir metadados extras por enquanto
 		})
 	}
 

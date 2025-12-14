@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Config configuração do cliente AI
@@ -64,7 +66,9 @@ func NewClient(apiKey, model, baseURL string) *Client {
 			Model:   model,
 			BaseURL: baseURL,
 		},
-		httpClient: &http.Client{},
+		httpClient: &http.Client{
+			Timeout: 2 * time.Minute, // Timeout para evitar travamento
+		},
 	}
 }
 
@@ -296,6 +300,26 @@ func (c *Client) GetAvailableModels() ([]ModelInfo, error) {
 	return models, nil
 }
 
+// parseRetryAfterHeader tenta extrair o tempo de espera do header (OpenRouter)
+func parseRetryAfterHeader(resp *http.Response) time.Duration {
+	retryAfter := resp.Header.Get("Retry-After")
+	if retryAfter == "" {
+		return 60 * time.Second // Default fallback
+	}
+
+	// Tentar parsear como segundos
+	if seconds, err := strconv.Atoi(retryAfter); err == nil {
+		return time.Duration(seconds) * time.Second
+	}
+
+	// Tentar parsear como data (RFC1123)
+	if date, err := time.Parse(time.RFC1123, retryAfter); err == nil {
+		return time.Until(date)
+	}
+
+	return 60 * time.Second
+}
+
 // ChatStream envia mensagens para a IA e processa a resposta via streaming
 // ctx pode ser usado para cancelar a requisição
 func (c *Client) ChatStream(ctx context.Context, messages []Message, onChunk func(string) error) (string, error) {
@@ -303,102 +327,143 @@ func (c *Client) ChatStream(ctx context.Context, messages []Message, onChunk fun
 		return "", fmt.Errorf("API key não configurada")
 	}
 
-	reqBody := struct {
-		Model     string    `json:"model"`
-		Messages  []Message `json:"messages"`
-		Stream    bool      `json:"stream"`
-		MaxTokens int       `json:"max_tokens,omitempty"`
-	}{
-		Model:     c.config.Model,
-		Messages:  messages,
-		Stream:    true,
-		MaxTokens: 4096, // Limite razoável para evitar erro de crédito insuficiente
-	}
+	maxRetries := 2
+	var lastErr error
 
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", c.config.BaseURL+"/chat/completions", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
-	req.Header.Set("HTTP-Referer", "https://excel-ai-app.local")
-	req.Header.Set("X-Title", "Excel-AI")
-	// Evita reutilização de conexão após streaming (reduz risco de bytes pendentes em keep-alive).
-	req.Close = true
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		errorMsg := string(body)
-
-		// Tratamento amigável para erro de política de dados em modelos gratuitos
-		if strings.Contains(errorMsg, "No endpoints found matching your data policy") {
-			return "", fmt.Errorf("para usar modelos gratuitos, habilite a coleta de dados no OpenRouter: https://openrouter.ai/settings/privacy")
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		reqBody := struct {
+			Model     string    `json:"model"`
+			Messages  []Message `json:"messages"`
+			Stream    bool      `json:"stream"`
+			MaxTokens int       `json:"max_tokens,omitempty"`
+		}{
+			Model:     c.config.Model,
+			Messages:  messages,
+			Stream:    true,
+			MaxTokens: 4096,
 		}
 
-		// Tratamento amigável para erro de autenticação
-		if resp.StatusCode == 401 || strings.Contains(errorMsg, "Unauthorized") || strings.Contains(errorMsg, "cookie auth") {
-			return "", fmt.Errorf("API key inválida ou não autorizada - verifique se a chave está correta para o provedor selecionado")
-		}
-
-		return "", fmt.Errorf("erro na API: %s - %s", resp.Status, errorMsg)
-	}
-
-	reader := bufio.NewReader(resp.Body)
-	var fullResponse strings.Builder
-
-	for {
-		line, err := reader.ReadBytes('\n')
+		jsonData, err := json.Marshal(reqBody)
 		if err != nil {
-			if err == io.EOF {
-				break
-			}
 			return "", err
 		}
 
-		line = bytes.TrimSpace(line)
-		if !bytes.HasPrefix(line, []byte("data: ")) {
+		req, err := http.NewRequestWithContext(ctx, "POST", c.config.BaseURL+"/chat/completions", bytes.NewBuffer(jsonData))
+		if err != nil {
+			return "", err
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+		req.Header.Set("HTTP-Referer", "https://excel-ai-app.local")
+		req.Header.Set("X-Title", "Excel-AI")
+		req.Close = true
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = err
 			continue
 		}
 
-		data := bytes.TrimPrefix(line, []byte("data: "))
-		if string(data) == "[DONE]" {
-			break
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			errorMsg := string(body)
+
+			// Rate Limit / Quota errors
+			if resp.StatusCode == 429 || strings.Contains(errorMsg, "rate limit") || strings.Contains(errorMsg, "quota") {
+				lastErr = fmt.Errorf("limite de quota atingido: %s", errorMsg)
+
+				if attempt < maxRetries {
+					waitDuration := parseRetryAfterHeader(resp)
+
+					// Log para o usuário
+					var msg string
+					switch attempt {
+					case 0:
+						msg = fmt.Sprintf("\n\n⏳ Quota excedida (%d). Aguardando %.0fs antes de nova tentativa...\n\n", resp.StatusCode, waitDuration.Seconds())
+					case 1:
+						msg = "\n\n⚠️ Nova falha de quota. Tentando novamente...\n\n"
+					}
+					onChunk(msg)
+
+					// Sleep respeitando Context
+					select {
+					case <-time.After(waitDuration):
+						continue
+					case <-ctx.Done():
+						return "", ctx.Err()
+					}
+				} else {
+					onChunk("\n\n❌ Quota excedida após múltiplas tentativas.\n\n")
+				}
+
+				return "", lastErr
+			}
+
+			// Tratamento amigável para erro de política de dados em modelos gratuitos
+			if strings.Contains(errorMsg, "No endpoints found matching your data policy") {
+				return "", fmt.Errorf("para usar modelos gratuitos, habilite a coleta de dados no OpenRouter: https://openrouter.ai/settings/privacy")
+			}
+
+			// Tratamento amigável para erro de autenticação
+			if resp.StatusCode == 401 || strings.Contains(errorMsg, "Unauthorized") || strings.Contains(errorMsg, "cookie auth") {
+				return "", fmt.Errorf("API key inválida ou não autorizada - verifique se a chave está correta para o provedor selecionado")
+			}
+
+			return "", fmt.Errorf("erro na API: %s - %s", resp.Status, errorMsg)
 		}
 
-		var chunk struct {
-			Choices []struct {
-				Delta struct {
-					Content string `json:"content"`
-				} `json:"delta"`
-			} `json:"choices"`
-		}
+		reader := bufio.NewReader(resp.Body)
+		var fullResponse strings.Builder
 
-		if err := json.Unmarshal(data, &chunk); err != nil {
-			continue
-		}
+		for {
+			line, err := reader.ReadBytes('\n')
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				resp.Body.Close()
+				return "", err
+			}
 
-		if len(chunk.Choices) > 0 {
-			content := chunk.Choices[0].Delta.Content
-			if content != "" {
-				fullResponse.WriteString(content)
-				if err := onChunk(content); err != nil {
-					return "", err
+			line = bytes.TrimSpace(line)
+			if !bytes.HasPrefix(line, []byte("data: ")) {
+				continue
+			}
+
+			data := bytes.TrimPrefix(line, []byte("data: "))
+			if string(data) == "[DONE]" {
+				break
+			}
+
+			var chunk struct {
+				Choices []struct {
+					Delta struct {
+						Content string `json:"content"`
+					} `json:"delta"`
+				} `json:"choices"`
+			}
+
+			if err := json.Unmarshal(data, &chunk); err != nil {
+				continue
+			}
+
+			if len(chunk.Choices) > 0 {
+				content := chunk.Choices[0].Delta.Content
+				if content != "" {
+					fullResponse.WriteString(content)
+					if err := onChunk(content); err != nil {
+						resp.Body.Close()
+						return "", err
+					}
 				}
 			}
 		}
+		resp.Body.Close()
+
+		return fullResponse.String(), nil
 	}
 
-	return fullResponse.String(), nil
+	return "", lastErr
 }

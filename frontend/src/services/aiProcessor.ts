@@ -58,7 +58,12 @@ export async function processAIResponse(
     displayContent = displayContent.replace(queryRegex, '\n*[Consultando Excel...]*\n')
     displayContent = displayContent.replace(actionRegex, '\n*[Executando Ação...]*\n')
 
-    return { displayContent: displayContent.trim(), actionsExecuted: 0 }
+    // Detectar se o agente pausou por limite de passos
+    const agentPaused = displayContent.includes(':::agent-paused:::')
+    console.log('[aiProcessor] agentPaused detected:', agentPaused, 'raw includes:', response.includes(':::agent-paused:::'))
+    displayContent = displayContent.replace(/:::agent-paused:::/g, '')
+
+    return { displayContent: displayContent.trim(), actionsExecuted: 0, agentPaused }
 }
 
 /**

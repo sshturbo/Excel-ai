@@ -40,6 +40,8 @@ interface UseChatReturn {
     handleApplyActions: () => Promise<void>
     handleDiscardActions: () => void
     processMessage: (text: string) => Promise<void>
+    showContinueButton: boolean
+    handleContinue: () => Promise<void>
 }
 
 export function useChat(options: UseChatOptions): UseChatReturn {
@@ -51,6 +53,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const [pendingActions, setPendingActions] = useState<ExcelAction[]>([])
     const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null)
     const [editContent, setEditContent] = useState('')
+    const [showContinueButton, setShowContinueButton] = useState(false)
 
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -62,6 +65,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
 
     const processMessage = useCallback(async (text: string) => {
         setIsLoading(true)
+        setShowContinueButton(false) // Reset on new message
 
         // Add placeholder for assistant message
         setMessages(prev => [...prev, { role: 'assistant', content: '' }])
@@ -69,7 +73,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         try {
             const response = await SendMessage(text)
 
-            const { displayContent, actionsExecuted } = await processAIResponse(response, {
+            // Verificar se o agente pausou
+            const { displayContent, actionsExecuted, agentPaused } = await processAIResponse(response, {
                 askBeforeApply,
                 onWorkbooksUpdate,
                 onPendingAction: (action) => setPendingActions(prev => [...prev, action]),
@@ -84,6 +89,11 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                     })
                 }
             })
+
+            // Mostrar botão de continuar se o agente pausou
+            if (agentPaused) {
+                setShowContinueButton(true)
+            }
 
             // Update final message
             setMessages(prev => {
@@ -219,6 +229,12 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         toast.info('Alterações descartadas')
     }, [])
 
+    const handleContinue = useCallback(async () => {
+        setShowContinueButton(false)
+        setMessages(prev => [...prev, { role: 'user', content: 'continue' }])
+        await processMessage('continue')
+    }, [processMessage])
+
     return {
         messages,
         setMessages,
@@ -242,6 +258,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         handleClearChat,
         handleApplyActions,
         handleDiscardActions,
-        processMessage
+        processMessage,
+        showContinueButton,
+        handleContinue
     }
 }

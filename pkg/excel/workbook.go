@@ -121,6 +121,9 @@ func (c *Client) GetActiveWorkbookAndSheet() (workbook, sheet string, err error)
 			return result{}, err
 		}
 		wbDisp := activeWb.ToIDispatch()
+		if wbDisp == nil {
+			return result{}, fmt.Errorf("nenhuma pasta de trabalho ativa")
+		}
 		defer wbDisp.Release()
 
 		wbName, _ := oleutil.GetProperty(wbDisp, "Name")
@@ -130,6 +133,9 @@ func (c *Client) GetActiveWorkbookAndSheet() (workbook, sheet string, err error)
 			return result{workbook: wbName.ToString()}, err
 		}
 		sheetDisp := activeSheet.ToIDispatch()
+		if sheetDisp == nil {
+			return result{workbook: wbName.ToString()}, fmt.Errorf("nenhuma aba ativa")
+		}
 		defer sheetDisp.Release()
 
 		sheetNameProp, _ := oleutil.GetProperty(sheetDisp, "Name")

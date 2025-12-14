@@ -16,6 +16,7 @@ type Service struct {
 	provider      string // "openrouter", "groq", "google", "custom"
 	storage       *storage.Storage
 	mu            sync.Mutex
+	cancelMu      sync.Mutex // Mutex separado para cancelFunc (evita deadlock)
 	chatHistory   []domain.Message
 	currentConvID string
 	cancelFunc    context.CancelFunc
