@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"context"
 	"excel-ai/internal/dto"
 	"excel-ai/pkg/ai"
 	"excel-ai/pkg/storage"
@@ -16,6 +17,7 @@ type Service struct {
 	mu            sync.Mutex
 	chatHistory   []ai.Message
 	currentConvID string
+	cancelFunc    context.CancelFunc
 }
 
 func NewService(storage *storage.Storage) *Service {
@@ -295,11 +297,18 @@ Use formulas in PT-BR (SOMA, MÉDIA, SE, PROCV). DO NOT generate VBA.`
 		Content: fullContent,
 	})
 
+	// Criar context cancelável
+	ctx, cancel := context.WithCancel(context.Background())
+	s.cancelFunc = cancel
+
 	// Call AI
-	response, err := s.client.ChatStream(s.chatHistory, onChunk)
+	response, err := s.client.ChatStream(ctx, s.chatHistory, onChunk)
+	s.cancelFunc = nil
 	if err != nil {
-		// Remove user message on error
-		s.chatHistory = s.chatHistory[:len(s.chatHistory)-1]
+		// Remove user message on error (exceto se foi cancelado)
+		if ctx.Err() != context.Canceled {
+			s.chatHistory = s.chatHistory[:len(s.chatHistory)-1]
+		}
 		return "", err
 	}
 
@@ -341,11 +350,18 @@ Por favor, envie os comandos corrigidos agora.`, errorMessage)
 		Content: feedbackMsg,
 	})
 
+	// Criar context cancelável
+	ctx, cancel := context.WithCancel(context.Background())
+	s.cancelFunc = cancel
+
 	// Call AI para obter correção
-	response, err := s.client.ChatStream(s.chatHistory, onChunk)
+	response, err := s.client.ChatStream(ctx, s.chatHistory, onChunk)
+	s.cancelFunc = nil
 	if err != nil {
 		// Remove mensagem de erro on failure
-		s.chatHistory = s.chatHistory[:len(s.chatHistory)-1]
+		if ctx.Err() != context.Canceled {
+			s.chatHistory = s.chatHistory[:len(s.chatHistory)-1]
+		}
 		return "", err
 	}
 
@@ -357,6 +373,16 @@ Por favor, envie os comandos corrigidos agora.`, errorMessage)
 	go s.saveCurrentConversation("")
 
 	return response, nil
+}
+
+// CancelChat cancela a requisição de chat em andamento
+func (s *Service) CancelChat() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cancelFunc != nil {
+		s.cancelFunc()
+		s.cancelFunc = nil
+	}
 }
 
 func (s *Service) ClearChat() {

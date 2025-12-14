@@ -14,6 +14,10 @@ export function AutoFitColumns(arg1, arg2) {
   return window['go']['main']['App']['AutoFitColumns'](arg1, arg2);
 }
 
+export function CancelChat() {
+  return window['go']['main']['App']['CancelChat']();
+}
+
 export function ClearChat() {
   return window['go']['main']['App']['ClearChat']();
 }

@@ -395,6 +395,11 @@ func (a *App) ClearChat() {
 	a.chatService.ClearChat()
 }
 
+// CancelChat cancela a requisição de chat em andamento
+func (a *App) CancelChat() {
+	a.chatService.CancelChat()
+}
+
 // SendErrorFeedback envia erro para a IA corrigir
 func (a *App) SendErrorFeedback(errorMessage string) (string, error) {
 	return a.chatService.SendErrorFeedback(errorMessage, func(chunk string) error {

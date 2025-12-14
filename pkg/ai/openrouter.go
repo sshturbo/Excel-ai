@@ -3,6 +3,7 @@ package ai
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -296,7 +297,8 @@ func (c *Client) GetAvailableModels() ([]ModelInfo, error) {
 }
 
 // ChatStream envia mensagens para a IA e processa a resposta via streaming
-func (c *Client) ChatStream(messages []Message, onChunk func(string) error) (string, error) {
+// ctx pode ser usado para cancelar a requisição
+func (c *Client) ChatStream(ctx context.Context, messages []Message, onChunk func(string) error) (string, error) {
 	if c.config.APIKey == "" {
 		return "", fmt.Errorf("API key não configurada")
 	}
@@ -318,7 +320,7 @@ func (c *Client) ChatStream(messages []Message, onChunk func(string) error) (str
 		return "", err
 	}
 
-	req, err := http.NewRequest("POST", c.config.BaseURL+"/chat/completions", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.config.BaseURL+"/chat/completions", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", err
 	}

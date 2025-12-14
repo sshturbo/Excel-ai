@@ -276,18 +276,36 @@ export default function App() {
         },
     }), [])
 
+    // Função para limpar conteúdo técnico da resposta
+    const cleanTechnicalBlocks = (content: string): string => {
+        // Remove blocos :::excel-action (completamente)
+        let cleaned = content.replace(/:::excel-action\s*[\s\S]*?\s*:::/g, '')
+        // Remove blocos :::excel-query (completamente)
+        cleaned = cleaned.replace(/:::excel-query\s*[\s\S]*?\s*:::/g, '')
+        // Remove linhas vazias múltiplas
+        cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
+        return cleaned.trim()
+    }
+
     // Função para renderizar conteúdo com suporte a :::thinking blocks
     const renderMessageContent = (content: string) => {
+        // Primeiro limpa os blocos técnicos
+        const cleanedContent = cleanTechnicalBlocks(content)
+
+        if (!cleanedContent) {
+            return null
+        }
+
         const thinkingRegex = /:::thinking\s*([\s\S]*?)\s*:::/g
         const parts: JSX.Element[] = []
         let lastIndex = 0
         let match
         let key = 0
 
-        while ((match = thinkingRegex.exec(content)) !== null) {
+        while ((match = thinkingRegex.exec(cleanedContent)) !== null) {
             // Adiciona texto antes do bloco thinking
             if (match.index > lastIndex) {
-                const textBefore = content.slice(lastIndex, match.index)
+                const textBefore = cleanedContent.slice(lastIndex, match.index)
                 if (textBefore.trim()) {
                     parts.push(
                         <ReactMarkdown key={key++} remarkPlugins={[remarkGfm]} components={markdownComponents}>
@@ -297,19 +315,21 @@ export default function App() {
                 }
             }
 
-            // Adiciona o bloco thinking
+            // Adiciona o bloco thinking com design melhorado
             const thinkingContent = match[1].trim()
+            const lines = thinkingContent.split('\n').filter(line => line.trim())
+
             parts.push(
-                <div key={key++} className="my-3 p-3 bg-muted/50 border border-primary/20 rounded-lg">
-                    <div className="flex items-center gap-2 text-sm font-medium text-primary mb-2">
-                        <span className="animate-pulse">🤔</span>
-                        <span>Pensando...</span>
+                <div key={key++} className="my-3 overflow-hidden rounded-lg border border-blue-500/20 bg-blue-500/5">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-blue-500/10 border-b border-blue-500/20">
+                        <span className="text-blue-400">💭</span>
+                        <span className="text-xs font-medium text-blue-400">Raciocínio</span>
                     </div>
-                    <div className="pl-4 border-l-2 border-primary/30 space-y-1">
-                        {thinkingContent.split('\n').filter(line => line.trim()).map((line, i) => (
-                            <div key={i} className="text-sm text-muted-foreground flex items-start gap-2">
-                                <span className="text-primary/60">•</span>
-                                <span>{line.trim()}</span>
+                    <div className="p-3 space-y-1.5">
+                        {lines.map((line, i) => (
+                            <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground/80">
+                                <span className="text-blue-400/60 mt-0.5">→</span>
+                                <span>{line.trim().replace(/^\d+\.\s*/, '').replace(/^[-•]\s*/, '')}</span>
                             </div>
                         ))}
                     </div>
@@ -320,8 +340,8 @@ export default function App() {
         }
 
         // Adiciona texto restante após o último bloco thinking
-        if (lastIndex < content.length) {
-            const textAfter = content.slice(lastIndex)
+        if (lastIndex < cleanedContent.length) {
+            const textAfter = cleanedContent.slice(lastIndex)
             if (textAfter.trim()) {
                 parts.push(
                     <ReactMarkdown key={key++} remarkPlugins={[remarkGfm]} components={markdownComponents}>
@@ -331,13 +351,17 @@ export default function App() {
             }
         }
 
-        // Se não houver thinking blocks, renderiza normalmente
+        // Se não houver partes válidas após limpeza
         if (parts.length === 0) {
-            return (
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                    {content}
-                </ReactMarkdown>
-            )
+            // Se houver conteúdo limpo, renderiza
+            if (cleanedContent.trim()) {
+                return (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                        {cleanedContent}
+                    </ReactMarkdown>
+                )
+            }
+            return null
         }
 
         return <>{parts}</>
@@ -462,40 +486,60 @@ export default function App() {
     }
 
     const [streamingContent, setStreamingContent] = useState('')
+    const rawStreamBufferRef = useRef('')
 
     useEffect(() => {
         const cleanup = EventsOn("chat:chunk", (chunk: string) => {
-            setStreamingContent(prev => prev + chunk)
+            rawStreamBufferRef.current += chunk
+
+            // Processar conteúdo imediatamente
+            let cleanContent = rawStreamBufferRef.current
+
+            // Remove blocos excel-action completos
+            cleanContent = cleanContent.replace(/:::excel-action\s*[\s\S]*?\s*:::/g, '')
+            // Remove blocos excel-query completos
+            cleanContent = cleanContent.replace(/:::excel-query\s*[\s\S]*?\s*:::/g, '')
+            // Remove blocos técnicos incompletos no final
+            cleanContent = cleanContent.replace(/:::(?:excel-action|excel-query)[\s\S]*$/, '')
+            cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n').trim()
+
+            // Se está vazio mas há atividade, mostrar status
+            const hasActions = /:::excel-action/.test(rawStreamBufferRef.current)
+            const hasQueries = /:::excel-query/.test(rawStreamBufferRef.current)
+            if (!cleanContent && (hasActions || hasQueries)) {
+                cleanContent = hasQueries ? '🔍 Consultando...' : '⏳ Executando...'
+            }
+
+            setStreamingContent(cleanContent)
         })
         return () => cleanup()
     }, [])
 
+    // Resetar buffer quando não está carregando
     useEffect(() => {
-        if (streamingContent && isLoading) {
-            setMessages(prev => {
-                const newMsgs = [...prev]
-                const lastIndex = newMsgs.length - 1
-                if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
-                    // Clean streaming content
-                    let cleanContent = streamingContent.replace(/:::excel-action\s*([\s\S]*?)\s*:::/g, '')
-                    // Also hide incomplete action block at the end to avoid flickering
-                    cleanContent = cleanContent.replace(/:::excel-action[\s\S]*$/, '')
-                    cleanContent = cleanContent.trim()
-
-                    // Se o conteúdo limpo está vazio mas há blocos de ação, mostrar status
-                    const hasActions = /:::excel-action/.test(streamingContent)
-                    if (!cleanContent && hasActions) {
-                        cleanContent = '⏳ Executando ações no Excel...'
-                    }
-
-                    // Only update if content is different to avoid loops
-                    if (newMsgs[lastIndex].content !== cleanContent) {
-                        newMsgs[lastIndex] = { ...newMsgs[lastIndex], content: cleanContent }
-                    }
-                }
-                return newMsgs
-            })
+        if (!isLoading) {
+            rawStreamBufferRef.current = ''
         }
+    }, [isLoading])
+
+    // Atualizar mensagem apenas quando streamingContent muda significativamente
+    const lastContentRef = useRef('')
+    useEffect(() => {
+        if (!isLoading || !streamingContent) return
+        if (streamingContent === lastContentRef.current) return
+
+        lastContentRef.current = streamingContent
+        setMessages(prev => {
+            const newMsgs = [...prev]
+            const lastIndex = newMsgs.length - 1
+            if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
+                if (newMsgs[lastIndex].content !== streamingContent) {
+                    newMsgs[lastIndex] = { ...newMsgs[lastIndex], content: streamingContent }
+                    return newMsgs
+                }
+            }
+            return prev // Não criar novo array se não mudou
+        })
     }, [streamingContent, isLoading])
 
     // Função auxiliar para executar ações do Excel
@@ -1167,19 +1211,55 @@ export default function App() {
         try {
             const messages = await LoadConversation(convId)
             if (messages && messages.length > 0) {
-                const loadedMessages: Message[] = messages.map((m) => {
-                    let content = m.content
-                    // Clean Excel action blocks from assistant messages
-                    if (m.role === 'assistant') {
-                        content = content.replace(/:::excel-action\s*([\s\S]*?)\s*:::/g, '').trim()
+                const loadedMessages: Message[] = []
+
+                for (const m of messages) {
+                    // Ignorar mensagens do sistema (system prompt)
+                    if (m.role === 'system') continue
+
+                    // Ignorar mensagens internas do usuário (resultados de queries, feedback)
+                    if (m.role === 'user') {
+                        // Pular mensagens que são resultados de queries
+                        if (m.content.startsWith('Resultados das queries:')) continue
+                        if (m.content.startsWith('[ERRO na ação')) continue
+                        if (m.content.startsWith('A ação anterior falhou')) continue
+                        if (m.content.includes('Contexto do Excel:') && m.content.includes('Pergunta do usuário:')) {
+                            // Extrair apenas a pergunta real do usuário
+                            const match = m.content.match(/Pergunta do usuário:\s*([\s\S]+)$/)
+                            if (match) {
+                                loadedMessages.push({
+                                    role: 'user',
+                                    content: match[1].trim()
+                                })
+                            }
+                            continue
+                        }
                     }
-                    return {
+
+                    // Limpar conteúdo de mensagens do assistente
+                    let content = m.content
+                    if (m.role === 'assistant') {
+                        // Remove blocos técnicos
+                        content = content.replace(/:::excel-action\s*[\s\S]*?\s*:::/g, '')
+                        content = content.replace(/:::excel-query\s*[\s\S]*?\s*:::/g, '')
+                        content = content.replace(/\n{3,}/g, '\n\n').trim()
+
+                        // Se ficou vazio após limpeza, pular
+                        if (!content) continue
+                    }
+
+                    loadedMessages.push({
                         role: m.role as 'user' | 'assistant',
                         content: content
-                    }
-                })
-                setMessages(loadedMessages)
-                toast.success('Conversa carregada!')
+                    })
+                }
+
+                if (loadedMessages.length > 0) {
+                    setMessages(loadedMessages)
+                    toast.success('Conversa carregada!')
+                } else {
+                    toast.info('Conversa vazia')
+                }
             } else {
                 toast.info('Conversa vazia')
             }
