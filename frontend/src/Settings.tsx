@@ -506,36 +506,6 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
                             </CardContent>
                         </Card>
 
-                        <Card className="bg-card/60">
-                            <CardHeader>
-                                <div className="w-12 h-12 bg-muted rounded-xl flex items-center justify-center text-2xl mb-2">
-                                    🎚️
-                                </div>
-                                <CardTitle>Nível de Detalhe</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="grid grid-cols-3 gap-3">
-                                    {[
-                                        { value: 'minimal', icon: '📝', title: 'Mínimo', desc: 'Só cabeçalhos' },
-                                        { value: 'normal', icon: '📋', title: 'Normal', desc: 'Recomendado' },
-                                        { value: 'detailed', icon: '📚', title: 'Detalhado', desc: 'Tudo' },
-                                    ].map((opt) => (
-                                        <button
-                                            key={opt.value}
-                                            onClick={() => setDetailLevel(opt.value)}
-                                            className={`flex flex-col items-center gap-2 p-4 rounded-lg transition-all ${detailLevel === opt.value
-                                                ? 'bg-primary/10 border-2 border-primary/50'
-                                                : 'bg-background/40 border border-border hover:bg-muted/40'
-                                                }`}
-                                        >
-                                            <span className="text-2xl">{opt.icon}</span>
-                                            <span className="font-medium text-sm">{opt.title}</span>
-                                            <span className="text-xs text-muted-foreground">{opt.desc}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </CardContent>
-                        </Card>
                     </TabsContent>
 
                     {/* Custom Tab */}

@@ -77,6 +77,12 @@ func (s *Service) RefreshWorkbooks() (*dto.ExcelStatus, error) {
 }
 
 func (s *Service) SetContext(workbook, sheet string) (string, error) {
+	// Usar valores padrão
+	return s.SetContextWithConfig(workbook, sheet, 50, true)
+}
+
+// SetContextWithConfig define o contexto com configurações personalizadas
+func (s *Service) SetContextWithConfig(workbook, sheet string, maxRowsContext int, includeHeaders bool) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -89,10 +95,13 @@ func (s *Service) SetContext(workbook, sheet string) (string, error) {
 	var contextStr string
 	totalRows := 0
 
-	// Limitar linhas por aba quando há múltiplas abas
-	maxRowsPerSheet := 30
-	if len(sheets) > 1 {
-		maxRowsPerSheet = 20 // Reduzir quando há múltiplas abas
+	// Usar configuração do usuário, com limite por aba quando há múltiplas
+	maxRowsPerSheet := maxRowsContext
+	if len(sheets) > 1 && maxRowsContext > 20 {
+		maxRowsPerSheet = maxRowsContext / len(sheets) // Dividir entre abas
+		if maxRowsPerSheet < 10 {
+			maxRowsPerSheet = 10 // Mínimo de 10 linhas por aba
+		}
 	}
 
 	for i, sheetName := range sheets {
@@ -117,18 +126,20 @@ func (s *Service) SetContext(workbook, sheet string) (string, error) {
 		}
 		contextStr += fmt.Sprintf("=== ABA: %s ===\n\n", sheetName)
 
-		// Cabeçalhos
-		for j, h := range data.Headers {
-			if j > 0 {
-				contextStr += " | "
+		// Cabeçalhos (opcional)
+		if includeHeaders && len(data.Headers) > 0 {
+			for j, h := range data.Headers {
+				if j > 0 {
+					contextStr += " | "
+				}
+				// Truncar cabeçalhos muito longos
+				if len(h) > 50 {
+					h = h[:47] + "..."
+				}
+				contextStr += h
 			}
-			// Truncar cabeçalhos muito longos
-			if len(h) > 50 {
-				h = h[:47] + "..."
-			}
-			contextStr += h
+			contextStr += "\n"
 		}
-		contextStr += "\n"
 
 		// Linhas
 		for _, row := range data.Rows {

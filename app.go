@@ -79,7 +79,20 @@ func (a *App) GetPreviewData(workbookName, sheetName string) (*dto.PreviewData, 
 
 // SetExcelContext define o contexto do Excel para uso no chat
 func (a *App) SetExcelContext(workbookName, sheetName string) (string, error) {
-	return a.excelService.SetContext(workbookName, sheetName)
+	// Carregar configurações do storage
+	cfg, err := a.storage.LoadConfig()
+	if err != nil {
+		// Usar valores padrão se não conseguir carregar
+		return a.excelService.SetContextWithConfig(workbookName, sheetName, 50, true)
+	}
+
+	// Usar configurações do usuário
+	maxRows := cfg.MaxRowsContext
+	if maxRows <= 0 {
+		maxRows = 50 // Padrão
+	}
+
+	return a.excelService.SetContextWithConfig(workbookName, sheetName, maxRows, cfg.IncludeHeaders)
 }
 
 // GetActiveSelection obtém a seleção atual do Excel
