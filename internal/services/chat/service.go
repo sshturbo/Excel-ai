@@ -217,6 +217,13 @@ QUERIES (check state):
 {"type": "list-pivot-tables", "sheet": "SheetName"}
 {"type": "get-headers", "sheet": "SheetName", "range": "A:F"}
 {"type": "get-used-range", "sheet": "SheetName"}
+{"type": "get-row-count", "sheet": "SheetName"}
+{"type": "get-column-count", "sheet": "SheetName"}
+{"type": "get-cell-formula", "sheet": "SheetName", "cell": "A1"}
+{"type": "has-filter", "sheet": "SheetName"}
+{"type": "get-active-cell"}
+{"type": "get-range-values", "sheet": "SheetName", "range": "A1:C10"}
+{"type": "list-charts", "sheet": "SheetName"}
 :::
 
 ACTIONS (modify Excel):
@@ -244,6 +251,8 @@ ACTIONS (modify Excel):
 {"op": "copy-range", "source": "A1:B10", "dest": "D1"}
 {"op": "list-charts"}
 {"op": "delete-chart", "name": "Chart1"}
+{"op": "create-table", "range": "A1:D10", "name": "MinhaTabela", "style": "TableStyleMedium2"}
+{"op": "delete-table", "name": "MinhaTabela"}
 :::
 
 AGENT RULES:

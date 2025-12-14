@@ -536,6 +536,81 @@ func (s *Service) GetUsedRange(sheetName string) (string, error) {
 	return s.client.GetUsedRange(s.currentWorkbook, sheetName)
 }
 
+// GetRowCount retorna número de linhas
+func (s *Service) GetRowCount(sheetName string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return 0, fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return 0, fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.GetRowCount(s.currentWorkbook, sheetName)
+}
+
+// GetColumnCount retorna número de colunas
+func (s *Service) GetColumnCount(sheetName string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return 0, fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return 0, fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.GetColumnCount(s.currentWorkbook, sheetName)
+}
+
+// GetCellFormula retorna fórmula de célula
+func (s *Service) GetCellFormula(sheetName, cellAddress string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return "", fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return "", fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.GetCellFormula(s.currentWorkbook, sheetName, cellAddress)
+}
+
+// HasFilter verifica se tem filtro ativo
+func (s *Service) HasFilter(sheetName string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return false, fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return false, fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.HasFilter(s.currentWorkbook, sheetName)
+}
+
+// GetActiveCell retorna célula ativa
+func (s *Service) GetActiveCell() (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return "", fmt.Errorf("excel não conectado")
+	}
+	return s.client.GetActiveCell()
+}
+
+// GetRangeValues retorna valores de um range
+func (s *Service) GetRangeValues(sheetName, rangeAddr string) ([][]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return nil, fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return nil, fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.GetRangeValues(s.currentWorkbook, sheetName, rangeAddr)
+}
+
 // FormatRange aplica formatação a um range
 func (s *Service) FormatRange(sheet, rangeAddr string, bold, italic bool, fontSize int, fontColor, bgColor string) error {
 	s.mu.Lock()
@@ -775,4 +850,43 @@ func (s *Service) DeleteChart(sheet, chartName string) error {
 		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
 	}
 	return s.client.DeleteChart(s.currentWorkbook, sheet, chartName)
+}
+
+// CreateTable cria tabela formatada
+func (s *Service) CreateTable(sheet, rangeAddr, tableName, style string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.CreateTable(s.currentWorkbook, sheet, rangeAddr, tableName, style)
+}
+
+// ListTables lista tabelas
+func (s *Service) ListTables(sheet string) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return nil, fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return nil, fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.ListTables(s.currentWorkbook, sheet)
+}
+
+// DeleteTable remove tabela
+func (s *Service) DeleteTable(sheet, tableName string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.DeleteTable(s.currentWorkbook, sheet, tableName)
 }

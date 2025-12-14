@@ -64,7 +64,10 @@ import {
     SortRange,
     CopyRange,
     ListCharts,
-    DeleteChartByName
+    DeleteChartByName,
+    CreateTable,
+    ListTables,
+    DeleteTable
 } from "../wailsjs/go/main/App"
 import { EventsOn } from "../wailsjs/runtime/runtime"
 
@@ -624,6 +627,12 @@ export default function App() {
             } else if (action.op === 'delete-chart') {
                 await DeleteChartByName(action.sheet || '', action.name)
                 toast.success(`Gráfico "${action.name}" excluído!`)
+            } else if (action.op === 'create-table') {
+                await CreateTable(action.sheet || '', action.range, action.name || '', action.style || '')
+                toast.success(`Tabela "${action.name || 'Tabela'}" criada!`)
+            } else if (action.op === 'delete-table') {
+                await DeleteTable(action.sheet || '', action.name)
+                toast.success(`Tabela "${action.name}" removida!`)
             }
             return { success: true }
         } catch (e: any) {

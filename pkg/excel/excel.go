@@ -1136,6 +1136,161 @@ func (c *Client) ListPivotTables(workbookName, sheetName string) ([]string, erro
 	})
 }
 
+// GetRowCount retorna o número de linhas com dados
+func (c *Client) GetRowCount(workbookName, sheetName string) (int, error) {
+	return runOnCOMThreadWithResult(c, func() (int, error) {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return 0, err
+		}
+		defer sheet.Release()
+
+		usedRange, err := oleutil.GetProperty(sheet, "UsedRange")
+		if err != nil {
+			return 0, err
+		}
+		usedRangeDisp := usedRange.ToIDispatch()
+		defer usedRangeDisp.Release()
+
+		rows, _ := oleutil.GetProperty(usedRangeDisp, "Rows")
+		rowsDisp := rows.ToIDispatch()
+		defer rowsDisp.Release()
+
+		countVar, _ := oleutil.GetProperty(rowsDisp, "Count")
+		return int(countVar.Val), nil
+	})
+}
+
+// GetColumnCount retorna o número de colunas com dados
+func (c *Client) GetColumnCount(workbookName, sheetName string) (int, error) {
+	return runOnCOMThreadWithResult(c, func() (int, error) {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return 0, err
+		}
+		defer sheet.Release()
+
+		usedRange, err := oleutil.GetProperty(sheet, "UsedRange")
+		if err != nil {
+			return 0, err
+		}
+		usedRangeDisp := usedRange.ToIDispatch()
+		defer usedRangeDisp.Release()
+
+		cols, _ := oleutil.GetProperty(usedRangeDisp, "Columns")
+		colsDisp := cols.ToIDispatch()
+		defer colsDisp.Release()
+
+		countVar, _ := oleutil.GetProperty(colsDisp, "Count")
+		return int(countVar.Val), nil
+	})
+}
+
+// GetCellFormula retorna a fórmula de uma célula
+func (c *Client) GetCellFormula(workbookName, sheetName, cellAddress string) (string, error) {
+	return runOnCOMThreadWithResult(c, func() (string, error) {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return "", err
+		}
+		defer sheet.Release()
+
+		rangeObj, err := oleutil.GetProperty(sheet, "Range", cellAddress)
+		if err != nil {
+			return "", fmt.Errorf("célula '%s' inválida: %w", cellAddress, err)
+		}
+		rangeDisp := rangeObj.ToIDispatch()
+		defer rangeDisp.Release()
+
+		formula, _ := oleutil.GetProperty(rangeDisp, "Formula")
+		return fmt.Sprintf("%v", formula.Value()), nil
+	})
+}
+
+// HasFilter verifica se a aba tem filtro ativo
+func (c *Client) HasFilter(workbookName, sheetName string) (bool, error) {
+	return runOnCOMThreadWithResult(c, func() (bool, error) {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return false, err
+		}
+		defer sheet.Release()
+
+		autoFilterMode, _ := oleutil.GetProperty(sheet, "AutoFilterMode")
+		return autoFilterMode.Val != 0, nil
+	})
+}
+
+// GetActiveCell retorna o endereço da célula ativa
+func (c *Client) GetActiveCell() (string, error) {
+	return runOnCOMThreadWithResult(c, func() (string, error) {
+		activeCell, err := oleutil.GetProperty(c.excelApp, "ActiveCell")
+		if err != nil {
+			return "", err
+		}
+		activeCellDisp := activeCell.ToIDispatch()
+		defer activeCellDisp.Release()
+
+		addrVar, _ := oleutil.GetProperty(activeCellDisp, "Address")
+		return addrVar.ToString(), nil
+	})
+}
+
+// GetRangeValues retorna os valores de um range como array 2D
+func (c *Client) GetRangeValues(workbookName, sheetName, rangeAddr string) ([][]string, error) {
+	return runOnCOMThreadWithResult(c, func() ([][]string, error) {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return nil, err
+		}
+		defer sheet.Release()
+
+		rangeObj, err := oleutil.GetProperty(sheet, "Range", rangeAddr)
+		if err != nil {
+			return nil, fmt.Errorf("range '%s' inválido: %w", rangeAddr, err)
+		}
+		rangeDisp := rangeObj.ToIDispatch()
+		defer rangeDisp.Release()
+
+		// Obter número de linhas e colunas
+		rowsObj, _ := oleutil.GetProperty(rangeDisp, "Rows")
+		rowsDisp := rowsObj.ToIDispatch()
+		rowCountVar, _ := oleutil.GetProperty(rowsDisp, "Count")
+		rowCount := int(rowCountVar.Val)
+		rowsDisp.Release()
+
+		colsObj, _ := oleutil.GetProperty(rangeDisp, "Columns")
+		colsDisp := colsObj.ToIDispatch()
+		colCountVar, _ := oleutil.GetProperty(colsDisp, "Count")
+		colCount := int(colCountVar.Val)
+		colsDisp.Release()
+
+		// Limitar para não sobrecarregar
+		if rowCount > 100 {
+			rowCount = 100
+		}
+		if colCount > 26 {
+			colCount = 26
+		}
+
+		result := make([][]string, rowCount)
+		for i := 0; i < rowCount; i++ {
+			result[i] = make([]string, colCount)
+			for j := 0; j < colCount; j++ {
+				cell, _ := oleutil.GetProperty(rangeDisp, "Cells", i+1, j+1)
+				cellDisp := cell.ToIDispatch()
+				valVar, _ := oleutil.GetProperty(cellDisp, "Value")
+				if valVar.Val != 0 {
+					result[i][j] = fmt.Sprintf("%v", valVar.Value())
+				}
+				cellDisp.Release()
+			}
+		}
+
+		return result, nil
+	})
+}
+
 // GetHeaders retorna os cabeçalhos (primeira linha) de um range
 func (c *Client) GetHeaders(workbookName, sheetName, rangeAddr string) ([]string, error) {
 	return runOnCOMThreadWithResult(c, func() ([]string, error) {
@@ -1761,6 +1916,119 @@ func (c *Client) DeleteChart(workbookName, sheetName, chartName string) error {
 		defer chartDisp.Release()
 
 		_, err = oleutil.CallMethod(chartDisp, "Delete")
+		return err
+	})
+}
+
+// CreateTable cria uma tabela formatada (ListObject) a partir de um range
+// style: nome do estilo como "TableStyleLight1", "TableStyleMedium2", etc
+func (c *Client) CreateTable(workbookName, sheetName, rangeAddr, tableName, style string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		rangeObj, err := oleutil.GetProperty(sheet, "Range", rangeAddr)
+		if err != nil {
+			return fmt.Errorf("range '%s' inválido: %w", rangeAddr, err)
+		}
+		rangeDisp := rangeObj.ToIDispatch()
+		defer rangeDisp.Release()
+
+		// Obter coleção ListObjects
+		listObjects, err := oleutil.GetProperty(sheet, "ListObjects")
+		if err != nil {
+			return fmt.Errorf("erro ao acessar ListObjects: %w", err)
+		}
+		listObjectsDisp := listObjects.ToIDispatch()
+		defer listObjectsDisp.Release()
+
+		// Criar tabela: ListObjects.Add(xlSrcRange=1, Source, , XlListObjectHasHeaders.xlYes=1)
+		table, err := oleutil.CallMethod(listObjectsDisp, "Add", 1, rangeDisp, nil, 1)
+		if err != nil {
+			return fmt.Errorf("erro ao criar tabela: %w", err)
+		}
+		tableDisp := table.ToIDispatch()
+		defer tableDisp.Release()
+
+		// Definir nome da tabela
+		if tableName != "" {
+			oleutil.PutProperty(tableDisp, "Name", tableName)
+		}
+
+		// Aplicar estilo
+		if style != "" {
+			oleutil.PutProperty(tableDisp, "TableStyle", style)
+		} else {
+			oleutil.PutProperty(tableDisp, "TableStyle", "TableStyleMedium2")
+		}
+
+		return nil
+	})
+}
+
+// ListTables lista as tabelas (ListObjects) em uma aba
+func (c *Client) ListTables(workbookName, sheetName string) ([]string, error) {
+	return runOnCOMThreadWithResult(c, func() ([]string, error) {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return nil, err
+		}
+		defer sheet.Release()
+
+		listObjects, err := oleutil.GetProperty(sheet, "ListObjects")
+		if err != nil {
+			return []string{}, nil
+		}
+		listObjectsDisp := listObjects.ToIDispatch()
+		defer listObjectsDisp.Release()
+
+		countVar, _ := oleutil.GetProperty(listObjectsDisp, "Count")
+		count := int(countVar.Val)
+
+		tables := make([]string, 0, count)
+		for i := 1; i <= count; i++ {
+			item, err := oleutil.GetProperty(listObjectsDisp, "Item", i)
+			if err != nil {
+				continue
+			}
+			itemDisp := item.ToIDispatch()
+			nameVar, _ := oleutil.GetProperty(itemDisp, "Name")
+			tables = append(tables, nameVar.ToString())
+			itemDisp.Release()
+		}
+
+		return tables, nil
+	})
+}
+
+// DeleteTable exclui uma tabela (converte para range)
+func (c *Client) DeleteTable(workbookName, sheetName, tableName string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		listObjects, err := oleutil.GetProperty(sheet, "ListObjects")
+		if err != nil {
+			return fmt.Errorf("erro ao acessar ListObjects: %w", err)
+		}
+		listObjectsDisp := listObjects.ToIDispatch()
+		defer listObjectsDisp.Release()
+
+		table, err := oleutil.GetProperty(listObjectsDisp, "Item", tableName)
+		if err != nil {
+			return fmt.Errorf("tabela '%s' não encontrada: %w", tableName, err)
+		}
+		tableDisp := table.ToIDispatch()
+		defer tableDisp.Release()
+
+		// Unlist converte tabela para range normal
+		_, err = oleutil.CallMethod(tableDisp, "Unlist")
 		return err
 	})
 }

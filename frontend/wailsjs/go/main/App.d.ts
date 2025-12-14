@@ -31,6 +31,8 @@ export function CreateNewWorkbook():Promise<string>;
 
 export function CreatePivotTable(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<void>;
 
+export function CreateTable(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
 export function DeleteChartByName(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteConversation(arg1:string):Promise<void>;
@@ -40,6 +42,8 @@ export function DeleteLastMessages(arg1:number):Promise<void>;
 export function DeleteRows(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function DeleteSheet(arg1:string):Promise<void>;
+
+export function DeleteTable(arg1:string,arg2:string):Promise<void>;
 
 export function EndUndoBatch():Promise<void>;
 
@@ -68,6 +72,8 @@ export function ListConversations():Promise<Array<dto.ConversationInfo>>;
 export function ListPivotTables(arg1:string):Promise<Array<string>>;
 
 export function ListSheets():Promise<Array<string>>;
+
+export function ListTables(arg1:string):Promise<Array<string>>;
 
 export function LoadConversation(arg1:string):Promise<Array<dto.ChatMessage>>;
 

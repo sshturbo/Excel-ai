@@ -54,6 +54,10 @@ export function CreatePivotTable(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['CreatePivotTable'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function CreateTable(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['CreateTable'](arg1, arg2, arg3, arg4);
+}
+
 export function DeleteChartByName(arg1, arg2) {
   return window['go']['main']['App']['DeleteChartByName'](arg1, arg2);
 }
@@ -72,6 +76,10 @@ export function DeleteRows(arg1, arg2, arg3) {
 
 export function DeleteSheet(arg1) {
   return window['go']['main']['App']['DeleteSheet'](arg1);
+}
+
+export function DeleteTable(arg1, arg2) {
+  return window['go']['main']['App']['DeleteTable'](arg1, arg2);
 }
 
 export function EndUndoBatch() {
@@ -128,6 +136,10 @@ export function ListPivotTables(arg1) {
 
 export function ListSheets() {
   return window['go']['main']['App']['ListSheets']();
+}
+
+export function ListTables(arg1) {
+  return window['go']['main']['App']['ListTables'](arg1);
 }
 
 export function LoadConversation(arg1) {

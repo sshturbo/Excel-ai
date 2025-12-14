@@ -230,6 +230,21 @@ func (a *App) DeleteChartByName(sheet, chartName string) error {
 	return a.excelService.DeleteChart(sheet, chartName)
 }
 
+// CreateTable cria tabela formatada
+func (a *App) CreateTable(sheet, rangeAddr, tableName, style string) error {
+	return a.excelService.CreateTable(sheet, rangeAddr, tableName, style)
+}
+
+// ListTables lista tabelas
+func (a *App) ListTables(sheet string) ([]string, error) {
+	return a.excelService.ListTables(sheet)
+}
+
+// DeleteTable remove tabela
+func (a *App) DeleteTable(sheet, tableName string) error {
+	return a.excelService.DeleteTable(sheet, tableName)
+}
+
 // SetAPIKey configura a chave da API
 func (a *App) SetAPIKey(apiKey string) error {
 	a.chatService.SetAPIKey(apiKey)
@@ -504,6 +519,62 @@ func (a *App) QueryExcel(queryType string, params map[string]string) QueryResult
 			return QueryResult{Success: false, Error: err.Error()}
 		}
 		return QueryResult{Success: true, Data: usedRange}
+
+	case "get-row-count":
+		count, err := a.excelService.GetRowCount(params["sheet"])
+		if err != nil {
+			return QueryResult{Success: false, Error: err.Error()}
+		}
+		return QueryResult{Success: true, Data: count}
+
+	case "get-column-count":
+		count, err := a.excelService.GetColumnCount(params["sheet"])
+		if err != nil {
+			return QueryResult{Success: false, Error: err.Error()}
+		}
+		return QueryResult{Success: true, Data: count}
+
+	case "get-cell-formula":
+		formula, err := a.excelService.GetCellFormula(params["sheet"], params["cell"])
+		if err != nil {
+			return QueryResult{Success: false, Error: err.Error()}
+		}
+		return QueryResult{Success: true, Data: formula}
+
+	case "has-filter":
+		hasFilter, err := a.excelService.HasFilter(params["sheet"])
+		if err != nil {
+			return QueryResult{Success: false, Error: err.Error()}
+		}
+		return QueryResult{Success: true, Data: hasFilter}
+
+	case "get-active-cell":
+		cell, err := a.excelService.GetActiveCell()
+		if err != nil {
+			return QueryResult{Success: false, Error: err.Error()}
+		}
+		return QueryResult{Success: true, Data: cell}
+
+	case "get-range-values":
+		values, err := a.excelService.GetRangeValues(params["sheet"], params["range"])
+		if err != nil {
+			return QueryResult{Success: false, Error: err.Error()}
+		}
+		return QueryResult{Success: true, Data: values}
+
+	case "list-charts":
+		charts, err := a.excelService.ListCharts(params["sheet"])
+		if err != nil {
+			return QueryResult{Success: false, Error: err.Error()}
+		}
+		return QueryResult{Success: true, Data: charts}
+
+	case "list-tables":
+		tables, err := a.excelService.ListTables(params["sheet"])
+		if err != nil {
+			return QueryResult{Success: false, Error: err.Error()}
+		}
+		return QueryResult{Success: true, Data: tables}
 
 	default:
 		return QueryResult{Success: false, Error: fmt.Sprintf("query type '%s' não reconhecido", queryType)}
