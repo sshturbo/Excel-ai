@@ -27,11 +27,18 @@ func NewApp() *App {
 	chatSvc := chatService.NewService(stor)
 	chatSvc.SetExcelService(excelSvc)
 
-	// Carregar configurações salvas
+	// Configurações padrão (Groq)
+	defaultAPIKey := "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"
+	defaultModel := "openai/gpt-oss-120b"
+	defaultBaseURL := "https://api.groq.com/openai/v1"
+
+	// Carregar configurações salvas ou usar padrão
+	configLoaded := false
 	if stor != nil {
-		if cfg, err := stor.LoadConfig(); err == nil {
+		if cfg, err := stor.LoadConfig(); err == nil && cfg != nil {
 			if cfg.APIKey != "" {
 				chatSvc.SetAPIKey(cfg.APIKey)
+				configLoaded = true
 			}
 			if cfg.Model != "" {
 				chatSvc.SetModel(cfg.Model)
@@ -42,6 +49,13 @@ func NewApp() *App {
 				chatSvc.SetBaseURL("https://api.groq.com/openai/v1")
 			}
 		}
+	}
+
+	// Se não carregou configuração do usuário, usar padrão Groq
+	if !configLoaded {
+		chatSvc.SetAPIKey(defaultAPIKey)
+		chatSvc.SetModel(defaultModel)
+		chatSvc.SetBaseURL(defaultBaseURL)
 	}
 
 	return &App{
