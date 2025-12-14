@@ -134,10 +134,45 @@ func getFloat(v interface{}) float64 {
 	return 0.0
 }
 
+// Helper para juntar resultados de macro
+func joinResults(results []string) string {
+	result := ""
+	for _, r := range results {
+		result += "  - " + r + "\n"
+	}
+	return result
+}
+
 func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 	op, _ := params["op"].(string)
 
 	switch op {
+	case "macro":
+		// MACRO: Executa múltiplas ações em sequência
+		// {"op": "macro", "actions": [{...}, {...}, {...}]}
+		actions, ok := params["actions"].([]interface{})
+		if !ok {
+			return "", fmt.Errorf("macro requires 'actions' array")
+		}
+
+		var results []string
+		for i, action := range actions {
+			actionMap, ok := action.(map[string]interface{})
+			if !ok {
+				results = append(results, fmt.Sprintf("Action %d: SKIP (invalid format)", i+1))
+				continue
+			}
+
+			result, err := s.executeAction(actionMap)
+			if err != nil {
+				results = append(results, fmt.Sprintf("Action %d (%s): ERROR - %v", i+1, actionMap["op"], err))
+			} else {
+				results = append(results, fmt.Sprintf("Action %d (%s): %s", i+1, actionMap["op"], result))
+			}
+		}
+
+		return fmt.Sprintf("MACRO OK (%d actions):\n%s", len(actions), joinResults(results)), nil
+
 	case "write":
 		// Suporta dois formatos:
 		// 1. Célula única: {"op": "write", "cell": "A1", "value": "xyz"}
