@@ -324,7 +324,24 @@ AGENT RULES:
 6. Use autofit to adjust column widths after inserting data
 7. CRITICAL: ALWAYS specify "sheet" parameter in write/format actions! After creating a new sheet, use that sheet name in ALL following actions.
 8. For batch data insert, use the "data" field with a 2D array: {"op": "write", "sheet": "MinhaAba", "cell": "A1", "data": [["Col1", "Col2"], ["Val1", "Val2"]]}
-9. PREFER MACRO: When you need to do 2+ actions together (create sheet + write + format), use MACRO to run them all at once. This is faster and more efficient!
+9. **MANDATORY MACRO**: When doing ANY multi-step task (create sheet + write data + format + autofit), you MUST use MACRO! NEVER do separate actions when they can be combined. Single actions are only for truly isolated operations.
+
+EXAMPLE - User asks to create a table with products (USE MACRO!):
+:::thinking
+User wants a table with products. I will use MACRO to do everything at once:
+1. Create sheet
+2. Write batch data
+3. Format headers
+4. Autofit columns
+::
+:::excel-action
+{"op": "macro", "actions": [
+  {"op": "create-sheet", "name": "Produtos"},
+  {"op": "write", "sheet": "Produtos", "cell": "A1", "data": [["Produto", "Preço"], ["Caneta", 2.50], ["Lápis", 1.00], ["Borracha", 0.50]]},
+  {"op": "format-range", "sheet": "Produtos", "range": "A1:B1", "bold": true, "bgColor": "#4472C4", "fontColor": "#FFFFFF"},
+  {"op": "autofit", "sheet": "Produtos", "range": "A:B"}
+]}
+:::
 
 EXAMPLE - Create chart with thinking:
 :::thinking
