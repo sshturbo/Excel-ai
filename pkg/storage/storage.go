@@ -305,10 +305,12 @@ func (s *Storage) LoadConfig() (*Config, error) {
 	err := s.db.QueryRow("SELECT value FROM settings WHERE key = ?", "main_config").Scan(&value)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			// Retornar configuração padrão Groq
 			return &Config{
-				Provider:        "openrouter",
-				BaseURL:         "https://openrouter.ai/api/v1",
-				Model:           "openai/gpt-4o-mini",
+				Provider:        "groq",
+				BaseURL:         "https://api.groq.com/openai/v1",
+				APIKey:          "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",
+				Model:           "openai/gpt-oss-120b",
 				ProviderConfigs: make(map[string]ProviderConfig),
 				MaxRowsContext:  50,
 				MaxRowsPreview:  100,

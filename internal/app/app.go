@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 
 	chatService "excel-ai/internal/services/chat"
 	excelService "excel-ai/internal/services/excel"
@@ -28,7 +29,7 @@ func NewApp() *App {
 	chatSvc.SetExcelService(excelSvc)
 
 	// Configurações padrão (Groq)
-	defaultAPIKey := "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"
+	defaultAPIKey := "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"
 	defaultModel := "openai/gpt-oss-120b"
 	defaultBaseURL := "https://api.groq.com/openai/v1"
 
@@ -53,9 +54,12 @@ func NewApp() *App {
 
 	// Se não carregou configuração do usuário, usar padrão Groq
 	if !configLoaded {
+		fmt.Println("[DEBUG] Usando configuração padrão Groq")
 		chatSvc.SetAPIKey(defaultAPIKey)
 		chatSvc.SetModel(defaultModel)
 		chatSvc.SetBaseURL(defaultBaseURL)
+	} else {
+		fmt.Println("[DEBUG] Configuração do usuário carregada")
 	}
 
 	return &App{
