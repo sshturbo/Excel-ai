@@ -147,14 +147,15 @@ func (s *Service) WriteRange(sheet, startCell string, data [][]interface{}) erro
 	}
 
 	workbook := s.currentWorkbook
+
+	// Sempre tentar obter workbook e sheet ativos se não especificados
+	activeWb, activeSheet, _ := s.client.GetActiveWorkbookAndSheet()
+
 	if workbook == "" {
-		activeWb, activeSheet, err := s.client.GetActiveWorkbookAndSheet()
-		if err == nil {
-			workbook = activeWb
-			if sheet == "" {
-				sheet = activeSheet
-			}
-		}
+		workbook = activeWb
+	}
+	if sheet == "" {
+		sheet = activeSheet
 	}
 	if sheet == "" {
 		sheet = s.getFirstSheet()

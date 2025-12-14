@@ -159,6 +159,12 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 				}
 			}
 
+			// DEBUG: Ver formato dos dados
+			fmt.Printf("[DEBUG] Batch write: cell=%s, rows=%d\n", cell, len(batchData))
+			for i, row := range batchData {
+				fmt.Printf("[DEBUG]   Row %d: %d cols, values: %v\n", i, len(row), row)
+			}
+
 			err := s.excelService.WriteRange(sheet, cell, batchData)
 			if err != nil {
 				return "", err

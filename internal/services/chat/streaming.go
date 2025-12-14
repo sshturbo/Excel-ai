@@ -284,7 +284,8 @@ QUERIES (check state):
 
 ACTIONS (modify Excel):
 :::excel-action
-{"op": "write", "cell": "A1", "value": "value"}
+{"op": "write", "cell": "A1", "value": "single value"}
+{"op": "write", "cell": "A1", "data": [["Header1", "Header2"], ["Row1Val1", "Row1Val2"], ["Row2Val1", "Row2Val2"]]}
 {"op": "create-workbook", "name": "New.xlsx"}
 {"op": "create-sheet", "name": "NewSheet"}
 {"op": "create-chart", "range": "A1:B10", "chartType": "line", "title": "Title"}
