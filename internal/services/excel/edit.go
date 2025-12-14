@@ -136,3 +136,61 @@ func (s *Service) ApplyFormula(row, col int, formula string) error {
 	}
 	return s.client.ApplyFormula(s.currentWorkbook, sheet, row, col, formula)
 }
+
+// WriteRange escreve múltiplos valores em um range a partir de uma célula inicial
+func (s *Service) WriteRange(sheet, startCell string, data [][]interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+
+	workbook := s.currentWorkbook
+	if workbook == "" {
+		activeWb, activeSheet, err := s.client.GetActiveWorkbookAndSheet()
+		if err == nil {
+			workbook = activeWb
+			if sheet == "" {
+				sheet = activeSheet
+			}
+		}
+	}
+	if sheet == "" {
+		sheet = s.getFirstSheet()
+	}
+
+	if workbook == "" || sheet == "" {
+		return fmt.Errorf("nenhuma planilha selecionada")
+	}
+
+	// Converter endereço de célula para linha/coluna
+	startRow, startCol := cellToRowCol(startCell)
+	if startRow == 0 || startCol == 0 {
+		return fmt.Errorf("endereço de célula inválido: %s", startCell)
+	}
+
+	return s.client.WriteRange(workbook, sheet, startRow, startCol, data)
+}
+
+// cellToRowCol converte endereço de célula (ex: "A1") para linha e coluna (1-indexed)
+func cellToRowCol(cell string) (row, col int) {
+	col = 0
+	row = 0
+
+	for i, c := range cell {
+		if c >= 'A' && c <= 'Z' {
+			col = col*26 + int(c-'A'+1)
+		} else if c >= 'a' && c <= 'z' {
+			col = col*26 + int(c-'a'+1)
+		} else if c >= '0' && c <= '9' {
+			for j := i; j < len(cell); j++ {
+				if cell[j] >= '0' && cell[j] <= '9' {
+					row = row*10 + int(cell[j]-'0')
+				}
+			}
+			break
+		}
+	}
+	return row, col
+}

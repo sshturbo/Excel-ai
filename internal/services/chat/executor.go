@@ -139,17 +139,35 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 
 	switch op {
 	case "write":
-		// {"op": "write", "cell": "A1", "value": "xyz"}
-		// Precisa de current workbook context ou params
-		// s.excelService.UpdateCell usa current context se params vazios
+		// Suporta dois formatos:
+		// 1. Célula única: {"op": "write", "cell": "A1", "value": "xyz"}
+		// 2. Lote (batch): {"op": "write", "cell": "A1", "data": [["a","b"],["c","d"]]}
 
 		cell, _ := params["cell"].(string)
-
-		valStr := fmt.Sprintf("%v", params["value"])
 		sheet, _ := params["sheet"].(string)
 
-		// UpdateCell recebe (workbook, sheet, cell, value)
-		// O backend usa current se vazio.
+		// Verificar se é batch (data array) ou single (value)
+		if data, ok := params["data"].([]interface{}); ok {
+			// Converter para [][]interface{}
+			batchData := make([][]interface{}, len(data))
+			for i, row := range data {
+				if rowArr, ok := row.([]interface{}); ok {
+					batchData[i] = rowArr
+				} else {
+					// Se não for array, criar array de 1 elemento
+					batchData[i] = []interface{}{row}
+				}
+			}
+
+			err := s.excelService.WriteRange(sheet, cell, batchData)
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("WRITE BATCH OK: %d linhas a partir de %s", len(batchData), cell), nil
+		}
+
+		// Modo single cell
+		valStr := fmt.Sprintf("%v", params["value"])
 		err := s.excelService.UpdateCell("", sheet, cell, valStr)
 		if err != nil {
 			return "", err
