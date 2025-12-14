@@ -7,7 +7,11 @@ import {main} from '../models';
 
 export function ApplyFormula(arg1:number,arg2:number,arg3:string):Promise<void>;
 
+export function AutoFitColumns(arg1:string,arg2:string):Promise<void>;
+
 export function ClearChat():Promise<void>;
+
+export function ClearRange(arg1:string,arg2:string):Promise<void>;
 
 export function ConfigurePivotFields(arg1:string,arg2:string,arg3:Array<string>,arg4:Array<Record<string, string>>):Promise<void>;
 
@@ -25,7 +29,13 @@ export function DeleteConversation(arg1:string):Promise<void>;
 
 export function DeleteLastMessages(arg1:number):Promise<void>;
 
+export function DeleteRows(arg1:string,arg2:number,arg3:number):Promise<void>;
+
+export function DeleteSheet(arg1:string):Promise<void>;
+
 export function EndUndoBatch():Promise<void>;
+
+export function FormatRange(arg1:string,arg2:string,arg3:boolean,arg4:boolean,arg5:number,arg6:string,arg7:string):Promise<void>;
 
 export function GetActiveSelection():Promise<excel.SheetData>;
 
@@ -41,6 +51,8 @@ export function GetSavedConfig():Promise<storage.Config>;
 
 export function GetUsedRange(arg1:string):Promise<string>;
 
+export function InsertRows(arg1:string,arg2:number,arg3:number):Promise<void>;
+
 export function ListConversations():Promise<Array<dto.ConversationInfo>>;
 
 export function ListPivotTables(arg1:string):Promise<Array<string>>;
@@ -54,6 +66,8 @@ export function NewConversation():Promise<string>;
 export function QueryExcel(arg1:string,arg2:Record<string, string>):Promise<main.QueryResult>;
 
 export function RefreshWorkbooks():Promise<dto.ExcelStatus>;
+
+export function RenameSheet(arg1:string,arg2:string):Promise<void>;
 
 export function SendErrorFeedback(arg1:string):Promise<string>;
 

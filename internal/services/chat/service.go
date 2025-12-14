@@ -226,6 +226,13 @@ ACTIONS (modify Excel):
 {"op": "create-sheet", "name": "NewSheet"}
 {"op": "create-chart", "range": "A1:B10", "chartType": "line", "title": "Title"}
 {"op": "create-pivot", "sourceSheet": "X", "sourceRange": "A:F", "destSheet": "Y", "destCell": "A1", "tableName": "Name", "rowFields": ["field1"], "valueFields": [{"field": "field2", "function": "sum"}]}
+{"op": "format-range", "range": "A1:B5", "bold": true, "italic": false, "fontSize": 12, "fontColor": "#FF0000", "bgColor": "#FFFF00"}
+{"op": "delete-sheet", "name": "SheetToDelete"}
+{"op": "rename-sheet", "oldName": "OldName", "newName": "NewName"}
+{"op": "clear-range", "range": "A1:C10"}
+{"op": "autofit", "range": "A:D"}
+{"op": "insert-rows", "row": 5, "count": 3}
+{"op": "delete-rows", "row": 5, "count": 2}
 :::
 
 AGENT RULES:
@@ -233,6 +240,8 @@ AGENT RULES:
 2. To create PIVOT: first check if destination sheet exists with sheet-exists
 3. For any complex task: make queries first!
 4. You will receive results and can continue automatically
+5. Use format-range to make headers bold or highlight data
+6. Use autofit to adjust column widths after inserting data
 
 EXAMPLE - Create chart with thinking:
 :::thinking

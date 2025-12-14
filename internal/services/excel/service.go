@@ -535,3 +535,101 @@ func (s *Service) GetUsedRange(sheetName string) (string, error) {
 	}
 	return s.client.GetUsedRange(s.currentWorkbook, sheetName)
 }
+
+// FormatRange aplica formatação a um range
+func (s *Service) FormatRange(sheet, rangeAddr string, bold, italic bool, fontSize int, fontColor, bgColor string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.FormatRange(s.currentWorkbook, sheet, rangeAddr, bold, italic, fontSize, fontColor, bgColor)
+}
+
+// DeleteSheet exclui uma aba
+func (s *Service) DeleteSheet(sheetName string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.DeleteSheet(s.currentWorkbook, sheetName)
+}
+
+// RenameSheet renomeia uma aba
+func (s *Service) RenameSheet(oldName, newName string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.RenameSheet(s.currentWorkbook, oldName, newName)
+}
+
+// ClearRange limpa o conteúdo de um range
+func (s *Service) ClearRange(sheet, rangeAddr string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.ClearRange(s.currentWorkbook, sheet, rangeAddr)
+}
+
+// AutoFitColumns ajusta largura das colunas
+func (s *Service) AutoFitColumns(sheet, rangeAddr string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.AutoFitColumns(s.currentWorkbook, sheet, rangeAddr)
+}
+
+// InsertRows insere linhas
+func (s *Service) InsertRows(sheet string, rowNumber, count int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.InsertRows(s.currentWorkbook, sheet, rowNumber, count)
+}
+
+// DeleteRows exclui linhas
+func (s *Service) DeleteRows(sheet string, rowNumber, count int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client == nil {
+		return fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.DeleteRows(s.currentWorkbook, sheet, rowNumber, count)
+}

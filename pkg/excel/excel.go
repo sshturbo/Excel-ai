@@ -1254,3 +1254,198 @@ func (c *Client) GetUsedRange(workbookName, sheetName string) (string, error) {
 		return addrVar.ToString(), nil
 	})
 }
+
+// FormatRange aplica formatação a um range de células
+// options: bold, italic, fontSize, fontColor (hex), bgColor (hex)
+func (c *Client) FormatRange(workbookName, sheetName, rangeAddr string, bold, italic bool, fontSize int, fontColor, bgColor string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		rangeObj, err := oleutil.GetProperty(sheet, "Range", rangeAddr)
+		if err != nil {
+			return fmt.Errorf("range '%s' inválido: %w", rangeAddr, err)
+		}
+		rangeDisp := rangeObj.ToIDispatch()
+		defer rangeDisp.Release()
+
+		// Font
+		font, _ := oleutil.GetProperty(rangeDisp, "Font")
+		fontDisp := font.ToIDispatch()
+		defer fontDisp.Release()
+
+		if bold {
+			oleutil.PutProperty(fontDisp, "Bold", true)
+		}
+		if italic {
+			oleutil.PutProperty(fontDisp, "Italic", true)
+		}
+		if fontSize > 0 {
+			oleutil.PutProperty(fontDisp, "Size", fontSize)
+		}
+		if fontColor != "" {
+			// Converter hex para RGB
+			color := hexToRGB(fontColor)
+			oleutil.PutProperty(fontDisp, "Color", color)
+		}
+
+		// Background color
+		if bgColor != "" {
+			interior, _ := oleutil.GetProperty(rangeDisp, "Interior")
+			interiorDisp := interior.ToIDispatch()
+			defer interiorDisp.Release()
+			color := hexToRGB(bgColor)
+			oleutil.PutProperty(interiorDisp, "Color", color)
+		}
+
+		return nil
+	})
+}
+
+// hexToRGB converte cor hex (#RRGGBB) para valor RGB do Excel (BGR)
+func hexToRGB(hex string) int {
+	hex = strings.TrimPrefix(hex, "#")
+	if len(hex) != 6 {
+		return 0
+	}
+	var r, g, b int
+	fmt.Sscanf(hex, "%02x%02x%02x", &r, &g, &b)
+	// Excel usa BGR
+	return b<<16 | g<<8 | r
+}
+
+// DeleteSheet exclui uma aba da pasta de trabalho
+func (c *Client) DeleteSheet(workbookName, sheetName string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		// Desabilitar alertas para não pedir confirmação
+		oleutil.PutProperty(c.excelApp, "DisplayAlerts", false)
+		defer oleutil.PutProperty(c.excelApp, "DisplayAlerts", true)
+
+		_, err = oleutil.CallMethod(sheet, "Delete")
+		return err
+	})
+}
+
+// RenameSheet renomeia uma aba
+func (c *Client) RenameSheet(workbookName, oldName, newName string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, oldName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		_, err = oleutil.PutProperty(sheet, "Name", newName)
+		return err
+	})
+}
+
+// ClearRange limpa o conteúdo de um range (mantém formatação)
+func (c *Client) ClearRange(workbookName, sheetName, rangeAddr string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		rangeObj, err := oleutil.GetProperty(sheet, "Range", rangeAddr)
+		if err != nil {
+			return fmt.Errorf("range '%s' inválido: %w", rangeAddr, err)
+		}
+		rangeDisp := rangeObj.ToIDispatch()
+		defer rangeDisp.Release()
+
+		_, err = oleutil.CallMethod(rangeDisp, "ClearContents")
+		return err
+	})
+}
+
+// AutoFitColumns ajusta automaticamente a largura das colunas de um range
+func (c *Client) AutoFitColumns(workbookName, sheetName, rangeAddr string) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		rangeObj, err := oleutil.GetProperty(sheet, "Range", rangeAddr)
+		if err != nil {
+			return fmt.Errorf("range '%s' inválido: %w", rangeAddr, err)
+		}
+		rangeDisp := rangeObj.ToIDispatch()
+		defer rangeDisp.Release()
+
+		// Obter colunas do range
+		cols, _ := oleutil.GetProperty(rangeDisp, "Columns")
+		colsDisp := cols.ToIDispatch()
+		defer colsDisp.Release()
+
+		_, err = oleutil.CallMethod(colsDisp, "AutoFit")
+		return err
+	})
+}
+
+// InsertRows insere linhas em uma posição específica
+func (c *Client) InsertRows(workbookName, sheetName string, rowNumber, count int) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		for i := 0; i < count; i++ {
+			// Selecionar linha
+			rowAddr := fmt.Sprintf("%d:%d", rowNumber, rowNumber)
+			rowObj, err := oleutil.GetProperty(sheet, "Rows", rowAddr)
+			if err != nil {
+				return err
+			}
+			rowDisp := rowObj.ToIDispatch()
+			_, err = oleutil.CallMethod(rowDisp, "Insert")
+			rowDisp.Release()
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// DeleteRows exclui linhas a partir de uma posição
+func (c *Client) DeleteRows(workbookName, sheetName string, rowNumber, count int) error {
+	return c.runOnCOMThread(func() error {
+		sheet, err := c.getSheetInternal(workbookName, sheetName)
+		if err != nil {
+			return err
+		}
+		defer sheet.Release()
+
+		// Desabilitar alertas
+		oleutil.PutProperty(c.excelApp, "DisplayAlerts", false)
+		defer oleutil.PutProperty(c.excelApp, "DisplayAlerts", true)
+
+		// Selecionar range de linhas
+		rowAddr := fmt.Sprintf("%d:%d", rowNumber, rowNumber+count-1)
+		rowObj, err := oleutil.GetProperty(sheet, "Rows", rowAddr)
+		if err != nil {
+			return err
+		}
+		rowDisp := rowObj.ToIDispatch()
+		defer rowDisp.Release()
+
+		_, err = oleutil.CallMethod(rowDisp, "Delete")
+		return err
+	})
+}

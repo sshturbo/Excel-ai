@@ -46,7 +46,14 @@ import {
     CreatePivotTable,
     ConfigurePivotFields,
     QueryExcel,
-    SendErrorFeedback
+    SendErrorFeedback,
+    FormatRange,
+    DeleteSheet,
+    RenameSheet,
+    ClearRange,
+    AutoFitColumns,
+    InsertRows,
+    DeleteRows
 } from "../wailsjs/go/main/App"
 import { EventsOn } from "../wailsjs/runtime/runtime"
 
@@ -540,6 +547,39 @@ export default function App() {
                 }
 
                 toast.success('Tabela dinâmica criada!')
+            } else if (action.op === 'format-range') {
+                await FormatRange(
+                    action.sheet || '',
+                    action.range,
+                    action.bold || false,
+                    action.italic || false,
+                    action.fontSize || 0,
+                    action.fontColor || '',
+                    action.bgColor || ''
+                )
+                toast.success('Formatação aplicada!')
+            } else if (action.op === 'delete-sheet') {
+                await DeleteSheet(action.name)
+                toast.success(`Aba "${action.name}" excluída!`)
+                const result = await RefreshWorkbooks()
+                if (result.workbooks) setWorkbooks(result.workbooks)
+            } else if (action.op === 'rename-sheet') {
+                await RenameSheet(action.oldName, action.newName)
+                toast.success(`Aba renomeada: ${action.oldName} → ${action.newName}`)
+                const result = await RefreshWorkbooks()
+                if (result.workbooks) setWorkbooks(result.workbooks)
+            } else if (action.op === 'clear-range') {
+                await ClearRange(action.sheet || '', action.range)
+                toast.success('Conteúdo limpo!')
+            } else if (action.op === 'autofit') {
+                await AutoFitColumns(action.sheet || '', action.range)
+                toast.success('Colunas ajustadas!')
+            } else if (action.op === 'insert-rows') {
+                await InsertRows(action.sheet || '', action.row, action.count || 1)
+                toast.success(`${action.count || 1} linha(s) inserida(s)!`)
+            } else if (action.op === 'delete-rows') {
+                await DeleteRows(action.sheet || '', action.row, action.count || 1)
+                toast.success(`${action.count || 1} linha(s) excluída(s)!`)
             }
             return { success: true }
         } catch (e: any) {

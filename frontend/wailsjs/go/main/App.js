@@ -6,8 +6,16 @@ export function ApplyFormula(arg1, arg2, arg3) {
   return window['go']['main']['App']['ApplyFormula'](arg1, arg2, arg3);
 }
 
+export function AutoFitColumns(arg1, arg2) {
+  return window['go']['main']['App']['AutoFitColumns'](arg1, arg2);
+}
+
 export function ClearChat() {
   return window['go']['main']['App']['ClearChat']();
+}
+
+export function ClearRange(arg1, arg2) {
+  return window['go']['main']['App']['ClearRange'](arg1, arg2);
 }
 
 export function ConfigurePivotFields(arg1, arg2, arg3, arg4) {
@@ -42,8 +50,20 @@ export function DeleteLastMessages(arg1) {
   return window['go']['main']['App']['DeleteLastMessages'](arg1);
 }
 
+export function DeleteRows(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DeleteRows'](arg1, arg2, arg3);
+}
+
+export function DeleteSheet(arg1) {
+  return window['go']['main']['App']['DeleteSheet'](arg1);
+}
+
 export function EndUndoBatch() {
   return window['go']['main']['App']['EndUndoBatch']();
+}
+
+export function FormatRange(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+  return window['go']['main']['App']['FormatRange'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }
 
 export function GetActiveSelection() {
@@ -74,6 +94,10 @@ export function GetUsedRange(arg1) {
   return window['go']['main']['App']['GetUsedRange'](arg1);
 }
 
+export function InsertRows(arg1, arg2, arg3) {
+  return window['go']['main']['App']['InsertRows'](arg1, arg2, arg3);
+}
+
 export function ListConversations() {
   return window['go']['main']['App']['ListConversations']();
 }
@@ -100,6 +124,10 @@ export function QueryExcel(arg1, arg2) {
 
 export function RefreshWorkbooks() {
   return window['go']['main']['App']['RefreshWorkbooks']();
+}
+
+export function RenameSheet(arg1, arg2) {
+  return window['go']['main']['App']['RenameSheet'](arg1, arg2);
 }
 
 export function SendErrorFeedback(arg1) {

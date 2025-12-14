@@ -140,6 +140,41 @@ func (a *App) EndUndoBatch() {
 	a.excelService.EndUndoBatch()
 }
 
+// FormatRange aplica formatação a um range
+func (a *App) FormatRange(sheet, rangeAddr string, bold, italic bool, fontSize int, fontColor, bgColor string) error {
+	return a.excelService.FormatRange(sheet, rangeAddr, bold, italic, fontSize, fontColor, bgColor)
+}
+
+// DeleteSheet exclui uma aba
+func (a *App) DeleteSheet(sheetName string) error {
+	return a.excelService.DeleteSheet(sheetName)
+}
+
+// RenameSheet renomeia uma aba
+func (a *App) RenameSheet(oldName, newName string) error {
+	return a.excelService.RenameSheet(oldName, newName)
+}
+
+// ClearRange limpa o conteúdo de um range
+func (a *App) ClearRange(sheet, rangeAddr string) error {
+	return a.excelService.ClearRange(sheet, rangeAddr)
+}
+
+// AutoFitColumns ajusta largura das colunas
+func (a *App) AutoFitColumns(sheet, rangeAddr string) error {
+	return a.excelService.AutoFitColumns(sheet, rangeAddr)
+}
+
+// InsertRows insere linhas
+func (a *App) InsertRows(sheet string, rowNumber, count int) error {
+	return a.excelService.InsertRows(sheet, rowNumber, count)
+}
+
+// DeleteRows exclui linhas
+func (a *App) DeleteRows(sheet string, rowNumber, count int) error {
+	return a.excelService.DeleteRows(sheet, rowNumber, count)
+}
+
 // SetAPIKey configura a chave da API
 func (a *App) SetAPIKey(apiKey string) error {
 	a.chatService.SetAPIKey(apiKey)
