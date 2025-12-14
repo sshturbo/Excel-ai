@@ -13,12 +13,17 @@ func (s *Service) NewConversation() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	fmt.Printf("[DEBUG] NewConversation chamado. Histórico atual: %d mensagens\n", len(s.chatHistory))
+
 	if s.currentConvID != "" && len(s.chatHistory) > 0 {
 		s.saveCurrentConversation("")
 	}
 
 	s.chatHistory = []domain.Message{}
 	s.currentConvID = s.generateID()
+
+	fmt.Printf("[DEBUG] Histórico LIMPO. Novo ID: %s, mensagens: %d\n", s.currentConvID, len(s.chatHistory))
+
 	return s.currentConvID
 }
 
