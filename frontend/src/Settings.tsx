@@ -46,9 +46,6 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
     const [useCustomModel, setUseCustomModel] = useState(false)
     const [maxRowsContext, setMaxRowsContext] = useState(50)
     const [maxRowsPreview, setMaxRowsPreview] = useState(100)
-    const [detailLevel, setDetailLevel] = useState('normal')
-    const [customPrompt, setCustomPrompt] = useState('')
-    const [language, setLanguage] = useState('pt-BR')
     const [includeHeaders, setIncludeHeaders] = useState(true)
     const [isSaving, setIsSaving] = useState(false)
     const [availableModels, setAvailableModels] = useState<dto.ModelInfo[]>([])
@@ -92,9 +89,6 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
                 }
                 if (cfg.maxRowsContext) setMaxRowsContext(cfg.maxRowsContext)
                 if (cfg.maxRowsPreview) setMaxRowsPreview(cfg.maxRowsPreview)
-                if (cfg.detailLevel) setDetailLevel(cfg.detailLevel)
-                if (cfg.customPrompt) setCustomPrompt(cfg.customPrompt)
-                if (cfg.language) setLanguage(cfg.language)
                 setIncludeHeaders(cfg.includeHeaders !== false)
             }
         } catch (err) {
@@ -152,7 +146,7 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
             await SetAPIKey(apiKey)
             const selectedModel = useCustomModel ? customModel : model
             await SetModel(selectedModel)
-            await UpdateConfig(maxRowsContext, maxRowsPreview, includeHeaders, detailLevel, customPrompt, language, provider, baseUrl)
+            await UpdateConfig(maxRowsContext, maxRowsPreview, includeHeaders, 'normal', '', 'pt-BR', provider, baseUrl)
             toast.success('✅ Configurações salvas!')
 
             // Recarregar modelos com a nova configuração
@@ -199,10 +193,9 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
 
                 {/* Tabs */}
                 <Tabs defaultValue="api" className="space-y-6">
-                    <TabsList className="grid w-full grid-cols-4 bg-muted/40">
+                    <TabsList className="grid w-full grid-cols-3 bg-muted/40">
                         <TabsTrigger value="api" className="gap-2">🔑 API</TabsTrigger>
                         <TabsTrigger value="data" className="gap-2">📊 Dados</TabsTrigger>
-                        <TabsTrigger value="custom" className="gap-2">✨ Pessoal</TabsTrigger>
                         <TabsTrigger value="about" className="gap-2">ℹ️ Sobre</TabsTrigger>
                     </TabsList>
 
@@ -508,59 +501,6 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
 
                     </TabsContent>
 
-                    {/* Custom Tab */}
-                    <TabsContent value="custom" className="space-y-6">
-                        <Card className="bg-card/60">
-                            <CardHeader>
-                                <div className="w-12 h-12 bg-muted rounded-xl flex items-center justify-center text-2xl mb-2">
-                                    💬
-                                </div>
-                                <CardTitle>Instrução Personalizada</CardTitle>
-                                <CardDescription>Adicione instruções extras para todas as conversas</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <Textarea
-                                    value={customPrompt}
-                                    onChange={(e) => setCustomPrompt(e.target.value)}
-                                    placeholder="Ex: Sempre responda em português. Formate números com 2 casas decimais..."
-                                    className="min-h-32"
-                                />
-                                <p className="text-xs text-muted-foreground mt-2 text-right">
-                                    {customPrompt.length} / 500 caracteres
-                                </p>
-                            </CardContent>
-                        </Card>
-
-                        <Card className="bg-card/60">
-                            <CardHeader>
-                                <div className="w-12 h-12 bg-muted rounded-xl flex items-center justify-center text-2xl mb-2">
-                                    🌍
-                                </div>
-                                <CardTitle>Idioma</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="flex gap-3">
-                                    {[
-                                        { value: 'pt-BR', flag: '🇧🇷', name: 'Português' },
-                                        { value: 'en', flag: '🇺🇸', name: 'English' },
-                                        { value: 'es', flag: '🇪🇸', name: 'Español' },
-                                    ].map((lang) => (
-                                        <button
-                                            key={lang.value}
-                                            onClick={() => setLanguage(lang.value)}
-                                            className={`flex items-center gap-3 flex-1 p-4 rounded-lg transition-all ${language === lang.value
-                                                ? 'bg-primary/10 border-2 border-primary/50'
-                                                : 'bg-background/40 border border-border hover:bg-muted/40'
-                                                }`}
-                                        >
-                                            <span className="text-2xl">{lang.flag}</span>
-                                            <span className="font-medium">{lang.name}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </TabsContent>
 
                     {/* About Tab */}
                     <TabsContent value="about">
