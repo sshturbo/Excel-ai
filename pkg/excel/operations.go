@@ -52,17 +52,19 @@ func (c *Client) SortRange(workbookName, sheetName, rangeAddr string, column int
 		rangeDisp := rangeObj.ToIDispatch()
 		defer rangeDisp.Release()
 
-		// Obter célula de ordenação
-		cells, err := oleutil.GetProperty(rangeDisp, "Cells")
+		// Obter célula de ordenação (Key1)
+		// Estratégia: Range.Columns(col).Cells(1)
+		columnsObj, err := oleutil.GetProperty(rangeDisp, "Columns", column)
 		if err != nil {
-			return err
+			return fmt.Errorf("falha ao selecionar coluna %d do range: %w", column, err)
 		}
-		cellsDisp := cells.ToIDispatch()
-		defer cellsDisp.Release()
+		columnsDisp := columnsObj.ToIDispatch()
+		defer columnsDisp.Release()
 
-		keyCell, err := oleutil.GetProperty(cellsDisp, "Item", 1, column)
+		// Pegar primeira célula dessa coluna para usar como chave
+		keyCell, err := oleutil.GetProperty(columnsDisp, "Cells", 1)
 		if err != nil {
-			return fmt.Errorf("falha ao obter KeyCell para sort: %w", err)
+			return fmt.Errorf("falha ao obter KeyCell (Cells(1)) da coluna: %w", err)
 		}
 		keyCellDisp := keyCell.ToIDispatch()
 		defer keyCellDisp.Release()
@@ -131,7 +133,7 @@ func (c *Client) InsertRows(workbookName, sheetName string, rowNumber, count int
 		for i := 0; i < count; i++ {
 			// Selecionar linha
 			rowAddr := fmt.Sprintf("%d:%d", rowNumber, rowNumber)
-			rowObj, err := oleutil.GetProperty(sheet, "Rows", rowAddr)
+			rowObj, err := oleutil.GetProperty(sheet, "Range", rowAddr)
 			if err != nil {
 				return err
 			}
@@ -161,9 +163,10 @@ func (c *Client) DeleteRows(workbookName, sheetName string, rowNumber, count int
 
 		// Selecionar range de linhas
 		rowAddr := fmt.Sprintf("%d:%d", rowNumber, rowNumber+count-1)
-		rowObj, err := oleutil.GetProperty(sheet, "Rows", rowAddr)
+		// Em COM, sheet.Range("1:1") funciona melhor que sheet.Rows("1:1") as vezes
+		rowObj, err := oleutil.GetProperty(sheet, "Range", rowAddr)
 		if err != nil {
-			return err
+			return fmt.Errorf("falha ao selecionar linhas %s: %w", rowAddr, err)
 		}
 		rowDisp := rowObj.ToIDispatch()
 		defer rowDisp.Release()

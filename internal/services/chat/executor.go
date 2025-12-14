@@ -104,6 +104,28 @@ func (s *Service) executeQuery(params map[string]interface{}) (string, error) {
 	return "", fmt.Errorf("unknown query type: %s", queryType)
 }
 
+// Helper para extrair int de interface{} (suporta float64 e int)
+func getInt(v interface{}) int {
+	if f, ok := v.(float64); ok {
+		return int(f)
+	}
+	if i, ok := v.(int); ok {
+		return i
+	}
+	return 0
+}
+
+// Helper para extrair float64 de interface{}
+func getFloat(v interface{}) float64 {
+	if f, ok := v.(float64); ok {
+		return f
+	}
+	if i, ok := v.(int); ok {
+		return float64(i)
+	}
+	return 0.0
+}
+
 func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 	op, _ := params["op"].(string)
 
@@ -114,11 +136,6 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 		// s.excelService.UpdateCell usa current context se params vazios
 
 		cell, _ := params["cell"].(string)
-		// val, _ := params["value"].(string) // Simplificação: assume string
-		// Se valor for numérico no json, vem float64.
-		// UpdateCell espera string no backend atual?
-		// s.excelService.UpdateCell(wb, sheet, cell, value string)
-		// Vou converter qualquer valor para string.
 
 		valStr := fmt.Sprintf("%v", params["value"])
 		sheet, _ := params["sheet"].(string)
@@ -132,13 +149,10 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 		return fmt.Sprintf("WRITE OK: %s = %s", cell, valStr), nil
 
 	case "create-workbook":
-		// ExcelService CreateNewWorkbook() returns (string, error)
 		createdName, err := s.excelService.CreateNewWorkbook()
 		if err != nil {
 			return "", err
 		}
-		// O backend cria com nome padrão (Pasta1, Pasta2...)
-		// Se o usuário passou "name", ignoramos por enquanto pois a func não aceita.
 		return fmt.Sprintf("CREATE WORKBOOK OK: %s", createdName), nil
 
 	case "create-sheet":
@@ -150,7 +164,7 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 		return fmt.Sprintf("CREATE SHEET OK: %s", name), nil
 
 	case "create-chart":
-		sheet, _ := params["sheet"].(string) // Optional in service
+		sheet, _ := params["sheet"].(string)
 		rng, _ := params["range"].(string)
 		cType, _ := params["chartType"].(string)
 		title, _ := params["title"].(string)
@@ -178,11 +192,9 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 		rng, _ := params["range"].(string)
 		bold, _ := params["bold"].(bool)
 		italic, _ := params["italic"].(bool)
-		fontSize, _ := params["fontSize"].(float64)
+		fontSize := getFloat(params["fontSize"])
 		fontColor, _ := params["fontColor"].(string)
 		bgColor, _ := params["bgColor"].(string)
-
-		// sheet optional
 		sheet, _ := params["sheet"].(string)
 
 		err := s.excelService.FormatRange(sheet, rng, bold, italic, int(fontSize), fontColor, bgColor)
@@ -228,23 +240,23 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 
 	case "insert-rows":
 		sheet, _ := params["sheet"].(string)
-		row, _ := params["row"].(float64)
-		count, _ := params["count"].(float64)
-		err := s.excelService.InsertRows(sheet, int(row), int(count))
+		row := getInt(params["row"])
+		count := getInt(params["count"])
+		err := s.excelService.InsertRows(sheet, row, count)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("INSERT ROWS OK: %d at %d", int(count), int(row)), nil
+		return fmt.Sprintf("INSERT ROWS OK: %d at %d", count, row), nil
 
 	case "delete-rows":
 		sheet, _ := params["sheet"].(string)
-		row, _ := params["row"].(float64)
-		count, _ := params["count"].(float64)
-		err := s.excelService.DeleteRows(sheet, int(row), int(count))
+		row := getInt(params["row"])
+		count := getInt(params["count"])
+		err := s.excelService.DeleteRows(sheet, row, count)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("DELETE ROWS OK: %d at %d", int(count), int(row)), nil
+		return fmt.Sprintf("DELETE ROWS OK: %d at %d", count, row), nil
 
 	case "merge-cells":
 		sheet, _ := params["sheet"].(string)
@@ -267,10 +279,7 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 	case "set-borders":
 		sheet, _ := params["sheet"].(string)
 		rng, _ := params["range"].(string)
-		style, _ := params["style"].(string) // "thin", "medium", etc.
-		// Precisamos converter string style para int se o service esperar int?
-		// excelService.SetBorders(sheet, range, styleName string) ?
-		// Verificarei a assinatura em format.go. Assumindo string por enquanto.
+		style, _ := params["style"].(string)
 		err := s.excelService.SetBorders(sheet, rng, style)
 		if err != nil {
 			return "", err
@@ -279,8 +288,8 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 
 	case "set-column-width":
 		sheet, _ := params["sheet"].(string)
-		rng, _ := params["range"].(string) // Ex: "A:B"
-		width, _ := params["width"].(float64)
+		rng, _ := params["range"].(string)
+		width := getFloat(params["width"])
 		err := s.excelService.SetColumnWidth(sheet, rng, width)
 		if err != nil {
 			return "", err
@@ -289,8 +298,8 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 
 	case "set-row-height":
 		sheet, _ := params["sheet"].(string)
-		rng, _ := params["range"].(string) // Ex: "1:5"
-		height, _ := params["height"].(float64)
+		rng, _ := params["range"].(string)
+		height := getFloat(params["height"])
 		err := s.excelService.SetRowHeight(sheet, rng, height)
 		if err != nil {
 			return "", err
@@ -317,9 +326,9 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 	case "sort":
 		sheet, _ := params["sheet"].(string)
 		rng, _ := params["range"].(string)
-		col, _ := params["column"].(float64)
+		col := getInt(params["column"])
 		asc, _ := params["ascending"].(bool)
-		err := s.excelService.SortRange(sheet, rng, int(col), asc)
+		err := s.excelService.SortRange(sheet, rng, col, asc)
 		if err != nil {
 			return "", err
 		}
