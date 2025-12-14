@@ -535,12 +535,9 @@ export default function App() {
 
     // Listener para atualizações em tempo real das planilhas
     useEffect(() => {
-        console.log("[WATCHER] Registrando listener de eventos...")
         const cleanup = EventsOn("excel:workbooks-changed", (data: any) => {
-            console.log("[WATCHER] Evento recebido:", data)
             if (data?.workbooks !== undefined) {
                 setWorkbooks(data.workbooks || [])
-                // Atualizar status de conexão
                 setConnected(data.connected ?? true)
 
                 // Se o workbook selecionado foi fechado, limpar seleção
@@ -550,7 +547,6 @@ export default function App() {
                         (wb: any) => wb.name === currentSelected
                     )
                     if (!workbookStillExists) {
-                        console.log("[WATCHER] Workbook selecionado foi fechado, limpando seleção")
                         setSelectedWorkbook(null)
                         setSelectedSheets([])
                         setContextLoaded('')
@@ -560,10 +556,7 @@ export default function App() {
                 }
             }
         })
-        return () => {
-            console.log("[WATCHER] Removendo listener de eventos...")
-            cleanup()
-        }
+        return () => cleanup()
     }, [])
 
     // Resetar buffer quando não está carregando

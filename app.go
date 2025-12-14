@@ -106,16 +106,8 @@ func (a *App) StartWorkbookWatcher() {
 				currentState, _ := json.Marshal(status.Workbooks)
 				currentStateStr := string(currentState)
 
-				// Debug: logar quantidade de workbooks
-				wbCount := 0
-				if status.Workbooks != nil {
-					wbCount = len(status.Workbooks)
-				}
-				fmt.Printf("[WATCHER] Workbooks encontrados: %d\n", wbCount)
-
 				// Se mudou (inclui ficar vazio), emitir evento
 				if currentStateStr != a.lastWorkbooksState {
-					fmt.Printf("[WATCHER] Mudança detectada! Emitindo evento...\n")
 					a.lastWorkbooksState = currentStateStr
 					runtime.EventsEmit(a.ctx, "excel:workbooks-changed", status)
 				}
