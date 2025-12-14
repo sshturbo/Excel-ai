@@ -514,12 +514,12 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
                                 <span className="inline-block px-3 py-1 bg-muted rounded-full text-sm text-primary">
                                     v2.0.0
                                 </span>
-                                <div className="flex justify-center gap-2 pt-4">
-                                    {['Go', 'React', 'Wails', 'Tailwind', 'shadcn/ui'].map((tech) => (
-                                        <span key={tech} className="px-2 py-1 bg-muted/60 border border-border rounded text-xs text-muted-foreground">
-                                            {tech}
-                                        </span>
-                                    ))}
+                                <div className="pt-6 space-y-2">
+                                    <p className="text-sm text-muted-foreground">Desenvolvido por</p>
+                                    <p className="text-lg font-semibold text-primary">
+                                        Jefferson Hipolito de Oliveira
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">HipoSystem</p>
                                 </div>
                                 <p className="text-xs text-muted-foreground pt-4">
                                     Dados em <code className="bg-muted px-1 rounded">~/.excel-ai/</code>
