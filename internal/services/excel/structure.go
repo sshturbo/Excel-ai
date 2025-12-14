@@ -12,7 +12,7 @@ func (s *Service) CreateNewWorkbook() (string, error) {
 	wbName, err := s.client.CreateNewWorkbook()
 	if err == nil {
 		s.currentWorkbook = wbName
-		s.currentSheet = "Planilha1" // Assumindo default
+		s.currentSheet = "Planilha1"
 	}
 	return wbName, err
 }

@@ -111,6 +111,45 @@ func TestExcelIntegration(t *testing.T) {
 		"fontColor": "#FF0000",
 	})
 
+	// H. Insert Rows
+	exec("Inserir Linhas", ToolTypeAction, map[string]interface{}{
+		"op":    "insert-rows",
+		"sheet": sheetName,
+		"row":   1,
+		"count": 2,
+	})
+
+	// I. Merge Cells
+	exec("Mesclar Células", ToolTypeAction, map[string]interface{}{
+		"op":    "merge-cells",
+		"sheet": sheetName,
+		"range": "D2:E3",
+	})
+
+	// J. Set Borders
+	exec("Bordas", ToolTypeAction, map[string]interface{}{
+		"op":    "set-borders",
+		"sheet": sheetName,
+		"range": "B2",
+		"style": "thick",
+	})
+
+	// K. Create Table
+	exec("Criar Tabela", ToolTypeAction, map[string]interface{}{
+		"op":    "create-table",
+		"sheet": sheetName,
+		"range": "G1:H5",
+		"name":  "TabelaVendas",
+		"style": "TableStyleMedium9",
+	})
+
+	// L. Delete Sheet (Cleanup)
+	time.Sleep(1 * time.Second)
+	// exec("Deletar Aba", ToolTypeAction, map[string]interface{}{
+	// 	"op": "delete-sheet",
+	// 	"name": sheetName,
+	// })
+
 	// I. Final Report
 	fmt.Println("--- TESTE CONCLUÍDO COM SUCESSO ---")
 	fmt.Println("Verifique o arquivo criado no Excel.")
