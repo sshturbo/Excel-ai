@@ -17,6 +17,8 @@ type App struct {
 	storage            *storage.Storage
 	watcherCancel      context.CancelFunc
 	lastWorkbooksState string
+	licenseValid       bool
+	licenseMessage     string
 }
 
 // NewApp cria uma nova instância do App
@@ -74,6 +76,17 @@ func NewApp() *App {
 // No main.go original era app.startup referenciado. Se estiver em outro pacote, precisa ser Exportado Startup).
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// Validar licença no startup
+	valid, msg := a.CheckLicense()
+	a.licenseValid = valid
+	a.licenseMessage = msg
+
+	if valid {
+		fmt.Println("[LICENSE] ✅ Licença válida:", msg)
+	} else {
+		fmt.Println("[LICENSE] ❌ Licença inválida:", msg)
+	}
 }
 
 // Shutdown é chamado quando o app fecha

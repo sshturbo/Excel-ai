@@ -3,8 +3,11 @@
 import {dto} from '../models';
 import {context} from '../models';
 import {excel} from '../models';
+import {license} from '../models';
 import {storage} from '../models';
 import {app} from '../models';
+
+export function ActivateLicense():Promise<boolean|string>;
 
 export function ApplyFilter(arg1:string,arg2:string):Promise<void>;
 
@@ -13,6 +16,8 @@ export function ApplyFormula(arg1:number,arg2:number,arg3:string):Promise<void>;
 export function AutoFitColumns(arg1:string,arg2:string):Promise<void>;
 
 export function CancelChat():Promise<void>;
+
+export function CheckLicense():Promise<boolean|string>;
 
 export function ClearChat():Promise<void>;
 
@@ -62,6 +67,10 @@ export function GetChatHistory():Promise<Array<dto.ChatMessage>>;
 
 export function GetHeaders(arg1:string,arg2:string):Promise<Array<string>>;
 
+export function GetLicenseMessage():Promise<string>;
+
+export function GetLicenseStatus():Promise<license.LicenseStatus>;
+
 export function GetPreviewData(arg1:string,arg2:string):Promise<dto.PreviewData>;
 
 export function GetSavedConfig():Promise<storage.Config>;
@@ -69,6 +78,8 @@ export function GetSavedConfig():Promise<storage.Config>;
 export function GetUsedRange(arg1:string):Promise<string>;
 
 export function InsertRows(arg1:string,arg2:number,arg3:number):Promise<void>;
+
+export function IsLicenseValid():Promise<boolean>;
 
 export function ListCharts(arg1:string):Promise<Array<string>>;
 

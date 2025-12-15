@@ -39,7 +39,9 @@ import {
     GetPreviewData,
     RefreshWorkbooks,
     StartUndoBatch,
-    EndUndoBatch
+    EndUndoBatch,
+    IsLicenseValid,
+    GetLicenseMessage
 } from "../wailsjs/go/app/App"
 
 export default function App() {
@@ -51,6 +53,10 @@ export default function App() {
     const [askBeforeApply, setAskBeforeApply] = useState(true)
     const [apiKey, setApiKey] = useState('')
     const [model, setModel] = useState('openai/gpt-4o-mini')
+
+    // License state
+    const [licenseValid, setLicenseValid] = useState(true)
+    const [licenseMessage, setLicenseMessage] = useState('')
 
     // View state
     const [showPreview, setShowPreview] = useState(false)
@@ -96,10 +102,26 @@ export default function App() {
             excel.handleConnect()
             loadConfig()
             conversations.loadConversations()
+            checkLicense()
         } else {
             console.warn('Wails runtime não detectado. Rodando fora do app (Vite puro).')
         }
     }, [])
+
+    // Check license status
+    const checkLicense = async () => {
+        try {
+            const valid = await IsLicenseValid()
+            const message = await GetLicenseMessage()
+            setLicenseValid(valid)
+            setLicenseMessage(message)
+            console.log('[LICENSE]', valid ? '✅' : '❌', message)
+        } catch (err) {
+            console.error('Error checking license:', err)
+            setLicenseValid(false)
+            setLicenseMessage('Erro ao verificar licença')
+        }
+    }
 
     const loadConfig = async () => {
         try {
@@ -204,6 +226,32 @@ export default function App() {
     // Render message content using MarkdownRenderer
     const renderMessageContent = (content: string) => {
         return <MarkdownRenderer content={content} />
+    }
+
+    // License blocked view
+    if (!licenseValid) {
+        return (
+            <div className="flex items-center justify-center h-screen bg-background">
+                <div className="text-center p-8 max-w-md">
+                    <div className="text-6xl mb-4">🔒</div>
+                    <h1 className="text-2xl font-bold text-red-500 mb-4">
+                        Licença Inválida
+                    </h1>
+                    <p className="text-muted-foreground mb-6">
+                        {licenseMessage || 'Sua licença expirou ou foi revogada.'}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                        Entre em contato com o suporte para obter uma nova licença.
+                    </p>
+                    <button
+                        onClick={checkLicense}
+                        className="mt-6 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90"
+                    >
+                        Verificar Novamente
+                    </button>
+                </div>
+            </div>
+        )
     }
 
     // Settings view

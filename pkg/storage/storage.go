@@ -535,3 +535,45 @@ func (s *Storage) DeleteCheckpoint(checkpointID string) error {
 	_, err := s.db.Exec("DELETE FROM checkpoints WHERE id = ?", checkpointID)
 	return err
 }
+
+// LicenseInfo estrutura da licença (compatível com pkg/license)
+type LicenseInfo struct {
+	Hash          string    `json:"hash"`
+	MachineID     string    `json:"machine_id"`
+	ActivatedAt   time.Time `json:"activated_at"`
+	LastValidated time.Time `json:"last_validated"`
+}
+
+// SaveLicense salva a licença no banco
+func (s *Storage) SaveLicense(license *LicenseInfo) error {
+	data, err := json.Marshal(license)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(`
+		INSERT INTO settings (key, value) VALUES ('license', ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value
+	`, string(data))
+
+	return err
+}
+
+// LoadLicense carrega a licença do banco
+func (s *Storage) LoadLicense() (*LicenseInfo, error) {
+	var value string
+	err := s.db.QueryRow("SELECT value FROM settings WHERE key = ?", "license").Scan(&value)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // Sem licença
+		}
+		return nil, err
+	}
+
+	var license LicenseInfo
+	if err := json.Unmarshal([]byte(value), &license); err != nil {
+		return nil, err
+	}
+
+	return &license, nil
+}
