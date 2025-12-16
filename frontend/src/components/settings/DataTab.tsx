@@ -72,11 +72,16 @@ export function DataTab({
                     <Switch checked={includeHeaders} onCheckedChange={onIncludeHeadersChange} />
                 </div>
 
-                <div className="flex items-center justify-between p-4 bg-muted/30 border border-border rounded-lg">
+                <div className={`flex items-center justify-between p-4 border rounded-lg ${askBeforeApply ? 'bg-muted/30 border-border' : 'bg-yellow-500/10 border-yellow-500/30'}`}>
                     <div className="space-y-1">
-                        <Label>Perguntar antes de aplicar</Label>
+                        <Label className="flex items-center gap-2">
+                            {askBeforeApply ? '🛡️ Modo Seguro' : '⚡ Modo YOLO'}
+                        </Label>
                         <p className="text-xs text-muted-foreground">
-                            A IA pedirá confirmação antes de modificar a planilha
+                            {askBeforeApply
+                                ? 'A IA pedirá confirmação antes de modificar a planilha (Y/n)'
+                                : '⚠️ A IA executará ações automaticamente sem pedir confirmação!'
+                            }
                         </p>
                     </div>
                     <Switch checked={askBeforeApply} onCheckedChange={onAskBeforeApplyChange} />

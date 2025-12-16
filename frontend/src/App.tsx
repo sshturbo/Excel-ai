@@ -20,7 +20,7 @@ import { EmptyState } from '@/components/chat/EmptyState'
 import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer'
 import { DataPreview } from '@/components/excel/DataPreview'
 import { ChartViewer } from '@/components/excel/ChartViewer'
-import { PendingActions } from '@/components/excel/PendingActions'
+import { PendingActions, type ActionState } from '@/components/excel/PendingActions'
 import { Toolbar } from '@/components/excel/Toolbar'
 
 // Services
@@ -63,6 +63,11 @@ export default function App() {
     const [showChart, setShowChart] = useState(false)
     const [chartType, setChartType] = useState<'bar' | 'line' | 'pie'>('bar')
     const [chartData, setChartData] = useState<any>(null)
+
+    // Action execution state
+    const [actionState, setActionState] = useState<ActionState>('pending')
+    const [actionError, setActionError] = useState<string | undefined>()
+    const [hasPendingAction, setHasPendingAction] = useState(false)
 
     // Custom hooks
     const excel = useExcelConnection()
@@ -108,6 +113,42 @@ export default function App() {
         }
     }, [])
 
+    // Keyboard shortcuts for action confirmation (Y/n like gemini-cli)
+    useEffect(() => {
+        if (chat.pendingActions.length === 0 || actionState !== 'pending') return
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Ignore if user is typing in an input
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+            if (e.key.toLowerCase() === 'y') {
+                e.preventDefault()
+                handleApplyActions()
+            } else if (e.key.toLowerCase() === 'n') {
+                e.preventDefault()
+                handleDiscardActions()
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [chat.pendingActions.length, actionState])
+
+    // Check for pending action when loading state changes
+    useEffect(() => {
+        if (!chat.isLoading) {
+            // After AI response completes, check if backend has pending action
+            import("../wailsjs/go/app/App").then(({ HasPendingAction }) => {
+                HasPendingAction().then(hasPending => {
+                    setHasPendingAction(hasPending)
+                    if (hasPending) {
+                        setActionState('pending')
+                    }
+                }).catch(() => { })
+            })
+        }
+    }, [chat.isLoading])
+
     // Check license status
     const checkLicense = async () => {
         try {
@@ -147,42 +188,201 @@ export default function App() {
     const handleApplyActions = async () => {
         console.log('[DEBUG] handleApplyActions called - calling backend ConfirmPendingAction')
 
+        setActionState('executing')
+        setActionError(undefined)
+        setHasPendingAction(false)
+
+        // Update last message to show execution status
+        chat.setMessages(prev => {
+            const newMsgs = [...prev]
+            const lastIndex = newMsgs.length - 1
+            if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
+                // Replace pending message with executing message
+                const oldContent = newMsgs[lastIndex].content
+                const cleanContent = oldContent
+                    .replace(/\*\(Ação aguardando aprovação\)\*/g, '')
+                    .replace(/🛑 \[Ação Pendente\] Aguardando aprovação do usuário para executar\./g, '')
+                    .trim()
+                newMsgs[lastIndex] = {
+                    ...newMsgs[lastIndex],
+                    content: cleanContent + '\n\n🔄 **Aplicando alterações...**'
+                }
+            }
+            return newMsgs
+        })
+
+        // Set up streaming listener to detect action completion and update message in real-time
+        let actionCompleted = false
+        let streamBuffer = ''
+        const { EventsOn, EventsOff } = await import("../wailsjs/runtime/runtime")
+
+        const handleChunk = (chunk: string) => {
+            streamBuffer += chunk
+
+            // Detect when action execution completes
+            if (!actionCompleted && streamBuffer.includes('✅ Ação executada com sucesso!')) {
+                actionCompleted = true
+                // Update message immediately
+                chat.setMessages(prev => {
+                    const newMsgs = [...prev]
+                    const lastIndex = newMsgs.length - 1
+                    if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
+                        const oldContent = newMsgs[lastIndex].content.replace(/🔄 \*\*Aplicando alterações\.\.\.\*\*/g, '').trim()
+                        newMsgs[lastIndex] = {
+                            ...newMsgs[lastIndex],
+                            content: oldContent + '\n\n✅ **Alterações aplicadas com sucesso!**\n\n*IA continuando...*',
+                            hasActions: true
+                        }
+                    }
+                    return newMsgs
+                })
+            }
+        }
+
+        const cleanupListener = EventsOn("chat:chunk", handleChunk)
+
         try {
             // Import dynamically to avoid circular dependency
             const { ConfirmPendingAction } = await import("../wailsjs/go/app/App")
 
-            toast.info("Executando ação...")
-
-            // Clear local pending actions since backend will handle everything
-            chat.setPendingActions([])
-
             // Call backend - this will execute the action and resume AI
             const response = await ConfirmPendingAction()
+
+            // Clean up listener
+            cleanupListener()
 
             console.log('[DEBUG] ConfirmPendingAction response:', response?.substring(0, 100))
 
             if (response.startsWith("Error:")) {
-                toast.error(response)
+                setActionState('error')
+                setActionError(response.replace('Error: ', ''))
+                // Update message with error
+                chat.setMessages(prev => {
+                    const newMsgs = [...prev]
+                    const lastIndex = newMsgs.length - 1
+                    if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
+                        const oldContent = newMsgs[lastIndex].content.replace(/🔄 \*\*Aplicando alterações\.\.\.\*\*/g, '').trim()
+                        newMsgs[lastIndex] = {
+                            ...newMsgs[lastIndex],
+                            content: oldContent + '\n\n❌ **Erro ao aplicar:** ' + response.replace('Error: ', '')
+                        }
+                    }
+                    return newMsgs
+                })
             } else {
-                toast.success("Ação executada!")
+                // Update last message to remove "Aplicando..." / "IA continuando..." and show final success
+                chat.setMessages(prev => {
+                    const newMsgs = [...prev]
+                    const lastIndex = newMsgs.length - 1
+                    if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
+                        let oldContent = newMsgs[lastIndex].content
+                        oldContent = oldContent
+                            .replace(/🔄 \*\*Aplicando alterações\.\.\.\*\*/g, '')
+                            .replace(/✅ \*\*Alterações aplicadas com sucesso!\*\*\n\n\*IA continuando\.\.\.\*/g, '')
+                            .replace(/\*IA continuando\.\.\.\*/g, '')
+                            .trim()
+                        newMsgs[lastIndex] = {
+                            ...newMsgs[lastIndex],
+                            content: oldContent + '\n\n✅ **Alterações aplicadas com sucesso!**',
+                            hasActions: true
+                        }
+                    }
+                    return newMsgs
+                })
+
+                // Add AI continuation response to chat if there is one
+                if (response && response.trim()) {
+                    // Process the response to clean up formatting
+                    const { processAIResponse } = await import("@/services/aiProcessor")
+                    const { displayContent, actionsExecuted } = await processAIResponse(response, {
+                        askBeforeApply: true,
+                        onPendingAction: (action) => chat.setPendingActions(prev => [...prev, action]),
+                    })
+
+                    // Only add new message if there's meaningful content beyond tool results
+                    if (displayContent && !displayContent.includes('TOOL RESULTS')) {
+                        chat.setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: displayContent,
+                            hasActions: actionsExecuted > 0
+                        }])
+                    }
+
+                    // Check if there are new pending actions
+                    const { HasPendingAction } = await import("../wailsjs/go/app/App")
+                    const hasPending = await HasPendingAction()
+                    if (hasPending) {
+                        setHasPendingAction(true)
+                        setActionState('pending')
+                        return // Don't show completed, there's another action pending
+                    }
+                }
+
                 // Refresh workbooks to show any new sheets/data
                 await excel.refreshWorkbooks()
+
+                // Set to completed state - will show Keep/Undo buttons
+                setActionState('completed')
             }
         } catch (err) {
             console.error('Error confirming action:', err)
-            toast.error('Erro ao confirmar ação')
-            chat.setPendingActions([])
+            setActionState('error')
+            setActionError(err instanceof Error ? err.message : String(err))
         }
     }
 
-    // Handle undo
+    // Handle discarding pending actions
+    const handleDiscardActions = async () => {
+        // Update last message to show action was cancelled
+        chat.setMessages(prev => {
+            const newMsgs = [...prev]
+            const lastIndex = newMsgs.length - 1
+            if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
+                const oldContent = newMsgs[lastIndex].content
+                const cleanContent = oldContent
+                    .replace(/\*\(Ação aguardando aprovação\)\*/g, '')
+                    .replace(/🛑 \[Ação Pendente\] Aguardando aprovação do usuário para executar\./g, '')
+                    .trim()
+                newMsgs[lastIndex] = {
+                    ...newMsgs[lastIndex],
+                    content: cleanContent + '\n\n🚫 **Ação descartada pelo usuário.**'
+                }
+            }
+            return newMsgs
+        })
+
+        try {
+            const { RejectPendingAction } = await import("../wailsjs/go/app/App")
+            await RejectPendingAction()
+        } catch (err) {
+            console.error('Error rejecting action:', err)
+        }
+        chat.setPendingActions([])
+        setActionState('pending')
+        setHasPendingAction(false)
+        toast.info('Ação descartada')
+    }
+
+    // Handle keeping changes (after completed state)
+    const handleKeepChanges = () => {
+        setActionState('pending')
+        setHasPendingAction(false)
+        chat.setPendingActions([])
+        toast.success('Alterações mantidas!')
+    }
+
+    // Handle undo (revert changes)
     const handleUndo = async () => {
         try {
             await UndoLastChange()
             toast.success('Alteração desfeita!')
+            // Clear the completed state
+            setActionState('pending')
+            setHasPendingAction(false)
+            chat.setPendingActions([])
+            // Refresh preview
             if (excel.selectedWorkbook && excel.selectedSheets.length > 0) {
-                const preview = await GetPreviewData(excel.selectedWorkbook, excel.selectedSheets[0])
-                // Would need to update preview data in hook
+                await excel.refreshWorkbooks()
             }
         } catch (err) {
             toast.error('Nada para desfazer')
@@ -302,12 +502,14 @@ export default function App() {
 
                     {/* Pending Actions Banner */}
                     <PendingActions
-                        count={chat.pendingActions.length}
-                        validationMode={chat.validationMode}
+                        actions={chat.pendingActions}
+                        state={actionState}
+                        error={actionError}
+                        hasPendingAction={hasPendingAction}
                         onApply={handleApplyActions}
-                        onDiscard={chat.handleDiscardActions}
-                        onKeep={chat.handleKeepChanges}
-                        onUndo={chat.handleUndoChanges}
+                        onDiscard={handleDiscardActions}
+                        onKeep={handleKeepChanges}
+                        onUndo={handleUndo}
                     />
 
                     {/* Chat Messages */}
@@ -360,7 +562,7 @@ export default function App() {
                     {/* Chat Input */}
                     <ChatInput
                         inputMessage={chat.inputMessage}
-                        isLoading={chat.isLoading}
+                        isLoading={chat.isLoading || actionState === 'executing'}
                         inputRef={chat.inputRef}
                         onInputChange={chat.setInputMessage}
                         onSend={chat.handleSendMessage}
