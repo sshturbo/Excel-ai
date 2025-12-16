@@ -26,6 +26,13 @@ export function ChatInput({
         }
     }
 
+    // Reset height when message is cleared
+    React.useEffect(() => {
+        if (inputRef.current && inputMessage === '') {
+            inputRef.current.style.height = 'auto'
+        }
+    }, [inputMessage, inputRef])
+
     const hasText = inputMessage.trim().length > 0
 
     return (

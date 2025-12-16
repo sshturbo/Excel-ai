@@ -4,6 +4,7 @@ import (
 	"excel-ai/internal/dto"
 	"excel-ai/pkg/excel"
 	"excel-ai/pkg/storage"
+	"fmt"
 	"strings"
 	"sync"
 )
@@ -97,6 +98,17 @@ func (s *Service) RefreshWorkbooks() (*dto.ExcelStatus, error) {
 	}
 
 	return &dto.ExcelStatus{Connected: true, Workbooks: workbooks}, nil
+}
+
+// GetActiveWorkbookName retorna o nome da pasta de trabalho ativa
+func (s *Service) GetActiveWorkbookName() (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client == nil {
+		return "", fmt.Errorf("não conectado")
+	}
+	return s.client.GetActiveWorkbookName()
 }
 
 func (s *Service) Close() {

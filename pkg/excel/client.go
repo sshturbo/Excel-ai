@@ -152,6 +152,18 @@ func runOnCOMThreadWithResult[T any](c *Client, fn func() (T, error)) (T, error)
 
 // getWorkbookInternal obtém uma referência para uma pasta de trabalho (chamado internamente na thread COM)
 func (c *Client) getWorkbookInternal(workbookName string) (*ole.IDispatch, error) {
+	// Se nome vazio, retornar ActiveWorkbook
+	if workbookName == "" {
+		wbObj, err := oleutil.GetProperty(c.excelApp, "ActiveWorkbook")
+		if err != nil {
+			return nil, fmt.Errorf("falha ao obter ActiveWorkbook (nenhuma pasta aberta?): %w", err)
+		}
+		if wbObj.Val == 0 { // Check for null dispatch
+			return nil, fmt.Errorf("nenhuma pasta de trabalho ativa")
+		}
+		return wbObj.ToIDispatch(), nil
+	}
+
 	workbooks, err := oleutil.GetProperty(c.excelApp, "Workbooks")
 	if err != nil {
 		return nil, err
@@ -163,6 +175,28 @@ func (c *Client) getWorkbookInternal(workbookName string) (*ole.IDispatch, error
 		return nil, fmt.Errorf("pasta de trabalho '%s' não encontrada: %w", workbookName, err)
 	}
 	return wb.ToIDispatch(), nil
+}
+
+// GetActiveWorkbookName retorna o nome da pasta de trabalho ativa
+func (c *Client) GetActiveWorkbookName() (string, error) {
+	return runOnCOMThreadWithResult(c, func() (string, error) {
+		wbObj, err := oleutil.GetProperty(c.excelApp, "ActiveWorkbook")
+		if err != nil {
+			return "", err
+		}
+		if wbObj.Val == 0 {
+			return "", fmt.Errorf("nenhuma pasta de trabalho ativa")
+		}
+
+		wbDisp := wbObj.ToIDispatch()
+		defer wbDisp.Release()
+
+		nameVar, err := oleutil.GetProperty(wbDisp, "Name")
+		if err != nil {
+			return "", err
+		}
+		return nameVar.ToString(), nil
+	})
 }
 
 // getSheetInternal obtém uma referência para uma aba específica (chamado internamente na thread COM)

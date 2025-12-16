@@ -157,7 +157,7 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 		toolMsg := fmt.Sprintf("TOOL RESULTS:\n%s\nContinue your task based on these results.", executionResults)
 
 		s.chatHistory = append(s.chatHistory, domain.Message{
-			Role:      domain.RoleUser, // OpenAI usa 'function' role, mas 'user' funciona bem para modelos genéricos
+			Role:      domain.RoleSystem, // Changed to System to hide from UI but keep in context
 			Content:   toolMsg,
 			Timestamp: time.Now(),
 		})
@@ -453,7 +453,9 @@ CONSULTAS (verificar estado):
 AÇÕES (modificar Excel):
 :::excel-action
 {"op": "macro", "actions": [{"op": "create-sheet", "name": "Dados"}, {"op": "write", "sheet": "Dados", "cell": "A1", "data": [["Col1", "Col2"], ["Val1", "Val2"]]}, {"op": "format-range", "sheet": "Dados", "range": "A1:B1", "bold": true}, {"op": "autofit", "sheet": "Dados", "range": "A:B"}]}
-{"op": "write", "cell": "A1", "value": "valor único"}
+{"op": "write", "cell": "A1", "value": "valor texto"}
+{"op": "write", "cell": "B1", "formula": "=SOMA(A1:A10)"}
+{"op": "write", "cell": "C1", "formula": "=PROCV(A1; 'OutraAba'!A:B; 2; FALSO)"}
 {"op": "write", "sheet": "NomeDaPlanilha", "cell": "A1", "data": [["Cabeçalho1", "Cabeçalho2"], ["ValorLinha1Col1", "ValorLinha1Col2"]]}
 {"op": "create-workbook", "name": "Nova.xlsx"}
 {"op": "create-sheet", "name": "NovaPlanilha"}
@@ -491,6 +493,8 @@ REGRAS DO AGENTE:
 7. CRÍTICO: SEMPRE especifique o parâmetro "sheet" nas ações write/format! Após criar nova planilha, use o nome dela em TODAS as ações seguintes.
 8. Para inserção em lote, use o campo "data" com array 2D: {"op": "write", "sheet": "MinhaAba", "cell": "A1", "data": [["Col1", "Col2"], ["Val1", "Val2"]]}
 9. **MACRO OBRIGATÓRIA**: Ao fazer QUALQUER tarefa multi-passo (criar planilha + escrever dados + formatar + autofit), você DEVE usar MACRO! NUNCA faça ações separadas quando podem ser combinadas. Ações individuais são apenas para operações verdadeiramente isoladas.
+10. **FÓRMULAS**: Use o campo "formula" explícito. Ex: {"op": "write", "cell": "A1", "formula": "=SOMA(B1:B10)"}. Use ponto-e-vírgula (;) como separador se estiver em ambiente PT-BR.
+11. **VALORES NULOS**: NUNCA envie "value": null. Se quiser limpar, use "". Ou use op: "clear-range".
 
 EXEMPLO - Usuário pede para criar tabela com produtos (USE MACRO!):
 :::thinking

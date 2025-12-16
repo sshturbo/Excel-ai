@@ -256,7 +256,19 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 		}
 
 		// Modo single cell
-		valStr := fmt.Sprintf("%v", params["value"])
+
+		// Verificar se existe parâmetro "formula" explicito
+		if formula, ok := params["formula"].(string); ok && formula != "" {
+			params["value"] = formula
+		}
+
+		var valStr string
+		if params["value"] == nil {
+			valStr = ""
+		} else {
+			valStr = fmt.Sprintf("%v", params["value"])
+		}
+
 		err := s.excelService.UpdateCell("", sheet, cell, valStr)
 		if err != nil {
 			return "", err
@@ -277,8 +289,9 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 			return "", err
 		}
 		// Undo: create-sheet -> só precisa saber o nome para deletar
+		wbName, _ := s.excelService.GetActiveWorkbookName() // Tenta obter nome do workbook atual (best effort)
 		undoData, _ := json.Marshal(map[string]string{"sheetName": name})
-		s.excelService.SaveUndoAction("create-sheet", "", name, "", "", string(undoData))
+		s.excelService.SaveUndoAction("create-sheet", wbName, name, "", "", string(undoData))
 		return fmt.Sprintf("CREATE SHEET OK: %s", name), nil
 
 	case "create-chart":

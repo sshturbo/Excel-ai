@@ -215,8 +215,7 @@ export namespace license {
 	    valid: boolean;
 	    message: string;
 	    hash?: string;
-	    // Go type: time
-	    activatedAt?: any;
+	    activatedAt?: string;
 	    machineId?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -228,27 +227,9 @@ export namespace license {
 	        this.valid = source["valid"];
 	        this.message = source["message"];
 	        this.hash = source["hash"];
-	        this.activatedAt = this.convertValues(source["activatedAt"], null);
+	        this.activatedAt = source["activatedAt"];
 	        this.machineId = source["machineId"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 
 }

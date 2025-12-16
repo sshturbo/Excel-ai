@@ -17,6 +17,9 @@ func (s *Service) GetChatHistory() []dto.ChatMessage {
 
 	var result []dto.ChatMessage
 	for _, m := range s.chatHistory {
+		if m.Role == domain.RoleSystem {
+			continue
+		}
 		result = append(result, dto.ChatMessage{
 			Role:    string(m.Role),
 			Content: m.Content,

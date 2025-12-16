@@ -79,6 +79,11 @@ func (s *Service) LoadConversation(id string) ([]dto.ChatMessage, error) {
 		}
 		s.chatHistory = append(s.chatHistory, domainMsg)
 
+		// Filter out system messages/tool results from the UI
+		if domain.MessageRole(m.Role) == domain.RoleSystem {
+			continue
+		}
+
 		result = append(result, dto.ChatMessage{
 			Role:      m.Role,
 			Content:   m.Content,

@@ -57,11 +57,11 @@ func QuickValidate(s *storage.Storage, githubURL string) (bool, string) {
 
 // GetLicenseStatus retorna status da licença para UI
 type LicenseStatus struct {
-	Valid       bool      `json:"valid"`
-	Message     string    `json:"message"`
-	Hash        string    `json:"hash,omitempty"`
-	ActivatedAt time.Time `json:"activatedAt,omitempty"`
-	MachineID   string    `json:"machineId,omitempty"`
+	Valid       bool   `json:"valid"`
+	Message     string `json:"message"`
+	Hash        string `json:"hash,omitempty"`
+	ActivatedAt string `json:"activatedAt,omitempty"`
+	MachineID   string `json:"machineId,omitempty"`
 }
 
 // GetStatus retorna o status completo da licença
@@ -79,7 +79,7 @@ func GetStatus(s *storage.Storage, githubURL string) LicenseStatus {
 	// Carregar dados da licença para mostrar
 	if license, err := adapter.LoadLicense(); err == nil && license != nil {
 		status.Hash = license.Hash[:8] + "..." // Mostrar só início
-		status.ActivatedAt = license.ActivatedAt
+		status.ActivatedAt = license.ActivatedAt.Format(time.RFC3339)
 		status.MachineID = license.MachineID[:8] + "..."
 	}
 

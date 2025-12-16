@@ -148,6 +148,17 @@ func initDB(db *sql.DB) error {
 			return fmt.Errorf("erro ao inicializar DB: %w", err)
 		}
 	}
+
+	// Migrations (ignore errors if columns exist)
+	migrations := []string{
+		`ALTER TABLE undo_actions ADD COLUMN operation_type TEXT NOT NULL DEFAULT 'write'`,
+		`ALTER TABLE undo_actions ADD COLUMN undo_data TEXT`,
+		`UPDATE messages SET role = 'system' WHERE content LIKE 'TOOL RESULTS:%' AND role = 'user'`,
+	}
+	for _, m := range migrations {
+		db.Exec(m)
+	}
+
 	return nil
 }
 
