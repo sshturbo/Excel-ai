@@ -68,3 +68,26 @@ func (a *App) DeleteConversation(id string) error {
 func (a *App) GetChatHistory() []dto.ChatMessage {
 	return a.chatService.GetChatHistory()
 }
+
+// HasPendingAction verifica se há ação pendente
+func (a *App) HasPendingAction() bool {
+	return a.chatService.HasPendingAction()
+}
+
+// ConfirmPendingAction confirma e executa a ação pendente, retomando a IA
+func (a *App) ConfirmPendingAction() string {
+	response, err := a.chatService.ConfirmPendingAction(func(chunk string) error {
+		runtime.EventsEmit(a.ctx, "chat:chunk", chunk)
+		return nil
+	})
+
+	if err != nil {
+		return "Error: " + err.Error()
+	}
+	return response
+}
+
+// RejectPendingAction descarta a ação pendente
+func (a *App) RejectPendingAction() {
+	a.chatService.RejectPendingAction()
+}

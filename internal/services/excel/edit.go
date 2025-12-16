@@ -15,22 +15,25 @@ func (s *Service) UpdateCell(workbook, sheet, cell, value string) error {
 		return fmt.Errorf("excel não conectado")
 	}
 
+	// Check active workbook/sheet first if not specified
+	if workbook == "" || sheet == "" {
+		activeWb, activeSheet, err := s.client.GetActiveWorkbookAndSheet()
+		if err == nil {
+			if workbook == "" {
+				workbook = activeWb
+			}
+			if sheet == "" {
+				sheet = activeSheet
+			}
+		}
+	}
+
+	// Fallback to context if still empty
 	if workbook == "" {
 		workbook = s.currentWorkbook
 	}
 	if sheet == "" {
 		sheet = s.getFirstSheet()
-	}
-
-	// Se ainda não tiver workbook, tentar obter o ativo
-	if workbook == "" {
-		activeWb, activeSheet, err := s.client.GetActiveWorkbookAndSheet()
-		if err == nil {
-			workbook = activeWb
-			if sheet == "" {
-				sheet = activeSheet
-			}
-		}
 	}
 
 	if workbook == "" || sheet == "" {
@@ -115,12 +118,27 @@ func (s *Service) WriteToExcel(row, col int, value interface{}) error {
 		return fmt.Errorf("não conectado ao Excel")
 	}
 
+	workbook := s.currentWorkbook
 	sheet := s.getFirstSheet()
-	if s.currentWorkbook == "" || sheet == "" {
+
+	// Logic update: prefer active if context is empty
+	if workbook == "" || sheet == "" {
+		activeWb, activeSheet, err := s.client.GetActiveWorkbookAndSheet()
+		if err == nil {
+			if workbook == "" {
+				workbook = activeWb
+			}
+			if sheet == "" {
+				sheet = activeSheet
+			}
+		}
+	}
+
+	if workbook == "" || sheet == "" {
 		return fmt.Errorf("nenhuma planilha selecionada")
 	}
 
-	return s.client.WriteCell(s.currentWorkbook, sheet, row, col, value)
+	return s.client.WriteCell(workbook, sheet, row, col, value)
 }
 
 func (s *Service) ApplyFormula(row, col int, formula string) error {

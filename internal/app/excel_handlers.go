@@ -52,6 +52,7 @@ func (a *App) GetActiveSelection() (*excel.SheetData, error) {
 
 // UpdateExcelCell atualiza uma célula no Excel
 func (a *App) UpdateExcelCell(workbook, sheet, cell, value string) error {
+	fmt.Printf("[DEBUG] UpdateExcelCell request: WB='%s' Sheet='%s' Cell='%s' Value='%s'\n", workbook, sheet, cell, value)
 	return a.excelService.UpdateCell(workbook, sheet, cell, value)
 }
 

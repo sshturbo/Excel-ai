@@ -129,9 +129,10 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 			// Se o usuário pediu para confirmar antes de aplicar (AskBeforeApply)
 			// E o comando é de escrita/modificação (não busca), pausamos.
 			if askBeforeApply && cmd.Type == "action" {
-				// Pausa a execução e retorna o comando 'pendente' no histórico?
-				// Na verdade, o texto já foi enviado. O frontend vai parsear.
-				// Nós apenas NÃO executamos e encerramos o loop.
+				// Salvar o comando pendente para execução posterior
+				s.pendingAction = &cmd
+				s.pendingContextStr = contextStr
+				s.pendingOnChunk = onChunk
 
 				pauseMsg := "\n\n🛑 *[Ação Pendente]* Aguardando aprovação do usuário para executar.\n"
 				onChunk(pauseMsg)
@@ -240,6 +241,137 @@ func (s *Service) CancelChat() {
 		s.cancelFunc()
 		s.cancelFunc = nil
 	}
+	// Also clear any pending action
+	s.pendingAction = nil
+}
+
+// HasPendingAction returns true if there's a pending action waiting for confirmation
+func (s *Service) HasPendingAction() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pendingAction != nil
+}
+
+// ConfirmPendingAction executes the pending action and resumes the AI loop
+func (s *Service) ConfirmPendingAction(onChunk func(string) error) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.pendingAction == nil {
+		return "", fmt.Errorf("no pending action to confirm")
+	}
+
+	cmd := s.pendingAction
+	contextStr := s.pendingContextStr
+	s.pendingAction = nil
+	s.pendingContextStr = ""
+
+	// Use provided onChunk or saved one
+	if onChunk == nil {
+		onChunk = s.pendingOnChunk
+	}
+	if onChunk == nil {
+		onChunk = func(s string) error { return nil } // Fallback no-op
+	}
+
+	// Execute the pending action
+	onChunk("\n\n✅ *[Executando ação aprovada...]*\n")
+
+	result, err := s.ExecuteTool(*cmd)
+	var executionResults string
+	if err != nil {
+		executionResults = fmt.Sprintf("ERROR Executing %s: %v\n", cmd.Content, err)
+		onChunk(fmt.Sprintf("\n❌ Erro: %v\n", err))
+	} else {
+		executionResults = fmt.Sprintf("SUCCESS: %s\n", result)
+		onChunk(fmt.Sprintf("\n✅ Ação executada com sucesso!\n"))
+	}
+
+	// Add execution results to chat history
+	toolMsg := fmt.Sprintf("TOOL RESULTS:\n%s\nContinue your task based on these results.", executionResults)
+	s.chatHistory = append(s.chatHistory, domain.Message{
+		Role:      domain.RoleUser,
+		Content:   toolMsg,
+		Timestamp: time.Now(),
+	})
+
+	// Resume the AI loop (simplified version - just one more turn)
+	s.refreshConfig()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	s.cancelMu.Lock()
+	s.cancelFunc = cancel
+	s.cancelMu.Unlock()
+	defer func() {
+		s.cancelMu.Lock()
+		s.cancelFunc = nil
+		s.cancelMu.Unlock()
+		cancel()
+	}()
+
+	// Convert to AI messages and continue
+	aiHistory := s.toAIMessages(s.chatHistory)
+
+	var currentResponse string
+	chunkWrapper := func(chunk string) error {
+		currentResponse += chunk
+		return onChunk(chunk)
+	}
+
+	if s.provider == "google" {
+		_, err = s.geminiClient.ChatStream(ctx, aiHistory, chunkWrapper)
+	} else {
+		_, err = s.client.ChatStream(ctx, aiHistory, chunkWrapper)
+	}
+
+	if err != nil {
+		return currentResponse, err
+	}
+
+	// Add response to history
+	s.chatHistory = append(s.chatHistory, domain.Message{
+		Role:      domain.RoleAssistant,
+		Content:   currentResponse,
+		Timestamp: time.Now(),
+	})
+
+	// Check for more commands (simplified - just return, let frontend handle if more actions needed)
+	commands := s.ParseToolCommands(currentResponse)
+	if len(commands) > 0 {
+		for _, newCmd := range commands {
+			if newCmd.Type == "action" {
+				// Another action pending - save it
+				s.pendingAction = &newCmd
+				s.pendingContextStr = contextStr
+				s.pendingOnChunk = onChunk
+
+				pauseMsg := "\n\n🛑 *[Ação Pendente]* Aguardando aprovação do usuário para executar.\n"
+				onChunk(pauseMsg)
+				currentResponse += pauseMsg
+				break
+			} else if newCmd.Type == "query" {
+				// Execute queries automatically
+				result, err := s.ExecuteTool(newCmd)
+				if err == nil {
+					queryResult := fmt.Sprintf("\n📊 Query result: %s\n", result)
+					onChunk(queryResult)
+				}
+			}
+		}
+	}
+
+	go s.saveCurrentConversation(contextStr)
+
+	return currentResponse, nil
+}
+
+// RejectPendingAction discards the pending action
+func (s *Service) RejectPendingAction() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pendingAction = nil
+	s.pendingContextStr = ""
+	s.pendingOnChunk = nil
 }
 
 func (s *Service) refreshConfig() {

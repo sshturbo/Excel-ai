@@ -143,58 +143,34 @@ export default function App() {
         }
     }, [excel.previewData])
 
-    // Handle applying pending actions
+    // Handle applying pending actions - now calls backend to execute and resume AI
     const handleApplyActions = async () => {
-        if (chat.pendingActions.length === 0) return
+        console.log('[DEBUG] handleApplyActions called - calling backend ConfirmPendingAction')
 
         try {
-            await StartUndoBatch()
+            // Import dynamically to avoid circular dependency
+            const { ConfirmPendingAction } = await import("../wailsjs/go/app/App")
 
-            let successCount = 0
-            for (const action of chat.pendingActions) {
-                const result = await executeExcelAction(action as ExcelAction, excel.setWorkbooks)
-                if (result.success) {
-                    successCount++
-                } else {
-                    toast.error(`Erro: ${result.error}`)
-                    break
-                }
-            }
+            toast.info("Executando ação...")
 
-            await EndUndoBatch()
+            // Clear local pending actions since backend will handle everything
+            chat.setPendingActions([])
 
-            if (successCount > 0) {
-                toast.success(`${successCount} alteração(ões) aplicada(s)!`)
+            // Call backend - this will execute the action and resume AI
+            const response = await ConfirmPendingAction()
 
-                // Mark last message as having actions
-                chat.setMessages(prev => {
-                    const newMsgs = [...prev]
-                    const lastIndex = newMsgs.length - 1
-                    if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
-                        newMsgs[lastIndex] = { ...newMsgs[lastIndex], hasActions: true }
-                    }
-                    return newMsgs
-                })
+            console.log('[DEBUG] ConfirmPendingAction response:', response?.substring(0, 100))
 
-                // Refresh preview
-                if (excel.selectedWorkbook && excel.selectedSheets.length > 0) {
-                    const preview = await GetPreviewData(excel.selectedWorkbook, excel.selectedSheets[0])
-                    if (preview) {
-                        // This would need setPreviewData exposed from useExcelConnection
-                        // For now we'll refresh workbooks
-                        await excel.refreshWorkbooks()
-                    }
-                }
-
-                // Entrar em modo de validação (Manter ou Desfazer)
-                chat.setValidationMode(true)
+            if (response.startsWith("Error:")) {
+                toast.error(response)
             } else {
-                // Se nada foi aplicado (erro), limpar
-                chat.setPendingActions([])
+                toast.success("Ação executada!")
+                // Refresh workbooks to show any new sheets/data
+                await excel.refreshWorkbooks()
             }
         } catch (err) {
-            console.error('Error applying actions:', err)
-            toast.error('Erro ao aplicar alterações')
+            console.error('Error confirming action:', err)
+            toast.error('Erro ao confirmar ação')
             chat.setPendingActions([])
         }
     }

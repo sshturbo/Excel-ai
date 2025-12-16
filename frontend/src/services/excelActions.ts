@@ -44,12 +44,38 @@ export async function executeExcelAction(
     onWorkbooksUpdate?: (workbooks: Workbook[]) => void
 ): Promise<ExcelActionResult> {
     try {
+        // Handle macro (batch of actions)
+        if (action.op === 'macro' && Array.isArray((action as any).actions)) {
+            console.log('[DEBUG] Executing macro with', (action as any).actions.length, 'sub-actions')
+            for (const subAction of (action as any).actions) {
+                const result = await executeExcelAction(subAction, onWorkbooksUpdate)
+                if (!result.success) {
+                    return result // Stop on first error
+                }
+            }
+            return { success: true }
+        }
+
         if (action.op === 'write') {
+            // Handle both formats: value (string) and data (array)
+            let valueToWrite = ''
+            if (action.value !== undefined) {
+                valueToWrite = String(action.value)
+            } else if ((action as any).data && Array.isArray((action as any).data)) {
+                // data is typically [[value]] or [row1, row2, ...]
+                const data = (action as any).data
+                if (data.length > 0 && Array.isArray(data[0]) && data[0].length > 0) {
+                    valueToWrite = String(data[0][0])
+                } else if (data.length > 0) {
+                    valueToWrite = String(data[0])
+                }
+            }
+            console.log('[DEBUG] write op: cell=', action.cell, 'value=', valueToWrite)
             await UpdateExcelCell(
                 action.workbook || '',
                 action.sheet || '',
                 action.cell || '',
-                action.value || ''
+                valueToWrite
             )
         } else if (action.op === 'create-workbook') {
             const name = await CreateNewWorkbook()

@@ -21,6 +21,11 @@ type Service struct {
 	currentConvID string
 	cancelFunc    context.CancelFunc
 	excelService  *excel.Service
+
+	// Pending action state (when askBeforeApply pauses execution)
+	pendingAction     *ToolCommand
+	pendingContextStr string
+	pendingOnChunk    func(string) error
 }
 
 func NewService(storage *storage.Storage) *Service {

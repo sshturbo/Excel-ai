@@ -42,6 +42,10 @@ export function ConfigurePivotFields(arg1, arg2, arg3, arg4) {
   return window['go']['app']['App']['ConfigurePivotFields'](arg1, arg2, arg3, arg4);
 }
 
+export function ConfirmPendingAction() {
+  return window['go']['app']['App']['ConfirmPendingAction']();
+}
+
 export function ConnectExcel() {
   return window['go']['app']['App']['ConnectExcel']();
 }
@@ -142,6 +146,10 @@ export function GetUsedRange(arg1) {
   return window['go']['app']['App']['GetUsedRange'](arg1);
 }
 
+export function HasPendingAction() {
+  return window['go']['app']['App']['HasPendingAction']();
+}
+
 export function InsertRows(arg1, arg2, arg3) {
   return window['go']['app']['App']['InsertRows'](arg1, arg2, arg3);
 }
@@ -188,6 +196,10 @@ export function QueryExcel(arg1, arg2) {
 
 export function RefreshWorkbooks() {
   return window['go']['app']['App']['RefreshWorkbooks']();
+}
+
+export function RejectPendingAction() {
+  return window['go']['app']['App']['RejectPendingAction']();
 }
 
 export function RenameSheet(arg1, arg2) {
