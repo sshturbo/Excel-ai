@@ -27,6 +27,11 @@ func (s *Service) NewConversation() string {
 	return s.currentConvID
 }
 
+// GetCurrentConversationID retorna o ID da conversa atual
+func (s *Service) GetCurrentConversationID() string {
+	return s.currentConvID
+}
+
 func (s *Service) ListConversations() ([]dto.ConversationInfo, error) {
 	if s.storage == nil {
 		return nil, fmt.Errorf("storage não disponível")

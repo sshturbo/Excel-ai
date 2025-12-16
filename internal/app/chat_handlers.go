@@ -91,3 +91,8 @@ func (a *App) ConfirmPendingAction() string {
 func (a *App) RejectPendingAction() {
 	a.chatService.RejectPendingAction()
 }
+
+// GetCurrentConversationID retorna o ID da conversa atual
+func (a *App) GetCurrentConversationID() string {
+	return a.chatService.GetCurrentConversationID()
+}

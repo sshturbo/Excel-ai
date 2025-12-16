@@ -27,6 +27,7 @@ func NewApp() *App {
 
 	// Inicializar serviços
 	excelSvc := excelService.NewService()
+	excelSvc.SetStorage(stor) // Wire storage para undo no banco de dados
 	chatSvc := chatService.NewService(stor)
 	chatSvc.SetExcelService(excelSvc)
 

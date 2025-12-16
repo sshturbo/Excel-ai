@@ -58,6 +58,7 @@ type Config struct {
 	MaxRowsContext int    `json:"maxRowsContext"` // Máximo de linhas enviadas para IA
 	MaxRowsPreview int    `json:"maxRowsPreview"` // Máximo de linhas no preview
 	IncludeHeaders bool   `json:"includeHeaders"` // Incluir cabeçalhos no contexto
+	AskBeforeApply bool   `json:"askBeforeApply"` // Modo Seguro vs YOLO
 	DetailLevel    string `json:"detailLevel"`    // "minimal", "normal", "detailed"
 	CustomPrompt   string `json:"customPrompt"`   // Prompt personalizado adicional
 	Language       string `json:"language"`       // Idioma das respostas
@@ -123,6 +124,20 @@ func initDB(db *sql.DB) error {
 			name TEXT,
 			messages TEXT,
 			context TEXT,
+			created_at DATETIME,
+			FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS undo_actions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			conversation_id TEXT NOT NULL,
+			batch_id INTEGER NOT NULL,
+			operation_type TEXT NOT NULL DEFAULT 'write',
+			workbook TEXT,
+			sheet TEXT,
+			cell TEXT,
+			old_value TEXT,
+			undo_data TEXT,
+			approved BOOLEAN DEFAULT FALSE,
 			created_at DATETIME,
 			FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 		)`,
@@ -315,6 +330,7 @@ func (s *Storage) LoadConfig() (*Config, error) {
 				MaxRowsContext:  50,
 				MaxRowsPreview:  100,
 				IncludeHeaders:  true,
+				AskBeforeApply:  true, // Modo seguro por padrão
 				DetailLevel:     "normal",
 				Language:        "pt-BR",
 			}, nil
@@ -576,4 +592,109 @@ func (s *Storage) LoadLicense() (*LicenseInfo, error) {
 	}
 
 	return &license, nil
+}
+
+// ========== Undo Actions por Conversa ==========
+
+// UndoAction representa uma ação que pode ser desfeita
+type UndoAction struct {
+	ID             int64     `json:"id"`
+	ConversationID string    `json:"conversationId"`
+	BatchID        int64     `json:"batchId"`
+	OperationType  string    `json:"operationType"` // write, create-sheet, rename-sheet, etc.
+	Workbook       string    `json:"workbook"`
+	Sheet          string    `json:"sheet"`
+	Cell           string    `json:"cell"`
+	OldValue       string    `json:"oldValue"`
+	UndoData       string    `json:"undoData"` // JSON with operation-specific undo data
+	Approved       bool      `json:"approved"`
+	CreatedAt      time.Time `json:"createdAt"`
+}
+
+// SaveUndoAction salva uma ação de undo vinculada a uma conversa
+// SaveUndoAction salva uma ação de undo simple (compatibilidade)
+func (s *Storage) SaveUndoAction(convID string, batchID int64, workbook, sheet, cell, oldValue string) error {
+	return s.SaveUndoActionFull(convID, batchID, "write", workbook, sheet, cell, oldValue, "")
+}
+
+// SaveUndoActionFull salva uma ação de undo com todos os detalhes
+func (s *Storage) SaveUndoActionFull(convID string, batchID int64, opType, workbook, sheet, cell, oldValue, undoData string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO undo_actions (conversation_id, batch_id, operation_type, workbook, sheet, cell, old_value, undo_data, approved, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE, ?)
+	`, convID, batchID, opType, workbook, sheet, cell, oldValue, undoData, time.Now())
+	return err
+}
+
+// GetPendingUndoActions retorna ações não aprovadas de uma conversa
+func (s *Storage) GetPendingUndoActions(convID string) ([]UndoAction, error) {
+	rows, err := s.db.Query(`
+		SELECT id, conversation_id, batch_id, operation_type, workbook, sheet, cell, old_value, undo_data, approved, created_at
+		FROM undo_actions 
+		WHERE conversation_id = ? AND approved = FALSE
+		ORDER BY id DESC
+	`, convID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var actions []UndoAction
+	for rows.Next() {
+		var a UndoAction
+		var opType, undoData sql.NullString
+
+		if err := rows.Scan(&a.ID, &a.ConversationID, &a.BatchID, &opType, &a.Workbook, &a.Sheet, &a.Cell, &a.OldValue, &undoData, &a.Approved, &a.CreatedAt); err != nil {
+			continue
+		}
+
+		// Handle potential NULLs for new columns existing rows
+		a.OperationType = opType.String
+		if a.OperationType == "" {
+			a.OperationType = "write" // Default legacy
+		}
+		a.UndoData = undoData.String
+
+		actions = append(actions, a)
+	}
+	return actions, nil
+}
+
+// ApproveUndoActions marca ações de uma conversa como aprovadas (não podem mais ser desfeitas)
+func (s *Storage) ApproveUndoActions(convID string) error {
+	_, err := s.db.Exec(`UPDATE undo_actions SET approved = TRUE WHERE conversation_id = ? AND approved = FALSE`, convID)
+	return err
+}
+
+// DeleteUndoActions remove ações de undo de uma conversa (após desfazer)
+func (s *Storage) DeleteUndoActions(convID string, batchID int64) error {
+	_, err := s.db.Exec(`DELETE FROM undo_actions WHERE conversation_id = ? AND batch_id = ?`, convID, batchID)
+	return err
+}
+
+// HasPendingUndoActions verifica se há ações pendentes (não aprovadas) para uma conversa
+func (s *Storage) HasPendingUndoActions(convID string) (bool, error) {
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM undo_actions WHERE conversation_id = ? AND approved = FALSE`, convID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// GetLastBatchID retorna o último batch_id de uma conversa
+func (s *Storage) GetLastBatchID(convID string) (int64, error) {
+	var batchID int64
+	err := s.db.QueryRow(`
+		SELECT batch_id FROM undo_actions 
+		WHERE conversation_id = ? AND approved = FALSE
+		ORDER BY id DESC LIMIT 1
+	`, convID).Scan(&batchID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return batchID, nil
 }

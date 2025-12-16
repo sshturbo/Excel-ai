@@ -3,25 +3,50 @@ package excel
 import (
 	"excel-ai/internal/dto"
 	"excel-ai/pkg/excel"
+	"excel-ai/pkg/storage"
 	"strings"
 	"sync"
 )
 
 type Service struct {
-	client          *excel.Client
-	mu              sync.Mutex
-	currentWorkbook string
-	currentSheet    string
-	previewData     *excel.SheetData
-	undoStack       []dto.UndoAction
-	currentBatchID  int64
-	contextStr      string
+	client              *excel.Client
+	mu                  sync.Mutex
+	currentWorkbook     string
+	currentSheet        string
+	previewData         *excel.SheetData
+	undoStack           []dto.UndoAction // Mantido para fallback
+	currentBatchID      int64
+	lastExecutedBatchID int64
+	contextStr          string
+	storage             *storage.Storage // Banco de dados para undo
+	currentConvID       string           // ID da conversa atual
 }
 
 func NewService() *Service {
 	return &Service{
 		undoStack: []dto.UndoAction{},
 	}
+}
+
+// SetStorage configura o storage para persistência de undo
+func (s *Service) SetStorage(store *storage.Storage) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.storage = store
+}
+
+// SetConversationID define a conversa atual para vincular ações de undo
+func (s *Service) SetConversationID(convID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.currentConvID = convID
+}
+
+// GetConversationID retorna a conversa atual
+func (s *Service) GetConversationID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.currentConvID
 }
 
 // getFirstSheet retorna a primeira aba quando currentSheet contém múltiplas abas
@@ -80,4 +105,15 @@ func (s *Service) Close() {
 	if s.client != nil {
 		s.client.Close()
 	}
+}
+
+// SaveUndoAction salva uma ação de undo no banco de dados
+func (s *Service) SaveUndoAction(opType, workbook, sheet, cell, oldValue, undoData string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.storage != nil && s.currentConvID != "" && s.currentBatchID != 0 {
+		return s.storage.SaveUndoActionFull(s.currentConvID, s.currentBatchID, opType, workbook, sheet, cell, oldValue, undoData)
+	}
+	return nil
 }

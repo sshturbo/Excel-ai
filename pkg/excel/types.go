@@ -36,3 +36,12 @@ type SheetData struct {
 	Headers []string     `json:"headers"`
 	Rows    [][]CellData `json:"rows"`
 }
+
+// Format representa formatação de célula/range
+type Format struct {
+	Bold      bool   `json:"bold"`
+	Italic    bool   `json:"italic"`
+	FontSize  int    `json:"fontSize"`
+	FontColor string `json:"fontColor"` // Hex
+	BgColor   string `json:"bgColor"`   // Hex
+}

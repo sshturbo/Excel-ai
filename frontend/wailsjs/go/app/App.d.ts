@@ -13,6 +13,8 @@ export function ApplyFilter(arg1:string,arg2:string):Promise<void>;
 
 export function ApplyFormula(arg1:number,arg2:number,arg3:string):Promise<void>;
 
+export function ApproveUndoActions(arg1:string):Promise<void>;
+
 export function AutoFitColumns(arg1:string,arg2:string):Promise<void>;
 
 export function CancelChat():Promise<void>;
@@ -22,6 +24,8 @@ export function CheckLicense():Promise<boolean|string>;
 export function ClearChat():Promise<void>;
 
 export function ClearFilters(arg1:string):Promise<void>;
+
+export function ClearLastBatchID():Promise<void>;
 
 export function ClearRange(arg1:string,arg2:string):Promise<void>;
 
@@ -63,11 +67,17 @@ export function FormatRange(arg1:string,arg2:string,arg3:boolean,arg4:boolean,ar
 
 export function GetActiveSelection():Promise<excel.SheetData>;
 
+export function GetAskBeforeApply():Promise<boolean>;
+
 export function GetAvailableModels(arg1:string,arg2:string):Promise<Array<dto.ModelInfo>>;
 
 export function GetChatHistory():Promise<Array<dto.ChatMessage>>;
 
+export function GetCurrentConversationID():Promise<string>;
+
 export function GetHeaders(arg1:string,arg2:string):Promise<Array<string>>;
+
+export function GetLastBatchID():Promise<number>;
 
 export function GetLicenseMessage():Promise<string>;
 
@@ -80,6 +90,8 @@ export function GetSavedConfig():Promise<storage.Config>;
 export function GetUsedRange(arg1:string):Promise<string>;
 
 export function HasPendingAction():Promise<boolean>;
+
+export function HasPendingUndoActionsForConversation(arg1:string):Promise<boolean>;
 
 export function InsertRows(arg1:string,arg2:number,arg3:number):Promise<void>;
 
@@ -115,9 +127,13 @@ export function SendMessage(arg1:string,arg2:boolean):Promise<string>;
 
 export function SetAPIKey(arg1:string):Promise<void>;
 
+export function SetAskBeforeApply(arg1:boolean):Promise<void>;
+
 export function SetBorders(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function SetColumnWidth(arg1:string,arg2:string,arg3:number):Promise<void>;
+
+export function SetConversationIDForUndo(arg1:string):Promise<void>;
 
 export function SetExcelContext(arg1:string,arg2:string):Promise<string>;
 
@@ -136,6 +152,8 @@ export function StartWorkbookWatcher():Promise<void>;
 export function StopWorkbookWatcher():Promise<void>;
 
 export function SwitchProvider(arg1:string):Promise<storage.Config>;
+
+export function UndoByConversation(arg1:string):Promise<number>;
 
 export function UndoLastChange():Promise<void>;
 

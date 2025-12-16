@@ -1,6 +1,9 @@
 package excel
 
-import "fmt"
+import (
+	"excel-ai/pkg/excel"
+	"fmt"
+)
 
 func (s *Service) FormatRange(sheet, rangeAddr string, bold, italic bool, fontSize int, fontColor, bgColor string) error {
 	s.mu.Lock()
@@ -97,4 +100,40 @@ func (s *Service) CopyRange(sheet, sourceRange, destRange string) error {
 		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
 	}
 	return s.client.CopyRange(s.currentWorkbook, sheet, sourceRange, destRange)
+}
+
+func (s *Service) GetFormat(sheet, rangeAddr string) (*excel.Format, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return nil, fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return nil, fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.GetFormat(s.currentWorkbook, sheet, rangeAddr)
+}
+
+func (s *Service) GetColumnWidth(sheet, rangeAddr string) (float64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return 0, fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return 0, fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.GetColumnWidth(s.currentWorkbook, sheet, rangeAddr)
+}
+
+func (s *Service) GetRowHeight(sheet, rangeAddr string) (float64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client == nil {
+		return 0, fmt.Errorf("excel não conectado")
+	}
+	if s.currentWorkbook == "" {
+		return 0, fmt.Errorf("nenhuma pasta de trabalho selecionada")
+	}
+	return s.client.GetRowHeight(s.currentWorkbook, sheet, rangeAddr)
 }

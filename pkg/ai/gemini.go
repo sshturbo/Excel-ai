@@ -392,23 +392,34 @@ func (c *GeminiClient) ChatStream(ctx context.Context, messages []Message, onChu
 				if attempt < maxRetries {
 					waitDuration := parseRetryAfter(resp)
 
-					// Logs Específicos do Plano
-					var msg string
+					// Contagem regressiva animada
+					totalSeconds := int(waitDuration.Seconds())
+					if totalSeconds < 1 {
+						totalSeconds = 1
+					}
+
+					// Mensagem inicial
 					switch attempt {
 					case 0:
-						msg = fmt.Sprintf("\n\n⏳ Quota excedida (%d). Aguardando %.0fs antes de nova tentativa com modelo '%s'...\n\n", resp.StatusCode, waitDuration.Seconds(), c.model)
+						onChunk(fmt.Sprintf("\n\n⏳ Quota excedida (%d). Aguardando %ds...", resp.StatusCode, totalSeconds))
 					case 1:
-						msg = fmt.Sprintf("\n\n⚠️ Nova falha de quota com modelo '%s'. Tentando fallback para 'gemini-1.5-flash'...\n\n", c.model)
+						onChunk(fmt.Sprintf("\n\n⚠️ Nova falha de quota. Tentando fallback para 'gemini-1.5-flash' em %ds...", totalSeconds))
 					}
-					onChunk(msg)
 
-					// Sleep respeitando Context
-					select {
-					case <-time.After(waitDuration):
-						continue
-					case <-ctx.Done():
-						return "", ctx.Err()
+					// Loop de contagem regressiva
+					for remaining := totalSeconds - 1; remaining >= 0; remaining-- {
+						select {
+						case <-time.After(1 * time.Second):
+							if remaining > 0 {
+								// Atualizar contagem: usar \r para sobrescrever no terminal, mas para streaming simplesmente notificar
+								onChunk(fmt.Sprintf(" %d...", remaining))
+							}
+						case <-ctx.Done():
+							return "", ctx.Err()
+						}
 					}
+					onChunk("\n\n✅ Retomando...\n\n")
+					continue
 				} else {
 					// Falha final após fallback
 					onChunk("\n\n❌ Quota excedida mesmo após fallback. Possível limite diário atingido.\n\n")

@@ -274,6 +274,11 @@ func (s *Service) ConfirmPendingAction(onChunk func(string) error) (string, erro
 		onChunk = func(s string) error { return nil } // Fallback no-op
 	}
 
+	// Wire conversation ID to excel service for database-backed undo
+	if s.excelService != nil {
+		s.excelService.SetConversationID(s.currentConvID)
+	}
+
 	// Execute the pending action
 	onChunk("\n\n✅ *[Executando ação aprovada...]*\n")
 

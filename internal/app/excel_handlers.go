@@ -91,6 +91,36 @@ func (a *App) EndUndoBatch() {
 	a.excelService.EndUndoBatch()
 }
 
+// GetLastBatchID retorna o ID do último lote executado
+func (a *App) GetLastBatchID() int64 {
+	return a.excelService.GetLastBatchID()
+}
+
+// ClearLastBatchID limpa o ID do último lote (quando usuário confirma alterações)
+func (a *App) ClearLastBatchID() {
+	a.excelService.ClearLastBatchID()
+}
+
+// UndoByConversation desfaz ações pendentes de uma conversa específica
+func (a *App) UndoByConversation(convID string) (int, error) {
+	return a.excelService.UndoByConversation(convID)
+}
+
+// ApproveUndoActions marca ações de uma conversa como aprovadas (não podem mais ser desfeitas)
+func (a *App) ApproveUndoActions(convID string) error {
+	return a.excelService.ApproveActions(convID)
+}
+
+// HasPendingUndoActionsForConversation verifica se há ações pendentes para uma conversa
+func (a *App) HasPendingUndoActionsForConversation(convID string) (bool, error) {
+	return a.excelService.HasPendingUndoActions(convID)
+}
+
+// SetConversationIDForUndo define a conversa atual para vincular ações de undo
+func (a *App) SetConversationIDForUndo(convID string) {
+	a.excelService.SetConversationID(convID)
+}
+
 // FormatRange aplica formatação a um range
 func (a *App) FormatRange(sheet, rangeAddr string, bold, italic bool, fontSize int, fontColor, bgColor string) error {
 	return a.excelService.FormatRange(sheet, rangeAddr, bold, italic, fontSize, fontColor, bgColor)

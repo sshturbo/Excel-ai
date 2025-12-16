@@ -118,6 +118,31 @@ func (a *App) UpdateConfig(maxRowsContext, maxRowsPreview int, includeHeaders bo
 	return a.storage.SaveConfig(cfg)
 }
 
+// SetAskBeforeApply salva a configuração do modo YOLO
+func (a *App) SetAskBeforeApply(value bool) error {
+	if a.storage == nil {
+		return fmt.Errorf("storage não disponível")
+	}
+	cfg, _ := a.storage.LoadConfig()
+	if cfg == nil {
+		cfg = &storage.Config{}
+	}
+	cfg.AskBeforeApply = value
+	return a.storage.SaveConfig(cfg)
+}
+
+// GetAskBeforeApply retorna a configuração do modo YOLO
+func (a *App) GetAskBeforeApply() (bool, error) {
+	if a.storage == nil {
+		return true, nil // Default seguro
+	}
+	cfg, err := a.storage.LoadConfig()
+	if err != nil {
+		return true, nil
+	}
+	return cfg.AskBeforeApply, nil
+}
+
 // SwitchProvider troca para outro provedor, carregando suas configurações salvas
 func (a *App) SwitchProvider(providerName string) (*storage.Config, error) {
 	if a.storage == nil {

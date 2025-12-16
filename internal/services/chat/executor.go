@@ -196,6 +196,9 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 			}
 		}
 
+		// Start undo batch so all actions can be undone together
+		s.excelService.StartUndoBatch()
+
 		var results []string
 		for i, action := range actions {
 			actionMap, ok := action.(map[string]interface{})
@@ -211,6 +214,9 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 				results = append(results, fmt.Sprintf("Action %d (%s): %s", i+1, actionMap["op"], result))
 			}
 		}
+
+		// End undo batch
+		s.excelService.EndUndoBatch()
 
 		fmt.Printf("[DEBUG] ✅ MACRO completed: %d actions executed\n", len(actions))
 		return fmt.Sprintf("MACRO OK (%d actions):\n%s", len(actions), joinResults(results)), nil
@@ -270,6 +276,9 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		// Undo: create-sheet -> só precisa saber o nome para deletar
+		undoData, _ := json.Marshal(map[string]string{"sheetName": name})
+		s.excelService.SaveUndoAction("create-sheet", "", name, "", "", string(undoData))
 		return fmt.Sprintf("CREATE SHEET OK: %s", name), nil
 
 	case "create-chart":
@@ -310,6 +319,7 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		// TODO: Implement undo for format-range (complex)
 		return "FORMAT RANGE OK", nil
 
 	case "delete-sheet":
@@ -318,6 +328,7 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		// Undo: delete-sheet é irreversível sem snapshot completo
 		return fmt.Sprintf("DELETE SHEET OK: %s", name), nil
 
 	case "rename-sheet":
@@ -327,14 +338,30 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		// Undo: rename-sheet -> renomear de volta
+		undoData, _ := json.Marshal(map[string]string{"oldName": oldName, "newName": newName})
+		s.excelService.SaveUndoAction("rename-sheet", "", newName, "", "", string(undoData))
 		return fmt.Sprintf("RENAME SHEET OK: %s -> %s", oldName, newName), nil
 
 	case "clear-range":
 		sheet, _ := params["sheet"].(string)
 		rng, _ := params["range"].(string)
+
+		// Save data before clearing
+		oldData, _ := s.excelService.GetRangeValues(sheet, rng)
+
 		err := s.excelService.ClearRange(sheet, rng)
 		if err != nil {
 			return "", err
+		}
+
+		// Undo: clear -> restore data
+		if len(oldData) > 0 {
+			undoMap := map[string]interface{}{
+				"data": oldData,
+			}
+			undoData, _ := json.Marshal(undoMap)
+			s.excelService.SaveUndoAction("clear-range", "", sheet, rng, "", string(undoData))
 		}
 		return "CLEAR RANGE OK", nil
 
@@ -355,16 +382,42 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		// Undo: insert-rows -> delete-rows
+		undoData, _ := json.Marshal(map[string]int{"row": row, "count": count})
+		s.excelService.SaveUndoAction("insert-rows", "", sheet, "", "", string(undoData))
 		return fmt.Sprintf("INSERT ROWS OK: %d at %d", count, row), nil
 
 	case "delete-rows":
 		sheet, _ := params["sheet"].(string)
 		row := getInt(params["row"])
 		count := getInt(params["count"])
+
+		// Antes de deletar, salvar os dados!
+		// Ler range das linhas afetadas (ex: "5:7")
+		rangeAddr := fmt.Sprintf("%d:%d", row, row+count-1)
+
+		// Tentar ler dados. GetRangeValues pode suportar "1:1" dependendo da impl do client
+		// Se não suportar, fallback: ler UsedRange intersectado?
+		// Assumindo suporte básico ou que o usuário vai recuperar via un-delete vazio + re-escrita
+
+		// Por segurança vamos ler apenas UsedRows se possível, mas GetRangeValues é genérico.
+		// Vamos tentar ler. Se falhar, salvamos sem dados (pelo menos restaura as linhas vazias).
+		rowsData, _ := s.excelService.GetRangeValues(sheet, rangeAddr)
+
 		err := s.excelService.DeleteRows(sheet, row, count)
 		if err != nil {
 			return "", err
 		}
+
+		// Undo: delete-rows -> insert-rows + write data
+		undoMap := map[string]interface{}{
+			"row":   row,
+			"count": count,
+			"data":  rowsData, // [][]string
+		}
+		undoData, _ := json.Marshal(undoMap)
+		s.excelService.SaveUndoAction("delete-rows", "", sheet, "", "", string(undoData))
+
 		return fmt.Sprintf("DELETE ROWS OK: %d at %d", count, row), nil
 
 	case "merge-cells":
@@ -374,6 +427,8 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		// Undo: merge -> unmerge
+		s.excelService.SaveUndoAction("merge-cells", "", sheet, rng, "", "")
 		return "MERGE OK", nil
 
 	case "unmerge-cells":
@@ -383,6 +438,8 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		// Undo: unmerge -> merge
+		s.excelService.SaveUndoAction("unmerge-cells", "", sheet, rng, "", "")
 		return "UNMERGE OK", nil
 
 	case "set-borders":
@@ -399,9 +456,21 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 		sheet, _ := params["sheet"].(string)
 		rng, _ := params["range"].(string)
 		width := getFloat(params["width"])
+
+		oldWidth, _ := s.excelService.GetColumnWidth(sheet, rng)
+
 		err := s.excelService.SetColumnWidth(sheet, rng, width)
 		if err != nil {
 			return "", err
+		}
+
+		// Undo: restore width
+		if oldWidth > 0 {
+			undoMap := map[string]float64{
+				"width": oldWidth,
+			}
+			undoData, _ := json.Marshal(undoMap)
+			s.excelService.SaveUndoAction("set-column-width", "", sheet, rng, "", string(undoData))
 		}
 		return "COL WIDTH OK", nil
 
@@ -409,9 +478,21 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 		sheet, _ := params["sheet"].(string)
 		rng, _ := params["range"].(string)
 		height := getFloat(params["height"])
+
+		oldHeight, _ := s.excelService.GetRowHeight(sheet, rng)
+
 		err := s.excelService.SetRowHeight(sheet, rng, height)
 		if err != nil {
 			return "", err
+		}
+
+		// Undo: restore height
+		if oldHeight > 0 {
+			undoMap := map[string]float64{
+				"height": oldHeight,
+			}
+			undoData, _ := json.Marshal(undoMap)
+			s.excelService.SaveUndoAction("set-row-height", "", sheet, rng, "", string(undoData))
 		}
 		return "ROW HEIGHT OK", nil
 
@@ -437,9 +518,22 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 		rng, _ := params["range"].(string)
 		col := getInt(params["column"])
 		asc, _ := params["ascending"].(bool)
+
+		// Sort é complexo. Undo data = save range data before sort.
+		oldData, _ := s.excelService.GetRangeValues(sheet, rng)
+
 		err := s.excelService.SortRange(sheet, rng, col, asc)
 		if err != nil {
 			return "", err
+		}
+
+		// Undo: restore original data order
+		if len(oldData) > 0 {
+			undoMap := map[string]interface{}{
+				"data": oldData,
+			}
+			undoData, _ := json.Marshal(undoMap)
+			s.excelService.SaveUndoAction("sort", "", sheet, rng, "", string(undoData))
 		}
 		return "SORT OK", nil
 

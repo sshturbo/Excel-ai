@@ -14,6 +14,10 @@ export function ApplyFormula(arg1, arg2, arg3) {
   return window['go']['app']['App']['ApplyFormula'](arg1, arg2, arg3);
 }
 
+export function ApproveUndoActions(arg1) {
+  return window['go']['app']['App']['ApproveUndoActions'](arg1);
+}
+
 export function AutoFitColumns(arg1, arg2) {
   return window['go']['app']['App']['AutoFitColumns'](arg1, arg2);
 }
@@ -32,6 +36,10 @@ export function ClearChat() {
 
 export function ClearFilters(arg1) {
   return window['go']['app']['App']['ClearFilters'](arg1);
+}
+
+export function ClearLastBatchID() {
+  return window['go']['app']['App']['ClearLastBatchID']();
 }
 
 export function ClearRange(arg1, arg2) {
@@ -114,6 +122,10 @@ export function GetActiveSelection() {
   return window['go']['app']['App']['GetActiveSelection']();
 }
 
+export function GetAskBeforeApply() {
+  return window['go']['app']['App']['GetAskBeforeApply']();
+}
+
 export function GetAvailableModels(arg1, arg2) {
   return window['go']['app']['App']['GetAvailableModels'](arg1, arg2);
 }
@@ -122,8 +134,16 @@ export function GetChatHistory() {
   return window['go']['app']['App']['GetChatHistory']();
 }
 
+export function GetCurrentConversationID() {
+  return window['go']['app']['App']['GetCurrentConversationID']();
+}
+
 export function GetHeaders(arg1, arg2) {
   return window['go']['app']['App']['GetHeaders'](arg1, arg2);
+}
+
+export function GetLastBatchID() {
+  return window['go']['app']['App']['GetLastBatchID']();
 }
 
 export function GetLicenseMessage() {
@@ -148,6 +168,10 @@ export function GetUsedRange(arg1) {
 
 export function HasPendingAction() {
   return window['go']['app']['App']['HasPendingAction']();
+}
+
+export function HasPendingUndoActionsForConversation(arg1) {
+  return window['go']['app']['App']['HasPendingUndoActionsForConversation'](arg1);
 }
 
 export function InsertRows(arg1, arg2, arg3) {
@@ -218,12 +242,20 @@ export function SetAPIKey(arg1) {
   return window['go']['app']['App']['SetAPIKey'](arg1);
 }
 
+export function SetAskBeforeApply(arg1) {
+  return window['go']['app']['App']['SetAskBeforeApply'](arg1);
+}
+
 export function SetBorders(arg1, arg2, arg3) {
   return window['go']['app']['App']['SetBorders'](arg1, arg2, arg3);
 }
 
 export function SetColumnWidth(arg1, arg2, arg3) {
   return window['go']['app']['App']['SetColumnWidth'](arg1, arg2, arg3);
+}
+
+export function SetConversationIDForUndo(arg1) {
+  return window['go']['app']['App']['SetConversationIDForUndo'](arg1);
 }
 
 export function SetExcelContext(arg1, arg2) {
@@ -260,6 +292,10 @@ export function StopWorkbookWatcher() {
 
 export function SwitchProvider(arg1) {
   return window['go']['app']['App']['SwitchProvider'](arg1);
+}
+
+export function UndoByConversation(arg1) {
+  return window['go']['app']['App']['UndoByConversation'](arg1);
 }
 
 export function UndoLastChange() {

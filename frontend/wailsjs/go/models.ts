@@ -280,6 +280,7 @@ export namespace storage {
 	    maxRowsContext: number;
 	    maxRowsPreview: number;
 	    includeHeaders: boolean;
+	    askBeforeApply: boolean;
 	    detailLevel: string;
 	    customPrompt: string;
 	    language: string;
@@ -299,6 +300,7 @@ export namespace storage {
 	        this.maxRowsContext = source["maxRowsContext"];
 	        this.maxRowsPreview = source["maxRowsPreview"];
 	        this.includeHeaders = source["includeHeaders"];
+	        this.askBeforeApply = source["askBeforeApply"];
 	        this.detailLevel = source["detailLevel"];
 	        this.customPrompt = source["customPrompt"];
 	        this.language = source["language"];

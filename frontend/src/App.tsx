@@ -170,6 +170,8 @@ export default function App() {
             if (config) {
                 if (config.apiKey) setApiKey(config.apiKey)
                 if (config.model) setModel(config.model)
+                // Load YOLO mode setting (askBeforeApply is true by default in backend)
+                setAskBeforeApply(config.askBeforeApply !== false)
             }
         } catch (err) {
             console.error('Error loading config:', err)
@@ -364,18 +366,34 @@ export default function App() {
     }
 
     // Handle keeping changes (after completed state)
-    const handleKeepChanges = () => {
+    const handleKeepChanges = async () => {
+        try {
+            // Aprovar ações no banco de dados (não podem mais ser desfeitas)
+            const { ApproveUndoActions, GetCurrentConversationID } = await import("../wailsjs/go/app/App")
+            const convID = await GetCurrentConversationID()
+            if (convID) {
+                await ApproveUndoActions(convID)
+            }
+        } catch (err) {
+            console.error('Error approving undo actions:', err)
+        }
         setActionState('pending')
         setHasPendingAction(false)
         chat.setPendingActions([])
-        toast.success('Alterações mantidas!')
+        toast.success('Alterações confirmadas!')
     }
 
     // Handle undo (revert changes)
     const handleUndo = async () => {
         try {
-            await UndoLastChange()
-            toast.success('Alteração desfeita!')
+            const { UndoByConversation, GetCurrentConversationID } = await import("../wailsjs/go/app/App")
+            const convID = await GetCurrentConversationID()
+            if (convID) {
+                const undoneCount = await UndoByConversation(convID)
+                toast.success(`${undoneCount} célula(s) restaurada(s)!`)
+            } else {
+                toast.error('Nenhuma conversa ativa')
+            }
             // Clear the completed state
             setActionState('pending')
             setHasPendingAction(false)
@@ -385,7 +403,8 @@ export default function App() {
                 await excel.refreshWorkbooks()
             }
         } catch (err) {
-            toast.error('Nada para desfazer')
+            const errorMsg = err instanceof Error ? err.message : String(err)
+            toast.error(errorMsg || 'Nada para desfazer')
         }
     }
 
@@ -441,7 +460,17 @@ export default function App() {
             <Settings
                 onClose={() => setShowSettings(false)}
                 askBeforeApply={askBeforeApply}
-                onAskBeforeApplyChange={setAskBeforeApply}
+                onAskBeforeApplyChange={async (value) => {
+                    console.log('[DEBUG] askBeforeApply changing to:', value)
+                    setAskBeforeApply(value)
+                    // Save to backend
+                    try {
+                        const { SetAskBeforeApply } = await import("../wailsjs/go/app/App")
+                        await SetAskBeforeApply(value)
+                    } catch (err) {
+                        console.error('Error saving askBeforeApply:', err)
+                    }
+                }}
             />
         )
     }
