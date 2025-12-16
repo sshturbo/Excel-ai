@@ -33,14 +33,19 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 	}
 
 	// 1. Adicionar mensagem do usuário
-	fullContent := message
+	// 1. Adicionar mensagem do usuário
+	// Separar contexto (System - oculto) da pergunta (User - visível)
 	if contextStr != "" {
-		fullContent = fmt.Sprintf("Contexto do Excel (Atualizado):\n%s\n\nPergunta do usuário: %s", contextStr, message)
+		s.chatHistory = append(s.chatHistory, domain.Message{
+			Role:      domain.RoleSystem,
+			Content:   fmt.Sprintf("Contexto do Excel (Atualizado):\n%s", contextStr),
+			Timestamp: time.Now(),
+		})
 	}
 
 	s.chatHistory = append(s.chatHistory, domain.Message{
 		Role:      domain.RoleUser,
-		Content:   fullContent,
+		Content:   message,
 		Timestamp: time.Now(),
 	})
 
@@ -295,7 +300,7 @@ func (s *Service) ConfirmPendingAction(onChunk func(string) error) (string, erro
 	// Add execution results to chat history
 	toolMsg := fmt.Sprintf("TOOL RESULTS:\n%s\nContinue your task based on these results.", executionResults)
 	s.chatHistory = append(s.chatHistory, domain.Message{
-		Role:      domain.RoleUser,
+		Role:      domain.RoleSystem, // Changed to System to hide from UI
 		Content:   toolMsg,
 		Timestamp: time.Now(),
 	})
@@ -389,23 +394,22 @@ func (s *Service) refreshConfig() {
 			if cfg.Model != "" {
 				s.client.SetModel(cfg.Model)
 			}
-			// Configurar limite de tokens (hardcoded por enquanto, pode vir do cfg futuramente)
-			s.client.SetMaxInputTokens(4000)
+			// Configurar limite de tokens (hardcoded por enquanto, mas aumentado)
+			s.client.SetMaxInputTokens(50000) // Default segura para modelos modernos (GPT-4o, Claude)
 
 			if cfg.BaseURL != "" {
 				s.client.SetBaseURL(cfg.BaseURL)
 			} else if cfg.Provider == "groq" {
-				// Groq often has smaller limits or strict TPM, set safer default
+				// Groq limits
 				s.client.SetBaseURL("https://api.groq.com/openai/v1")
-				s.client.SetMaxInputTokens(3000) // Mais conservador para evitar 413
+				s.client.SetMaxInputTokens(8000) // Llama 3 limit safe
 			}
 
 			if cfg.Provider == "google" {
 				s.geminiClient.SetAPIKey(cfg.APIKey)
 				s.geminiClient.SetModel(cfg.Model)
-				// Gemini Flash has huge context, but free tier has limits.
-				// Safe default 8k for free tier usage
-				s.geminiClient.SetMaxInputTokens(8192)
+				// Gemini Flash has huge context.
+				s.geminiClient.SetMaxInputTokens(100000) // 100k tokens safe for Flash
 
 				if cfg.BaseURL != "" {
 					s.geminiClient.SetBaseURL(cfg.BaseURL)

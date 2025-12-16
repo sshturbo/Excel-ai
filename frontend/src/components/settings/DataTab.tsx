@@ -6,10 +6,12 @@ import { Switch } from "@/components/ui/switch"
 
 interface DataTabProps {
     maxRowsContext: number
+    maxContextChars: number
     maxRowsPreview: number
     includeHeaders: boolean
     askBeforeApply: boolean
     onMaxRowsContextChange: (value: number) => void
+    onMaxContextCharsChange: (value: number) => void
     onMaxRowsPreviewChange: (value: number) => void
     onIncludeHeadersChange: (value: boolean) => void
     onAskBeforeApplyChange: (value: boolean) => void
@@ -17,10 +19,12 @@ interface DataTabProps {
 
 export function DataTab({
     maxRowsContext,
+    maxContextChars,
     maxRowsPreview,
     includeHeaders,
     askBeforeApply,
     onMaxRowsContextChange,
+    onMaxContextCharsChange,
     onMaxRowsPreviewChange,
     onIncludeHeadersChange,
     onAskBeforeApplyChange
@@ -51,6 +55,25 @@ export function DataTab({
                         <span>10 (Rápido)</span>
                         <span>200 (Detalhado)</span>
                     </div>
+                </div>
+
+                <div className="space-y-4">
+                    <div className="flex justify-between">
+                        <Label>Limite de Caracteres (Tokens)</Label>
+                        <span className="text-sm text-primary font-medium">{maxContextChars}</span>
+                    </div>
+                    <Slider
+                        value={[maxContextChars || 6000]} // Default fallback
+                        onValueChange={(v) => onMaxContextCharsChange(v[0])}
+                        min={1000}
+                        max={50000}
+                        step={100}
+                    />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>1000 (Econômico)</span>
+                        <span>50000 (Completo)</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Recomendado: 6000 para Groq, 30000+ para Gemini/GPT-4o.</p>
                 </div>
 
                 <div className="space-y-4">

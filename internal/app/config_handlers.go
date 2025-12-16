@@ -77,7 +77,7 @@ func (a *App) GetSavedConfig() (*storage.Config, error) {
 }
 
 // UpdateConfig atualiza configurações
-func (a *App) UpdateConfig(maxRowsContext, maxRowsPreview int, includeHeaders bool, detailLevel, customPrompt, language, provider, baseUrl string) error {
+func (a *App) UpdateConfig(maxRowsContext, maxContextChars, maxRowsPreview int, includeHeaders bool, detailLevel, customPrompt, language, provider, baseUrl string) error {
 	if a.storage == nil {
 		return fmt.Errorf("storage não disponível")
 	}
@@ -91,6 +91,7 @@ func (a *App) UpdateConfig(maxRowsContext, maxRowsPreview int, includeHeaders bo
 
 	// Atualizar configurações gerais
 	cfg.MaxRowsContext = maxRowsContext
+	cfg.MaxContextChars = maxContextChars
 	cfg.MaxRowsPreview = maxRowsPreview
 	cfg.IncludeHeaders = includeHeaders
 	cfg.DetailLevel = detailLevel

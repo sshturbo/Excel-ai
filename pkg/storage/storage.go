@@ -55,14 +55,15 @@ type Config struct {
 	ProviderConfigs map[string]ProviderConfig `json:"providerConfigs,omitempty"`
 
 	// Configurações gerais
-	MaxRowsContext int    `json:"maxRowsContext"` // Máximo de linhas enviadas para IA
-	MaxRowsPreview int    `json:"maxRowsPreview"` // Máximo de linhas no preview
-	IncludeHeaders bool   `json:"includeHeaders"` // Incluir cabeçalhos no contexto
-	AskBeforeApply bool   `json:"askBeforeApply"` // Modo Seguro vs YOLO
-	DetailLevel    string `json:"detailLevel"`    // "minimal", "normal", "detailed"
-	CustomPrompt   string `json:"customPrompt"`   // Prompt personalizado adicional
-	Language       string `json:"language"`       // Idioma das respostas
-	LastUsedWb     string `json:"lastUsedWorkbook,omitempty"`
+	MaxRowsContext  int    `json:"maxRowsContext"`  // Máximo de linhas enviadas para IA
+	MaxContextChars int    `json:"maxContextChars"` // Máximo de caracteres no contexto (Token Limit Control)
+	MaxRowsPreview  int    `json:"maxRowsPreview"`  // Máximo de linhas no preview
+	IncludeHeaders  bool   `json:"includeHeaders"`  // Incluir cabeçalhos no contexto
+	AskBeforeApply  bool   `json:"askBeforeApply"`  // Modo Seguro vs YOLO
+	DetailLevel     string `json:"detailLevel"`     // "minimal", "normal", "detailed"
+	CustomPrompt    string `json:"customPrompt"`    // Prompt personalizado adicional
+	Language        string `json:"language"`        // Idioma das respostas
+	LastUsedWb      string `json:"lastUsedWorkbook,omitempty"`
 }
 
 // Storage gerencia persistência de dados
@@ -339,6 +340,7 @@ func (s *Storage) LoadConfig() (*Config, error) {
 				Model:           "openai/gpt-oss-120b",
 				ProviderConfigs: make(map[string]ProviderConfig),
 				MaxRowsContext:  50,
+				MaxContextChars: 6000, // Defeito 8k TPM safe
 				MaxRowsPreview:  100,
 				IncludeHeaders:  true,
 				AskBeforeApply:  true, // Modo seguro por padrão
@@ -357,6 +359,11 @@ func (s *Storage) LoadConfig() (*Config, error) {
 	// Inicializar mapa se não existir
 	if cfg.ProviderConfigs == nil {
 		cfg.ProviderConfigs = make(map[string]ProviderConfig)
+	}
+
+	// Default para novos campos (migration on-the-fly)
+	if cfg.MaxContextChars == 0 {
+		cfg.MaxContextChars = 6000
 	}
 
 	return &cfg, nil

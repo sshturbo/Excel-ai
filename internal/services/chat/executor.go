@@ -210,6 +210,8 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 			result, err := s.executeAction(actionMap)
 			if err != nil {
 				results = append(results, fmt.Sprintf("Action %d (%s): ERROR - %v", i+1, actionMap["op"], err))
+				// Stop execution on error to prevent cascading failures
+				break
 			} else {
 				results = append(results, fmt.Sprintf("Action %d (%s): %s", i+1, actionMap["op"], result))
 			}

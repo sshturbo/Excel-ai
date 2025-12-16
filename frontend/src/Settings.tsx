@@ -71,10 +71,12 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
                     <TabsContent value="data">
                         <DataTab
                             maxRowsContext={settings.maxRowsContext}
+                            maxContextChars={settings.maxContextChars}
                             maxRowsPreview={settings.maxRowsPreview}
                             includeHeaders={settings.includeHeaders}
                             askBeforeApply={settings.askBeforeApply}
                             onMaxRowsContextChange={settings.setMaxRowsContext}
+                            onMaxContextCharsChange={settings.setMaxContextChars}
                             onMaxRowsPreviewChange={settings.setMaxRowsPreview}
                             onIncludeHeadersChange={settings.setIncludeHeaders}
                             onAskBeforeApplyChange={settings.onAskBeforeApplyChange}

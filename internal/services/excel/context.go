@@ -9,8 +9,8 @@ import (
 )
 
 func (s *Service) SetContext(workbook, sheet string) (string, error) {
-	// Usar valores padrão
-	return s.SetContextWithConfig(workbook, sheet, 50, true)
+	// Usar valores padrão mais conservadores para evitar estouro de TPM (Limit 8000)
+	return s.SetContextWithConfig(workbook, sheet, 20, true)
 }
 
 // SetContextWithConfig define o contexto com configurações personalizadas
@@ -29,10 +29,10 @@ func (s *Service) SetContextWithConfig(workbook, sheet string, maxRowsContext in
 
 	// Usar configuração do usuário, com limite por aba quando há múltiplas
 	maxRowsPerSheet := maxRowsContext
-	if len(sheets) > 1 && maxRowsContext > 20 {
-		maxRowsPerSheet = maxRowsContext / len(sheets) // Dividir entre abas
-		if maxRowsPerSheet < 10 {
-			maxRowsPerSheet = 10 // Mínimo de 10 linhas por aba
+	if len(sheets) > 1 && maxRowsContext > 10 { // Adjusted logic
+		maxRowsPerSheet = maxRowsContext / len(sheets)
+		if maxRowsPerSheet < 5 {
+			maxRowsPerSheet = 5
 		}
 	}
 
@@ -92,10 +92,19 @@ func (s *Service) SetContextWithConfig(workbook, sheet string, maxRowsContext in
 		totalRows += len(data.Rows)
 	}
 
-	// Limitar tamanho total do contexto (aproximadamente 4000 tokens = ~16000 caracteres)
-	maxContextLen := 12000
+	// Limitar tamanho total do contexto de forma agressiva para Groq 8k TPM
+	// Valor configurável pelo usuário
+	maxContextLen := 6000 // Default safe
+	if s.storage != nil {
+		if cfg, err := s.storage.LoadConfig(); err == nil {
+			if cfg.MaxContextChars > 0 {
+				maxContextLen = cfg.MaxContextChars
+			}
+		}
+	}
+
 	if len(contextStr) > maxContextLen {
-		contextStr = contextStr[:maxContextLen] + "\n\n[... contexto truncado para economizar tokens ...]"
+		contextStr = contextStr[:maxContextLen] + fmt.Sprintf("\n\n[... contexto truncado em %d chars para economizar tokens ...]", maxContextLen)
 	}
 
 	s.contextStr = fmt.Sprintf("Planilha: %s\nAbas selecionadas: %s\n\nDados:\n%s", workbook, sheet, contextStr)

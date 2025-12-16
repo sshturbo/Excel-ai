@@ -38,6 +38,7 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
 
     // Data settings
     const [maxRowsContext, setMaxRowsContext] = useState(50)
+    const [maxContextChars, setMaxContextChars] = useState(6000)
     const [maxRowsPreview, setMaxRowsPreview] = useState(100)
     const [includeHeaders, setIncludeHeaders] = useState(true)
 
@@ -81,6 +82,7 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
                     }
                 }
                 if (cfg.maxRowsContext) setMaxRowsContext(cfg.maxRowsContext)
+                if (cfg.maxContextChars) setMaxContextChars(cfg.maxContextChars)
                 if (cfg.maxRowsPreview) setMaxRowsPreview(cfg.maxRowsPreview)
                 setIncludeHeaders(cfg.includeHeaders !== false)
             }
@@ -140,7 +142,7 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
             await SetAPIKey(apiKey)
             const selectedModel = useCustomModel ? customModel : model
             await SetModel(selectedModel)
-            await UpdateConfig(maxRowsContext, maxRowsPreview, includeHeaders, 'normal', '', 'pt-BR', provider, baseUrl)
+            await UpdateConfig(maxRowsContext, maxContextChars, maxRowsPreview, includeHeaders, 'normal', '', 'pt-BR', provider, baseUrl)
             toast.success('✅ Configurações salvas!')
             await loadModels()
         } catch (err) {
@@ -218,6 +220,8 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
         // Data settings
         maxRowsContext,
         setMaxRowsContext,
+        maxContextChars,
+        setMaxContextChars,
         maxRowsPreview,
         setMaxRowsPreview,
         includeHeaders,

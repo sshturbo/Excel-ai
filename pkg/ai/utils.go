@@ -5,9 +5,9 @@ import (
 )
 
 // EstimateTokens estima o número de tokens em uma string (aproximação simples)
-// Regra geral: ~4 caracteres por token
+// Regra geral: ~4 caracteres por token, mas usamos 3 para ser conservador e evitar 413
 func EstimateTokens(text string) int {
-	return len(text) / 4
+	return len(text) / 3
 }
 
 // PruneMessages remove mensagens antigas para manter o contexto dentro do limite de tokens

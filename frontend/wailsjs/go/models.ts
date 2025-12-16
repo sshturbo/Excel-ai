@@ -259,6 +259,7 @@ export namespace storage {
 	    baseUrl?: string;
 	    providerConfigs?: Record<string, ProviderConfig>;
 	    maxRowsContext: number;
+	    maxContextChars: number;
 	    maxRowsPreview: number;
 	    includeHeaders: boolean;
 	    askBeforeApply: boolean;
@@ -279,6 +280,7 @@ export namespace storage {
 	        this.baseUrl = source["baseUrl"];
 	        this.providerConfigs = this.convertValues(source["providerConfigs"], ProviderConfig, true);
 	        this.maxRowsContext = source["maxRowsContext"];
+	        this.maxContextChars = source["maxContextChars"];
 	        this.maxRowsPreview = source["maxRowsPreview"];
 	        this.includeHeaders = source["includeHeaders"];
 	        this.askBeforeApply = source["askBeforeApply"];
