@@ -185,12 +185,17 @@ export default function App() {
                         await excel.refreshWorkbooks()
                     }
                 }
-            }
 
-            chat.setPendingActions([])
+                // Entrar em modo de validação (Manter ou Desfazer)
+                chat.setValidationMode(true)
+            } else {
+                // Se nada foi aplicado (erro), limpar
+                chat.setPendingActions([])
+            }
         } catch (err) {
             console.error('Error applying actions:', err)
             toast.error('Erro ao aplicar alterações')
+            chat.setPendingActions([])
         }
     }
 
@@ -322,8 +327,11 @@ export default function App() {
                     {/* Pending Actions Banner */}
                     <PendingActions
                         count={chat.pendingActions.length}
+                        validationMode={chat.validationMode}
                         onApply={handleApplyActions}
                         onDiscard={chat.handleDiscardActions}
+                        onKeep={chat.handleKeepChanges}
+                        onUndo={chat.handleUndoChanges}
                     />
 
                     {/* Chat Messages */}

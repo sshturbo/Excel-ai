@@ -42,6 +42,10 @@ interface UseChatReturn {
     processMessage: (text: string) => Promise<void>
     showContinueButton: boolean
     handleContinue: () => Promise<void>
+    validationMode: boolean
+    setValidationMode: React.Dispatch<React.SetStateAction<boolean>>
+    handleKeepChanges: () => void
+    handleUndoChanges: () => Promise<void>
 }
 
 export function useChat(options: UseChatOptions): UseChatReturn {
@@ -54,6 +58,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null)
     const [editContent, setEditContent] = useState('')
     const [showContinueButton, setShowContinueButton] = useState(false)
+    const [validationMode, setValidationMode] = useState(false)
 
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -71,7 +76,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         setMessages(prev => [...prev, { role: 'assistant', content: '' }])
 
         try {
-            const response = await SendMessage(text)
+            const response = await SendMessage(text, askBeforeApply)
 
             // Verificar se o agente pausou
             const { displayContent, actionsExecuted, agentPaused } = await processAIResponse(response, {
@@ -119,6 +124,13 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             setIsLoading(false)
         }
     }, [askBeforeApply, onWorkbooksUpdate])
+
+    const handleContinue = useCallback(async () => {
+        setShowContinueButton(false)
+        // Add a "Continuing..." user message implicitly or just trigger next step
+        setMessages(prev => [...prev, { role: 'user', content: 'continue' }])
+        await processMessage('continue')
+    }, [processMessage])
 
     const handleSendMessage = useCallback(async () => {
         if (!inputMessage.trim() || isLoading) return
@@ -219,9 +231,18 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     }, [])
 
     const handleApplyActions = useCallback(async () => {
-        // This will be implemented in App.tsx as it needs executeExcelAction
-        // For now, just clear pending actions
-        setPendingActions([])
+        // NOTE: This function is expected to be overridden or implemented in App.tsx 
+        // because it depends on 'executeExcelAction' which is not available here.
+        // However, we manage the state here.
+        // Re-implementing logic here requires moving executeExcelAction dependency?
+        // App.tsx uses the hook, so state changes here reflect there.
+        // Let's assume App.tsx calls setPendingActions([]) after applying.
+        // But for Validation Mode, we need to coordinate.
+
+        // Actually, App.tsx implements 'handleApplyActions' differently, it doesn't use the one from useChat necessarily?
+        // Let's check App.tsx. It likely pulls 'pendingActions' from useChat.
+        // If App.tsx implements the apply logic, we just need to provide the state and setters.
+        // So we just add the state here and expose it.
     }, [])
 
     const handleDiscardActions = useCallback(() => {
@@ -229,11 +250,28 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         toast.info('Alterações descartadas')
     }, [])
 
-    const handleContinue = useCallback(async () => {
-        setShowContinueButton(false)
-        setMessages(prev => [...prev, { role: 'user', content: 'continue' }])
-        await processMessage('continue')
-    }, [processMessage])
+    const handleKeepChanges = useCallback(() => {
+        setValidationMode(false)
+        setPendingActions([]) // Clear actions now that they are confirmed
+        toast.success('Alterações mantidas!')
+    }, [])
+
+    const handleUndoChanges = useCallback(async () => {
+        try {
+            // Import dynamically or pass as dependency? 
+            // Better to handle this in App.tsx where specific Excel logic resides, 
+            // but for now we expose the handler placeholder or implementation if possible.
+            // Since UndoLastChange is imported from App.go bindings, we can use it.
+            const { UndoLastChange } = await import("../../wailsjs/go/app/App")
+            await UndoLastChange()
+            toast.info('Alterações desfeitas.')
+            setValidationMode(false)
+            setPendingActions([]) // Clear pending actions as they were reverted
+        } catch (e) {
+            console.error(e)
+            toast.error('Erro ao desfazer.')
+        }
+    }, [])
 
     return {
         messages,
@@ -243,6 +281,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         isLoading,
         pendingActions,
         setPendingActions,
+        validationMode,
+        setValidationMode,
         editingMessageIndex,
         editContent,
         messagesEndRef,
@@ -258,6 +298,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         handleClearChat,
         handleApplyActions,
         handleDiscardActions,
+        handleKeepChanges,
+        handleUndoChanges,
         processMessage,
         showContinueButton,
         handleContinue

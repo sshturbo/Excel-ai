@@ -198,8 +198,8 @@ export function SendErrorFeedback(arg1) {
   return window['go']['app']['App']['SendErrorFeedback'](arg1);
 }
 
-export function SendMessage(arg1) {
-  return window['go']['app']['App']['SendMessage'](arg1);
+export function SendMessage(arg1, arg2) {
+  return window['go']['app']['App']['SendMessage'](arg1, arg2);
 }
 
 export function SetAPIKey(arg1) {

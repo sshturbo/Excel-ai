@@ -41,29 +41,42 @@ export async function processAIResponse(
     options: ProcessAIResponseOptions
 ): Promise<AIProcessingResult> {
 
-    // Backend takes care of everything.
     // We just need to clean the response for display if desired.
     // Ideally we show "Executing..." placeholders, but for now let's just show text.
 
     const actionRegex = /:::excel-action\s*([\s\S]*?)\s*:::/g
     const queryRegex = /:::excel-query\s*([\s\S]*?)\s*:::/g
 
-    // Remove blocks from display content to keep UI clean
-    // (Or keep them if we want transparency - User preference)
-    // Let's hide them by default as they are verbose JSONs.
-    // But maybe replace with a badge [Action executed]
+    // Extract actions
+    const actions = extractActionsFromResponse(response)
+
+    // If we found actions...
+    if (actions.length > 0) {
+        // ...and we are in "Ask Before Apply" mode (which implies backend paused and returned them)
+        if (options.askBeforeApply && options.onPendingAction) {
+            console.log('[aiProcessor] Pending actions detected:', actions.length)
+            actions.forEach(action => options.onPendingAction!(action))
+        } else {
+            // Autonomous mode: Backend (likely) executed them, or we are just displaying history.
+            // If this is a live response in autonomous mode, actionsExecuted should be > 0 (handled by backend return?)
+            // Actually, backend now returns execution logs.
+        }
+    }
 
     let displayContent = response
 
+    // Hide the raw JSON blocks from display
     displayContent = displayContent.replace(queryRegex, '\n*[Consultando Excel...]*\n')
-    displayContent = displayContent.replace(actionRegex, '\n*[Executando Ação...]*\n')
+
+    // If pending, show a standard message. If executed, show Executing.
+    // For simplicity, we just hide the JSON. The UI banner will handle the "Pending" notification.
+    displayContent = displayContent.replace(actionRegex, options.askBeforeApply ? '\n*(Ação aguardando aprovação)*\n' : '\n*[Executando Ação...]*\n')
 
     // Detectar se o agente pausou por limite de passos
     const agentPaused = displayContent.includes(':::agent-paused:::')
-    console.log('[aiProcessor] agentPaused detected:', agentPaused, 'raw includes:', response.includes(':::agent-paused:::'))
     displayContent = displayContent.replace(/:::agent-paused:::/g, '')
 
-    return { displayContent: displayContent.trim(), actionsExecuted: 0, agentPaused }
+    return { displayContent: displayContent.trim(), actionsExecuted: actions.length, agentPaused }
 }
 
 /**

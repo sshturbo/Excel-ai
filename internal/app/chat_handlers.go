@@ -6,13 +6,19 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// SendMessage envia mensagem para IA
-func (a *App) SendMessage(message string) (string, error) {
+// SendMessage envia mensagem para o chat
+func (a *App) SendMessage(message string, askBeforeApply bool) string {
 	contextStr := a.excelService.GetContextString()
-	return a.chatService.SendMessage(message, contextStr, func(chunk string) error {
+
+	response, err := a.chatService.SendMessage(message, contextStr, askBeforeApply, func(chunk string) error {
 		runtime.EventsEmit(a.ctx, "chat:chunk", chunk)
 		return nil
 	})
+
+	if err != nil {
+		return "Error: " + err.Error()
+	}
+	return response
 }
 
 // ClearChat limpa o chat

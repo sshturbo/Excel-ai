@@ -9,7 +9,7 @@ import (
 )
 
 // SendMessage envia mensagem para IA e gerencia o loop autônomo de execução
-func (s *Service) SendMessage(message string, contextStr string, onChunk func(string) error) (string, error) {
+func (s *Service) SendMessage(message string, contextStr string, askBeforeApply bool, onChunk func(string) error) (string, error) {
 	s.mu.Lock()
 	// Lock é perigoso se o loop demorar muito e bloquear outras leituras,
 	// mas necessário para proteger s.chatHistory.
@@ -126,6 +126,23 @@ func (s *Service) SendMessage(message string, contextStr string, onChunk func(st
 		// Executar Comandos
 		var executionResults string
 		for _, cmd := range commands {
+			// Se o usuário pediu para confirmar antes de aplicar (AskBeforeApply)
+			// E o comando é de escrita/modificação (não busca), pausamos.
+			if askBeforeApply && cmd.Type == "action" {
+				// Pausa a execução e retorna o comando 'pendente' no histórico?
+				// Na verdade, o texto já foi enviado. O frontend vai parsear.
+				// Nós apenas NÃO executamos e encerramos o loop.
+
+				pauseMsg := "\n\n🛑 *[Ação Pendente]* Aguardando aprovação do usuário para executar.\n"
+				onChunk(pauseMsg)
+				finalResponse += pauseMsg
+
+				// Salvar conversa para garantir que o contexto atual (proposta) fique salvo
+				go s.saveCurrentConversation(contextStr)
+
+				return finalResponse, nil
+			}
+
 			result, err := s.ExecuteTool(cmd)
 			if err != nil {
 				executionResults += fmt.Sprintf("ERROR Executing %s: %v\n", cmd.Content, err)
