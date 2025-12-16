@@ -235,14 +235,24 @@ func (s *Service) refreshConfig() {
 			if cfg.Model != "" {
 				s.client.SetModel(cfg.Model)
 			}
+			// Configurar limite de tokens (hardcoded por enquanto, pode vir do cfg futuramente)
+			s.client.SetMaxInputTokens(4000)
+
 			if cfg.BaseURL != "" {
 				s.client.SetBaseURL(cfg.BaseURL)
 			} else if cfg.Provider == "groq" {
+				// Groq often has smaller limits or strict TPM, set safer default
 				s.client.SetBaseURL("https://api.groq.com/openai/v1")
+				s.client.SetMaxInputTokens(3000) // Mais conservador para evitar 413
 			}
+
 			if cfg.Provider == "google" {
 				s.geminiClient.SetAPIKey(cfg.APIKey)
 				s.geminiClient.SetModel(cfg.Model)
+				// Gemini Flash has huge context, but free tier has limits.
+				// Safe default 8k for free tier usage
+				s.geminiClient.SetMaxInputTokens(8192)
+
 				if cfg.BaseURL != "" {
 					s.geminiClient.SetBaseURL(cfg.BaseURL)
 				}

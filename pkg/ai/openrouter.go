@@ -15,9 +15,10 @@ import (
 
 // Config configuração do cliente AI
 type Config struct {
-	APIKey  string
-	Model   string
-	BaseURL string
+	APIKey         string
+	Model          string
+	BaseURL        string
+	MaxInputTokens int
 }
 
 // Client cliente para API AI (OpenAI Compatible)
@@ -62,9 +63,10 @@ func NewClient(apiKey, model, baseURL string) *Client {
 
 	return &Client{
 		config: Config{
-			APIKey:  apiKey,
-			Model:   model,
-			BaseURL: baseURL,
+			APIKey:         apiKey,
+			Model:          model,
+			BaseURL:        baseURL,
+			MaxInputTokens: 4000, // Limite padrão seguro
 		},
 		httpClient: &http.Client{
 			Timeout: 2 * time.Minute, // Timeout para evitar travamento
@@ -100,16 +102,24 @@ func (c *Client) GetAPIKey() string {
 	return c.config.APIKey
 }
 
+// SetMaxInputTokens define o limite de tokens de entrada
+func (c *Client) SetMaxInputTokens(limit int) {
+	c.config.MaxInputTokens = limit
+}
+
 // Chat envia mensagens para a IA e retorna a resposta
 func (c *Client) Chat(messages []Message) (string, error) {
 	if c.config.APIKey == "" {
 		return "", fmt.Errorf("API key não configurada")
 	}
 
+	// Aplicar pruning no histórico para respeitar limites
+	prunedMessages := PruneMessages(messages, c.config.MaxInputTokens)
+
 	reqBody := ChatRequest{
 		Model:     c.config.Model,
-		Messages:  messages,
-		MaxTokens: 4096, // Limite razoável para evitar erro de crédito insuficiente
+		Messages:  prunedMessages,
+		MaxTokens: 4096, // Limite de resposta
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -331,6 +341,9 @@ func (c *Client) ChatStream(ctx context.Context, messages []Message, onChunk fun
 	var lastErr error
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Aplicar pruning no histórico para respeitar limites
+		prunedMessages := PruneMessages(messages, c.config.MaxInputTokens)
+
 		reqBody := struct {
 			Model     string    `json:"model"`
 			Messages  []Message `json:"messages"`
@@ -338,7 +351,7 @@ func (c *Client) ChatStream(ctx context.Context, messages []Message, onChunk fun
 			MaxTokens int       `json:"max_tokens,omitempty"`
 		}{
 			Model:     c.config.Model,
-			Messages:  messages,
+			Messages:  prunedMessages,
 			Stream:    true,
 			MaxTokens: 4096,
 		}

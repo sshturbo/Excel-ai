@@ -88,10 +88,11 @@ Tente reformular sua pergunta de forma diferente`)
 
 // GeminiClient cliente para Google Gemini API
 type GeminiClient struct {
-	apiKey     string
-	model      string
-	baseURL    string
-	httpClient *http.Client
+	apiKey         string
+	model          string
+	baseURL        string
+	httpClient     *http.Client
+	maxInputTokens int
 }
 
 // GeminiMessage formato de mensagem do Gemini
@@ -140,10 +141,11 @@ func NewGeminiClient(apiKey, model string) *GeminiClient {
 		model = "gemini-1.5-flash"
 	}
 	return &GeminiClient{
-		apiKey:     apiKey,
-		model:      model,
-		baseURL:    "https://generativelanguage.googleapis.com/v1beta",
-		httpClient: &http.Client{},
+		apiKey:         apiKey,
+		model:          model,
+		baseURL:        "https://generativelanguage.googleapis.com/v1beta",
+		httpClient:     &http.Client{},
+		maxInputTokens: 4000, // Limite padrão seguro
 	}
 }
 
@@ -172,6 +174,11 @@ func (c *GeminiClient) GetBaseURL() string {
 // GetAPIKey retorna a API key
 func (c *GeminiClient) GetAPIKey() string {
 	return c.apiKey
+}
+
+// SetMaxInputTokens define o limite de tokens de entrada
+func (c *GeminiClient) SetMaxInputTokens(limit int) {
+	c.maxInputTokens = limit
 }
 
 // convertToGeminiFormat converte mensagens OpenAI para formato Gemini
@@ -224,8 +231,11 @@ func (c *GeminiClient) Chat(messages []Message) (string, error) {
 	defer func() { c.model = originalModel }()
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Pruning messages
+		prunedMessages := PruneMessages(messages, c.maxInputTokens)
+
 		// Preparar request
-		contents, systemInstruction := c.convertToGeminiFormat(messages)
+		contents, systemInstruction := c.convertToGeminiFormat(prunedMessages)
 
 		reqBody := GeminiRequest{
 			Contents:          contents,
@@ -335,7 +345,10 @@ func (c *GeminiClient) ChatStream(ctx context.Context, messages []Message, onChu
 			c.model = "gemini-1.5-flash"
 		}
 
-		contents, systemInstruction := c.convertToGeminiFormat(messages)
+		// Pruning messages
+		prunedMessages := PruneMessages(messages, c.maxInputTokens)
+
+		contents, systemInstruction := c.convertToGeminiFormat(prunedMessages)
 
 		reqBody := GeminiRequest{
 			Contents:          contents,
