@@ -93,20 +93,28 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
 
     const loadModels = useCallback(async () => {
         if (typeof (window as any)?.go === 'undefined') return
+        if (!apiKey) {
+            toast.warning('Configure a API Key primeiro')
+            return
+        }
 
         setIsLoadingModels(true)
+        setAvailableModels([]) // Limpar modelos anteriores
+
         try {
-            let url = baseUrl
-            if (!url) {
-                if (provider === 'groq') {
-                    url = 'https://api.groq.com/openai/v1'
-                } else if (provider === 'google') {
-                    url = 'https://generativelanguage.googleapis.com/v1beta'
-                } else {
-                    url = 'https://openrouter.ai/api/v1'
-                }
+            // Determinar URL baseado no provider atual
+            let url = ''
+            if (provider === 'groq') {
+                url = 'https://api.groq.com/openai/v1'
+            } else if (provider === 'google') {
+                url = 'https://generativelanguage.googleapis.com/v1beta'
+            } else if (provider === 'openrouter') {
+                url = 'https://openrouter.ai/api/v1'
+            } else {
+                url = baseUrl || ''
             }
-            console.log('[DEBUG] Carregando modelos de:', url, 'com apiKey:', apiKey ? 'presente' : 'vazia')
+
+            console.log('[DEBUG] Carregando modelos para provider:', provider, 'URL:', url)
             const models = await GetAvailableModels(apiKey, url)
             if (models && models.length > 0) {
                 setAvailableModels(models)
@@ -120,7 +128,7 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
         } finally {
             setIsLoadingModels(false)
         }
-    }, [apiKey, baseUrl, provider])
+    }, [apiKey, provider, baseUrl])
 
     // Filter models
     const filteredModels = useMemo(() => {

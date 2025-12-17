@@ -74,5 +74,4 @@ export interface QueryResult {
 export interface AIProcessingResult {
     displayContent: string
     actionsExecuted: number
-    agentPaused?: boolean
 }
