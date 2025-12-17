@@ -27,16 +27,7 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 
 	s.ensureSystemPrompt()
 
-	// 1. Adicionar contexto do Excel (se houver) como mensagem de sistema
-	if contextStr != "" {
-		s.chatHistory = append(s.chatHistory, domain.Message{
-			Role:      domain.RoleSystem,
-			Content:   fmt.Sprintf("Contexto do Excel (Atualizado):\n%s", contextStr),
-			Timestamp: time.Now(),
-		})
-	}
-
-	// 2. Adicionar mensagem do usuário
+	// Adicionar mensagem do usuário (contexto do Excel agora é obtido via function calling)
 	s.chatHistory = append(s.chatHistory, domain.Message{
 		Role:      domain.RoleUser,
 		Content:   message,

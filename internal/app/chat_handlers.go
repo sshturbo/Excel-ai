@@ -8,9 +8,8 @@ import (
 
 // SendMessage envia mensagem para o chat
 func (a *App) SendMessage(message string, askBeforeApply bool) string {
-	contextStr := a.excelService.GetContextString()
-
-	response, err := a.chatService.SendMessage(message, contextStr, askBeforeApply, func(chunk string) error {
+	// Contexto do Excel agora é obtido sob demanda via function calling
+	response, err := a.chatService.SendMessage(message, "", askBeforeApply, func(chunk string) error {
 		runtime.EventsEmit(a.ctx, "chat:chunk", chunk)
 		return nil
 	})
