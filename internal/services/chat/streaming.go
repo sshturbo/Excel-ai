@@ -347,6 +347,18 @@ func (s *Service) executeToolCall(toolName string, args map[string]interface{}) 
 				if vals, err := s.excelService.GetRangeValues(sheet, rng); err == nil {
 					results = append(results, fmt.Sprintf("Amostra (%d linhas): %v", len(vals), vals))
 				}
+			case "has_filter":
+				if hasFilter, err := s.excelService.HasFilter(sheet); err == nil {
+					results = append(results, fmt.Sprintf("Tem filtro: %v", hasFilter))
+				}
+			case "charts":
+				if charts, err := s.excelService.ListCharts(sheet); err == nil {
+					results = append(results, fmt.Sprintf("Gráficos: %v", charts))
+				}
+			case "tables":
+				if tables, err := s.excelService.ListTables(sheet); err == nil {
+					results = append(results, fmt.Sprintf("Tabelas: %v", tables))
+				}
 			}
 		}
 		return strings.Join(results, "\n"), nil
@@ -898,28 +910,27 @@ func (s *Service) refreshConfig() {
 }
 
 func (s *Service) ensureSystemPrompt() {
-	systemPrompt := `Você é um AGENTE Excel inteligente com acesso a ferramentas para consultar e modificar planilhas do Microsoft Excel.
+	systemPrompt := `Você é um AGENTE Excel inteligente com acesso a 6 ferramentas para consultar e modificar planilhas.
 
-IDIOMA: SEMPRE responda em Português do Brasil.
+IDIOMA: Português do Brasil.
 
-MODO DE TRABALHO:
-1. PRIMEIRO PASSO CRÍTICO: Antes de qualquer ação, use "list_sheets" para verificar se o Excel está conectado e quais planilhas existem. Se não houver planilhas, avise o usuário para abrir um arquivo Excel.
-2. CONSULTE antes de AGIR: Use ferramentas de consulta (get_headers, get_used_range, etc.) para entender os dados antes de modificá-los.
-3. Use "execute_macro" para múltiplas ações em sequência (criar planilha + escrever + formatar).
+FERRAMENTAS DISPONÍVEIS:
+📋 CONSULTAS:
+• list_sheets - Lista planilhas (verificar conexão)
+• query_batch - PRINCIPAL! Consultas em lote (headers, row_count, used_range, sample_data, column_count, has_filter, charts, tables)
+• get_range_values - Dados específicos com filtro e max_rows
+• get_cell_formula - Fórmula de célula
+• get_active_cell - Célula selecionada
 
-DICAS IMPORTANTES:
-- Use autofit_columns após inserir dados para melhor visualização
-- Use format_range para destacar cabeçalhos com negrito e cores
-- Para fórmulas, use sintaxe PT-BR (SOMA, MÉDIA, PROCV) com ponto-e-vírgula como separador
-- Em write_range, use array 2D: [["Col1", "Col2"], ["Val1", "Val2"]]
-- Sempre especifique o parâmetro "sheet" em operações de escrita
+✏️ AÇÕES:
+• execute_macro - ÚNICA ferramenta de ações! Suporta: write_cell, write_range, create_sheet, delete_sheet, rename_sheet, format_range, autofit_columns, clear_range, insert_rows, delete_rows, merge_cells, set_borders, sort_range, apply_filter, create_chart
 
-MODO DE RACIOCÍNIO:
-Ao fazer tarefas complexas, explique seu raciocínio passo a passo antes de executar.
+REGRAS CRÍTICAS:
+1. SEMPRE use query_batch para consultas iniciais
+2. SEMPRE use execute_macro para ações (não existem ferramentas individuais)
+3. Use max_rows em get_range_values para economizar tokens
 
-DICA DE EFICIÊNCIA: Use query_batch para fazer múltiplas consultas de uma vez e economizar chamadas de API.
-
-NÃO gere código VBA. Use apenas as ferramentas disponíveis.`
+Exemplo execute_macro: {actions: [{tool:"write_range", args:{sheet:"Plan1", cell:"A1", data:[["Nome","Valor"]]}}]}`
 
 	if len(s.chatHistory) > 0 {
 		if s.chatHistory[0].Role == domain.RoleSystem {
