@@ -8,8 +8,10 @@ import (
 
 // SendMessage envia mensagem para o chat
 func (a *App) SendMessage(message string, askBeforeApply bool) string {
-	// Contexto do Excel agora é obtido sob demanda via function calling
-	response, err := a.chatService.SendMessage(message, "", askBeforeApply, func(chunk string) error {
+	// Passa apenas o contexto mínimo (workbook/sheet ativos) - dados são obtidos via function calling
+	activeContext := a.excelService.GetActiveContext()
+
+	response, err := a.chatService.SendMessage(message, activeContext, askBeforeApply, func(chunk string) error {
 		runtime.EventsEmit(a.ctx, "chat:chunk", chunk)
 		return nil
 	})
@@ -41,6 +43,11 @@ func (a *App) SendErrorFeedback(errorMessage string) (string, error) {
 // DeleteLastMessages remove mensagens
 func (a *App) DeleteLastMessages(count int) error {
 	return a.chatService.DeleteLastMessages(count)
+}
+
+// EditMessage edita uma mensagem usando o índice visível e remove mensagens subsequentes
+func (a *App) EditMessage(visibleIndex int, newContent string) error {
+	return a.chatService.EditMessageAtVisibleIndex(visibleIndex, newContent)
 }
 
 // NewConversation nova conversa

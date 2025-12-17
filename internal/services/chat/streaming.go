@@ -27,7 +27,16 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 
 	s.ensureSystemPrompt()
 
-	// Adicionar mensagem do usuário (contexto do Excel agora é obtido via function calling)
+	// Adicionar contexto mínimo (apenas workbook/sheet ativos) se existir
+	if contextStr != "" {
+		s.chatHistory = append(s.chatHistory, domain.Message{
+			Role:      domain.RoleSystem,
+			Content:   contextStr,
+			Timestamp: time.Now(),
+		})
+	}
+
+	// Adicionar mensagem do usuário
 	s.chatHistory = append(s.chatHistory, domain.Message{
 		Role:      domain.RoleUser,
 		Content:   message,
@@ -50,8 +59,8 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 	tools := ai.GetExcelTools()
 	geminiTools := ai.GetGeminiTools()
 
-	// LOOP AUTÔNOMO (Max 5 passos para economizar quota)
-	maxSteps := 5
+	// LOOP AUTÔNOMO (limite alto pois cada ação tem confirmação individual)
+	maxSteps := 50
 	var finalResponse string
 
 	for step := 0; step < maxSteps; step++ {
@@ -107,10 +116,6 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 			break
 		}
 
-		// Notificar usuário sobre progresso
-		stepMsg := fmt.Sprintf("\n\n🔄 *[Passo %d/%d] Executando %d ferramenta(s)...*\n\n", step+1, maxSteps, len(toolCalls))
-		onChunk(stepMsg)
-
 		// Executar tool calls
 		var executionResults []string
 		for _, tc := range toolCalls {
@@ -162,15 +167,8 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 			Timestamp: time.Now(),
 		})
 
-		// Verificar limite de passos
-		if step == maxSteps-1 {
-			pauseMsg := "\n\n⚠️ *[Limite de Passos Atingido]* O agente atingiu o máximo de 5 passos por turno.\n\n:::agent-paused:::\n"
-			onChunk(pauseMsg)
-			finalResponse += pauseMsg
-		}
-
 		// Throttle para não estourar rate limit
-		time.Sleep(3 * time.Second)
+		time.Sleep(2 * time.Second)
 	}
 
 	go s.saveCurrentConversation(contextStr)

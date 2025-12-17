@@ -199,24 +199,22 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const handleSaveEdit = useCallback(async (index: number) => {
         if (!editContent.trim()) return
 
-        // Update message and delete subsequent messages
+        // Atualizar mensagens locais: cortar até o índice e adicionar a editada
         const newMessages = messages.slice(0, index)
         newMessages.push({ role: 'user', content: editContent.trim() })
         setMessages(newMessages)
         setEditingMessageIndex(null)
         setEditContent('')
 
-        // Calculate how many messages to delete from backend
-        const messagesToDelete = messages.length - index
-        if (messagesToDelete > 0) {
-            try {
-                await DeleteLastMessages(messagesToDelete)
-            } catch (err) {
-                console.error('Erro ao deletar mensagens:', err)
-            }
+        // Chamar backend para editar mensagem corretamente (remove subsequentes)
+        try {
+            const { EditMessage } = await import("../../wailsjs/go/app/App")
+            await EditMessage(index, editContent.trim())
+        } catch (err) {
+            console.error('Erro ao editar mensagem:', err)
         }
 
-        // Send edited message
+        // Enviar mensagem editada para a IA
         await processMessage(editContent.trim())
     }, [editContent, messages, processMessage])
 

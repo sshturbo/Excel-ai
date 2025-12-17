@@ -194,20 +194,19 @@ export default function App() {
         setActionError(undefined)
         setHasPendingAction(false)
 
-        // Update last message to show execution status
+        // Adicionar status de execução (não substitui, apenas adiciona)
         chat.setMessages(prev => {
             const newMsgs = [...prev]
             const lastIndex = newMsgs.length - 1
             if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
-                // Replace pending message with executing message
-                const oldContent = newMsgs[lastIndex].content
-                const cleanContent = oldContent
-                    .replace(/\*\(Ação aguardando aprovação\)\*/g, '')
-                    .replace(/🛑 \[Ação Pendente\] Aguardando aprovação do usuário para executar\./g, '')
-                    .trim()
-                newMsgs[lastIndex] = {
-                    ...newMsgs[lastIndex],
-                    content: cleanContent + '\n\n🔄 **Aplicando alterações...**'
+                // Apenas adiciona ao final sem remover nada
+                const currentContent = newMsgs[lastIndex].content
+                // Evitar duplicar se já tiver o status
+                if (!currentContent.includes('🔄 **Aplicando')) {
+                    newMsgs[lastIndex] = {
+                        ...newMsgs[lastIndex],
+                        content: currentContent + '\n\n🔄 **Aplicando alterações...**'
+                    }
                 }
             }
             return newMsgs
@@ -263,30 +262,28 @@ export default function App() {
                     const newMsgs = [...prev]
                     const lastIndex = newMsgs.length - 1
                     if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
-                        const oldContent = newMsgs[lastIndex].content.replace(/🔄 \*\*Aplicando alterações\.\.\.\*\*/g, '').trim()
+                        const currentContent = newMsgs[lastIndex].content
                         newMsgs[lastIndex] = {
                             ...newMsgs[lastIndex],
-                            content: oldContent + '\n\n❌ **Erro ao aplicar:** ' + response.replace('Error: ', '')
+                            content: currentContent + '\n\n❌ **Erro ao aplicar:** ' + response.replace('Error: ', '')
                         }
                     }
                     return newMsgs
                 })
             } else {
-                // Update last message to remove "Aplicando..." / "IA continuando..." and show final success
+                // Update last message to show success
                 chat.setMessages(prev => {
                     const newMsgs = [...prev]
                     const lastIndex = newMsgs.length - 1
                     if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
-                        let oldContent = newMsgs[lastIndex].content
-                        oldContent = oldContent
-                            .replace(/🔄 \*\*Aplicando alterações\.\.\.\*\*/g, '')
-                            .replace(/✅ \*\*Alterações aplicadas com sucesso!\*\*\n\n\*IA continuando\.\.\.\*/g, '')
-                            .replace(/\*IA continuando\.\.\.\*/g, '')
-                            .trim()
-                        newMsgs[lastIndex] = {
-                            ...newMsgs[lastIndex],
-                            content: oldContent + '\n\n✅ **Alterações aplicadas com sucesso!**',
-                            hasActions: true
+                        const currentContent = newMsgs[lastIndex].content
+                        // Evitar duplicar se já tiver sucesso
+                        if (!currentContent.includes('✅ **Alterações aplicadas')) {
+                            newMsgs[lastIndex] = {
+                                ...newMsgs[lastIndex],
+                                content: currentContent + '\n\n✅ **Alterações aplicadas com sucesso!**',
+                                hasActions: true
+                            }
                         }
                     }
                     return newMsgs
@@ -340,14 +337,10 @@ export default function App() {
             const newMsgs = [...prev]
             const lastIndex = newMsgs.length - 1
             if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
-                const oldContent = newMsgs[lastIndex].content
-                const cleanContent = oldContent
-                    .replace(/\*\(Ação aguardando aprovação\)\*/g, '')
-                    .replace(/🛑 \[Ação Pendente\] Aguardando aprovação do usuário para executar\./g, '')
-                    .trim()
+                const currentContent = newMsgs[lastIndex].content
                 newMsgs[lastIndex] = {
                     ...newMsgs[lastIndex],
-                    content: cleanContent + '\n\n🚫 **Ação descartada pelo usuário.**'
+                    content: currentContent + '\n\n🚫 **Ação descartada pelo usuário.**'
                 }
             }
             return newMsgs
@@ -569,22 +562,6 @@ export default function App() {
                                 ))
                             )}
                             <div ref={chat.messagesEndRef} />
-                        </div>
-                    )}
-
-                    {/* Continue Button - appears when agent reaches step limit */}
-                    {chat.showContinueButton && !chat.isLoading && (
-                        <div className="flex justify-center py-3 px-6 border-t border-gray-200 dark:border-gray-700 bg-linear-to-r from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-900">
-                            <button
-                                onClick={chat.handleContinue}
-                                className="flex items-center gap-2 px-6 py-3 bg-linear-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white font-medium rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-                            >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                Continuar Execução
-                            </button>
                         </div>
                     )}
 

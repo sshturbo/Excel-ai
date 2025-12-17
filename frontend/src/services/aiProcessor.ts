@@ -1,10 +1,8 @@
 // AI Response Processing Service
 // Handles parsing and formatting of AI responses.
-// Execution logic has been moved to Backend (Autonomous Agent).
+// Updated for native function calling system.
 
 import type { AIProcessingResult, ExcelAction, Workbook } from '@/types'
-
-// Removed imports related to execution (QueryExcel, SendErrorFeedback, etc) to prevent client-side execution.
 
 interface ProcessAIResponseOptions {
     askBeforeApply: boolean
@@ -16,73 +14,58 @@ interface ProcessAIResponseOptions {
 }
 
 /**
- * Processes excel-query blocks (now handled by backend, this acts as cleaner/logger)
- */
-export async function processQueryBlocks(response: string): Promise<string[]> {
-    // Backend handles queries autonomously. We just parse for debug/display if needed.
-    const queryRegex = /:::excel-query\s*([\s\S]*?)\s*:::/g
-    const queryResults: string[] = []
-
-    // Log queries found for debugging
-    const matches = [...response.matchAll(queryRegex)]
-    if (matches.length > 0) {
-        console.log('[Frontend] Queries detected (executed by backend):', matches.length)
-    }
-
-    return queryResults
-}
-
-/**
- * Processes AI response (Display Only)
- * Execution is now Server-Side.
+ * Processes AI response for display
+ * Native function calling - no more :::excel-*::: blocks to parse
  */
 export async function processAIResponse(
     response: string,
     options: ProcessAIResponseOptions
 ): Promise<AIProcessingResult> {
 
-    // We just need to clean the response for display if desired.
-    // Ideally we show "Executing..." placeholders, but for now let's just show text.
+    // Detectar ação pendente via marcador do backend
+    const pendingActionMatch = response.match(/🛑 \*\[Ação Pendente: ([^\]]+)\]\*/)
+    const hasPendingAction = pendingActionMatch !== null
 
-    const actionRegex = /:::excel-action\s*([\s\S]*?)\s*:::/g
-    const queryRegex = /:::excel-query\s*([\s\S]*?)\s*:::/g
+    // Detectar ações executadas (contar ✅)
+    const successMatches = response.match(/✅/g)
+    const actionsExecuted = successMatches ? successMatches.length : 0
 
-    // Extract actions
-    const actions = extractActionsFromResponse(response)
+    // Detectar se agente pausou
+    const agentPaused = response.includes(':::agent-paused:::') ||
+        response.includes('Ação Pendente')
 
-    // If we found actions...
-    if (actions.length > 0) {
-        // ...and we are in "Ask Before Apply" mode (which implies backend paused and returned them)
-        if (options.askBeforeApply && options.onPendingAction) {
-            console.log('[aiProcessor] Pending actions detected:', actions.length)
-            actions.forEach(action => options.onPendingAction!(action))
-        } else {
-            // Autonomous mode: Backend (likely) executed them, or we are just displaying history.
-            // If this is a live response in autonomous mode, actionsExecuted should be > 0 (handled by backend return?)
-            // Actually, backend now returns execution logs.
-        }
+    // Se há ação pendente e callback fornecido, notificar
+    if (hasPendingAction && options.onPendingAction && pendingActionMatch) {
+        const toolName = pendingActionMatch[1]
+        // Criar ação pendente simplificada para o frontend
+        const pendingAction: ExcelAction = {
+            op: toolName,
+            _pending: true
+        } as any
+        options.onPendingAction(pendingAction)
     }
 
+    // Limpar resposta para display
     let displayContent = response
 
-    // Hide the raw JSON blocks from display
-    displayContent = displayContent.replace(queryRegex, '\n*[Consultando Excel...]*\n')
-
-    // If pending, show a standard message. If executed, show Executing.
-    // For simplicity, we just hide the JSON. The UI banner will handle the "Pending" notification.
-    displayContent = displayContent.replace(actionRegex, options.askBeforeApply ? '\n*(Ação aguardando aprovação)*\n' : '\n*[Executando Ação...]*\n')
-
-    // Detectar se o agente pausou por limite de passos
-    const agentPaused = displayContent.includes(':::agent-paused:::')
+    // Remover marcadores antigos se ainda existirem (compatibilidade)
+    displayContent = displayContent.replace(/:::excel-query\s*[\s\S]*?\s*:::/g, '\n*[Consultando Excel...]*\n')
+    displayContent = displayContent.replace(/:::excel-action\s*[\s\S]*?\s*:::/g, '\n*[Executando Ação...]*\n')
     displayContent = displayContent.replace(/:::agent-paused:::/g, '')
 
-    return { displayContent: displayContent.trim(), actionsExecuted: actions.length, agentPaused }
+    return {
+        displayContent: displayContent.trim(),
+        actionsExecuted,
+        agentPaused
+    }
 }
 
 /**
- * Extracts actions from AI response without executing them
+ * Extracts actions from AI response (legacy support)
  */
 export function extractActionsFromResponse(response: string): ExcelAction[] {
+    // Com function calling nativo, não há mais blocos :::excel-action:::
+    // Manter para compatibilidade, mas retornar vazio
     const actionRegex = /:::excel-action\s*([\s\S]*?)\s*:::/g
     const matches = [...response.matchAll(actionRegex)]
     const actions: ExcelAction[] = []
@@ -99,4 +82,12 @@ export function extractActionsFromResponse(response: string): ExcelAction[] {
     }
 
     return actions
+}
+
+/**
+ * Processes query blocks (legacy support)
+ */
+export async function processQueryBlocks(response: string): Promise<string[]> {
+    // Com function calling nativo, queries são executadas pelo backend
+    return []
 }

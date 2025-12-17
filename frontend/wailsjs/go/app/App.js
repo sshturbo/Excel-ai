@@ -110,6 +110,10 @@ export function DeleteTable(arg1, arg2) {
   return window['go']['app']['App']['DeleteTable'](arg1, arg2);
 }
 
+export function EditMessage(arg1, arg2) {
+  return window['go']['app']['App']['EditMessage'](arg1, arg2);
+}
+
 export function EndUndoBatch() {
   return window['go']['app']['App']['EndUndoBatch']();
 }

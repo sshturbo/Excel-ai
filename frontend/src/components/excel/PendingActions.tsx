@@ -72,8 +72,8 @@ export function PendingActions({
     onKeep,
     onUndo
 }: PendingActionsProps) {
-    // Show if: we have actions in array OR backend says there's a pending action OR state is not pending
-    const shouldShow = actions.length > 0 || hasPendingAction || state !== 'pending'
+    // Show if: backend says there's a pending action OR state is not pending (executing/completed/error)
+    const shouldShow = hasPendingAction || state !== 'pending'
     if (!shouldShow) return null
 
     const totalActions = countActions(actions)
@@ -84,7 +84,7 @@ export function PendingActions({
             <div className="px-6 py-3 bg-blue-500/10 border-b border-blue-500/20 animate-in slide-in-from-top-2">
                 <div className="flex items-center gap-3 text-sm text-blue-600 dark:text-blue-400">
                     <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
-                    <span>Executando {totalActions} ação(ões)...</span>
+                    <span>Executando ação...</span>
                 </div>
             </div>
         )
@@ -151,9 +151,7 @@ export function PendingActions({
                 <div className="flex items-center gap-2 text-sm text-yellow-600 dark:text-yellow-400">
                     <span>⚠️</span>
                     <span>
-                        <strong>Confirmação necessária:</strong> {totalActions > 0
-                            ? `A IA quer executar ${totalActions} ação(ões)`
-                            : 'A IA propôs uma alteração'}
+                        <strong>Confirmação necessária:</strong> A IA quer executar uma ação no Excel
                     </span>
                 </div>
                 <div className="flex items-center gap-2">

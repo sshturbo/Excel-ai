@@ -121,6 +121,23 @@ func (s *Service) GetContextString() string {
 	return s.contextStr
 }
 
+// GetActiveContext retorna apenas o workbook e sheet ativos (sem dados)
+// Usado para informar a IA qual contexto está selecionado sem gastar muitos tokens
+func (s *Service) GetActiveContext() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.currentWorkbook == "" {
+		return ""
+	}
+
+	if s.currentSheet == "" {
+		return fmt.Sprintf("Pasta de trabalho ativa: %s", s.currentWorkbook)
+	}
+
+	return fmt.Sprintf("Pasta de trabalho: %s | Aba selecionada: %s", s.currentWorkbook, s.currentSheet)
+}
+
 func (s *Service) GetPreviewData(workbookName, sheetName string) (*dto.PreviewData, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -61,6 +61,8 @@ export function DeleteSheet(arg1:string):Promise<void>;
 
 export function DeleteTable(arg1:string,arg2:string):Promise<void>;
 
+export function EditMessage(arg1:number,arg2:string):Promise<void>;
+
 export function EndUndoBatch():Promise<void>;
 
 export function FormatRange(arg1:string,arg2:string,arg3:boolean,arg4:boolean,arg5:number,arg6:string,arg7:string):Promise<void>;
