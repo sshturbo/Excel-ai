@@ -679,28 +679,48 @@ func (s *Service) ConfirmPendingAction(onChunk func(string) error) (string, erro
 		s.excelService.SetConversationID(s.currentConvID)
 	}
 
-	// Execute the pending action
+	// Execute the pending action usando novo sistema
 	onChunk("\n\n✅ *[Executando ação aprovada...]*\n")
 
-	result, err := s.ExecuteTool(*cmd)
+	// Extrair nome da ferramenta e argumentos do payload
+	var result string
+	var err error
+
+	if cmd.Payload != nil {
+		payload := cmd.Payload.(map[string]interface{})
+		toolName, _ := payload["_tool_name"].(string)
+
+		if toolName != "" {
+			// Usar novo sistema executeToolCall
+			delete(payload, "_tool_name") // Remover campo especial antes de executar
+			result, err = s.executeToolCall(toolName, payload)
+		} else {
+			// Fallback para sistema antigo (para compatibilidade)
+			result, err = s.ExecuteTool(*cmd)
+		}
+	} else {
+		// Fallback para sistema antigo
+		result, err = s.ExecuteTool(*cmd)
+	}
+
 	var executionResults string
 	if err != nil {
-		executionResults = fmt.Sprintf("ERROR Executing %s: %v\n", cmd.Content, err)
+		executionResults = fmt.Sprintf("ERROR: %v\n", err)
 		onChunk(fmt.Sprintf("\n❌ Erro: %v\n", err))
 	} else {
 		executionResults = fmt.Sprintf("SUCCESS: %s\n", result)
-		onChunk("\n✅ Ação executada com sucesso!\n")
+		onChunk(fmt.Sprintf("\n✅ %s\n", result))
 	}
 
 	// Add execution results to chat history
 	toolMsg := fmt.Sprintf("TOOL RESULTS:\n%s\nContinue your task based on these results.", executionResults)
 	s.chatHistory = append(s.chatHistory, domain.Message{
-		Role:      domain.RoleSystem, // Changed to System to hide from UI
+		Role:      domain.RoleSystem,
 		Content:   toolMsg,
 		Timestamp: time.Now(),
 	})
 
-	// Resume the AI loop (simplified version - just one more turn)
+	// Resume the AI loop with function calling
 	s.refreshConfig()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -714,19 +734,24 @@ func (s *Service) ConfirmPendingAction(onChunk func(string) error) (string, erro
 		cancel()
 	}()
 
+	// Get tools
+	tools := ai.GetExcelTools()
+	geminiTools := ai.GetGeminiTools()
+
 	// Convert to AI messages and continue
 	aiHistory := s.toAIMessages(s.chatHistory)
 
 	var currentResponse string
+	var toolCalls []ai.ToolCall
 	chunkWrapper := func(chunk string) error {
 		currentResponse += chunk
 		return onChunk(chunk)
 	}
 
 	if s.provider == "google" {
-		_, err = s.geminiClient.ChatStream(ctx, aiHistory, chunkWrapper)
+		currentResponse, toolCalls, err = s.geminiClient.ChatStreamWithTools(ctx, aiHistory, geminiTools, chunkWrapper)
 	} else {
-		_, err = s.client.ChatStream(ctx, aiHistory, chunkWrapper)
+		currentResponse, toolCalls, err = s.client.ChatStreamWithTools(ctx, aiHistory, tools, chunkWrapper)
 	}
 
 	if err != nil {
@@ -740,26 +765,31 @@ func (s *Service) ConfirmPendingAction(onChunk func(string) error) (string, erro
 		Timestamp: time.Now(),
 	})
 
-	// Check for more commands (simplified - just return, let frontend handle if more actions needed)
-	commands := s.ParseToolCommands(currentResponse)
-	if len(commands) > 0 {
-		for _, newCmd := range commands {
-			if newCmd.Type == "action" {
+	// Check for more tool calls
+	if len(toolCalls) > 0 {
+		for _, tc := range toolCalls {
+			args, _ := tc.ParseArguments()
+
+			if ai.IsActionTool(tc.Function.Name) {
 				// Another action pending - save it
-				s.pendingAction = &newCmd
+				s.pendingAction = &ToolCommand{
+					Type:    ToolTypeAction,
+					Content: tc.Function.Arguments,
+					Payload: args,
+				}
+				s.pendingAction.Payload.(map[string]interface{})["_tool_name"] = tc.Function.Name
 				s.pendingContextStr = contextStr
 				s.pendingOnChunk = onChunk
 
-				pauseMsg := "\n\n🛑 *[Ação Pendente]* Aguardando aprovação do usuário para executar.\n"
+				pauseMsg := fmt.Sprintf("\n\n🛑 *[Ação Pendente: %s]* Aguardando aprovação do usuário para executar.\n", tc.Function.Name)
 				onChunk(pauseMsg)
 				currentResponse += pauseMsg
 				break
-			} else if newCmd.Type == "query" {
+			} else {
 				// Execute queries automatically
-				result, err := s.ExecuteTool(newCmd)
-				if err == nil {
-					queryResult := fmt.Sprintf("\n📊 Query result: %s\n", result)
-					onChunk(queryResult)
+				queryResult, queryErr := s.executeToolCall(tc.Function.Name, args)
+				if queryErr == nil {
+					onChunk(fmt.Sprintf("\n📊 %s: %s\n", tc.Function.Name, queryResult))
 				}
 			}
 		}

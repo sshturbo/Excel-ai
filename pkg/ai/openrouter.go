@@ -232,12 +232,13 @@ type Pricing struct {
 // ModelsResponse resposta da API de modelos
 type ModelsResponse struct {
 	Data []struct {
-		ID            string `json:"id"`
-		Name          string `json:"name"`
-		Description   string `json:"description"`
-		ContextLength int    `json:"context_length"`
-		ContextWindow int    `json:"context_window"` // Groq usa context_window
-		Pricing       struct {
+		ID                  string   `json:"id"`
+		Name                string   `json:"name"`
+		Description         string   `json:"description"`
+		ContextLength       int      `json:"context_length"`
+		ContextWindow       int      `json:"context_window"` // Groq usa context_window
+		SupportedParameters []string `json:"supported_parameters"`
+		Pricing             struct {
 			Prompt     string `json:"prompt"`
 			Completion string `json:"completion"`
 		} `json:"pricing"`
@@ -246,7 +247,7 @@ type ModelsResponse struct {
 	} `json:"data"`
 }
 
-// GetAvailableModels busca os modelos disponíveis na API
+// GetAvailableModels busca os modelos disponíveis na API (apenas com suporte a function calling)
 func (c *Client) GetAvailableModels() ([]ModelInfo, error) {
 	url := c.config.BaseURL + "/models"
 
@@ -284,6 +285,20 @@ func (c *Client) GetAvailableModels() ([]ModelInfo, error) {
 
 	var models []ModelInfo
 	for _, m := range modelsResp.Data {
+		// Filtrar apenas modelos com suporte a function calling (tools)
+		supportsTools := false
+		for _, param := range m.SupportedParameters {
+			if param == "tools" {
+				supportsTools = true
+				break
+			}
+		}
+
+		// Pular modelos sem suporte a function calling
+		if !supportsTools {
+			continue
+		}
+
 		name := m.Name
 		if name == "" {
 			name = m.ID // Groq não retorna Name, usa ID
