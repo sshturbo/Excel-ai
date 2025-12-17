@@ -541,13 +541,13 @@ export default function App() {
                                 <EmptyState selectedSheets={excel.selectedSheets} />
                             ) : (
                                 chat.messages
-                                    .filter(msg => !msg.hidden && msg.role !== 'system')
+                                    .filter(msg => !msg.hidden && msg.role !== 'system' && !msg.content.startsWith('Resultados das ferramentas'))
                                     .map((msg, idx) => (
                                         <MessageBubble
                                             key={idx}
                                             message={msg}
                                             index={idx}
-                                            isLastAssistant={msg.role === 'assistant' && idx === chat.messages.filter(m => !m.hidden && m.role !== 'system').length - 1}
+                                            isLastAssistant={msg.role === 'assistant' && idx === chat.messages.filter(m => !m.hidden && m.role !== 'system' && !m.content.startsWith('Resultados das ferramentas')).length - 1}
                                             isLoading={chat.isLoading}
                                             isEditing={chat.editingMessageIndex === idx}
                                             editContent={chat.editContent}

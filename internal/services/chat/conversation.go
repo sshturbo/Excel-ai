@@ -2,6 +2,7 @@ package chat
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"excel-ai/internal/domain"
@@ -76,11 +77,18 @@ func (s *Service) LoadConversation(id string) ([]dto.ChatMessage, error) {
 			Role:      domain.MessageRole(m.Role),
 			Content:   m.Content,
 			Timestamp: m.Timestamp,
+			Hidden:    m.Hidden,
 		}
 		s.chatHistory = append(s.chatHistory, domainMsg)
 
-		// Filter out system messages/tool results from the UI
+		// Filter out system messages, hidden messages, and tool results from the UI
 		if domain.MessageRole(m.Role) == domain.RoleSystem {
+			continue
+		}
+		if m.Hidden {
+			continue
+		}
+		if strings.HasPrefix(m.Content, "Resultados das ferramentas") {
 			continue
 		}
 

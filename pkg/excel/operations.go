@@ -196,14 +196,24 @@ func (c *Client) DeleteSheet(workbookName, sheetName string) error {
 
 // RenameSheet renomeia uma aba
 func (c *Client) RenameSheet(workbookName, oldName, newName string) error {
+	if oldName == "" {
+		return fmt.Errorf("nome antigo da aba está vazio")
+	}
+	if newName == "" {
+		return fmt.Errorf("nome novo da aba está vazio")
+	}
+
 	return c.runOnCOMThread(func() error {
 		sheet, err := c.getSheetInternal(workbookName, oldName)
 		if err != nil {
-			return err
+			return fmt.Errorf("aba '%s' não encontrada no workbook '%s': %w", oldName, workbookName, err)
 		}
 		defer sheet.Release()
 
 		_, err = oleutil.PutProperty(sheet, "Name", newName)
-		return err
+		if err != nil {
+			return fmt.Errorf("falha ao renomear aba '%s' para '%s': %w", oldName, newName, err)
+		}
+		return nil
 	})
 }
