@@ -155,6 +155,9 @@ func (a *App) SwitchProvider(providerName string) (*storage.Config, error) {
 		return nil, err
 	}
 
+	// IMPORTANTE: Atualizar o provider no serviço de chat PRIMEIRO
+	a.chatService.SetProvider(providerName)
+
 	// Atualizar serviço de chat com as novas configurações
 	if cfg.APIKey != "" {
 		a.chatService.SetAPIKey(cfg.APIKey)
@@ -165,6 +168,9 @@ func (a *App) SwitchProvider(providerName string) (*storage.Config, error) {
 	if cfg.BaseURL != "" {
 		a.chatService.SetBaseURL(cfg.BaseURL)
 	}
+
+	// Recarregar configurações completas
+	a.chatService.RefreshConfig()
 
 	return cfg, nil
 }

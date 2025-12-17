@@ -283,20 +283,24 @@ func (c *Client) GetAvailableModels() ([]ModelInfo, error) {
 		return nil, fmt.Errorf("erro ao parsear JSON: %w", err)
 	}
 
+	// Detectar se é Groq (todos os modelos suportam function calling)
+	isGroq := strings.Contains(c.config.BaseURL, "groq.com")
+
 	var models []ModelInfo
 	for _, m := range modelsResp.Data {
 		// Filtrar apenas modelos com suporte a function calling (tools)
-		supportsTools := false
-		for _, param := range m.SupportedParameters {
-			if param == "tools" {
-				supportsTools = true
-				break
+		// Groq: todos suportam, então pular filtro
+		if !isGroq {
+			supportsTools := false
+			for _, param := range m.SupportedParameters {
+				if param == "tools" {
+					supportsTools = true
+					break
+				}
 			}
-		}
-
-		// Pular modelos sem suporte a function calling
-		if !supportsTools {
-			continue
+			if !supportsTools {
+				continue
+			}
 		}
 
 		name := m.Name

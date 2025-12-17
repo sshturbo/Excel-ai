@@ -56,6 +56,18 @@ func (s *Service) SetBaseURL(url string) {
 	s.client.SetBaseURL(url)
 }
 
+// SetProvider atualiza o provider e reconfigura os clientes
+func (s *Service) SetProvider(provider string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.provider = provider
+}
+
+// RefreshConfig recarrega configurações do storage
+func (s *Service) RefreshConfig() {
+	s.refreshConfig()
+}
+
 func (s *Service) SetExcelService(svc *excel.Service) {
 	s.excelService = svc
 }
