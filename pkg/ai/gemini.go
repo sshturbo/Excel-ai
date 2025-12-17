@@ -214,6 +214,11 @@ func (c *GeminiClient) convertToGeminiFormat(messages []Message) ([]GeminiMessag
 	var systemInstruction *GeminiMessage
 
 	for _, msg := range messages {
+		// Pular mensagens com conteúdo vazio (causa erro 400 no Gemini)
+		if strings.TrimSpace(msg.Content) == "" {
+			continue
+		}
+
 		role := msg.Role
 		if role == "assistant" {
 			role = "model"
@@ -591,22 +596,18 @@ func (c *GeminiClient) ChatStreamWithTools(ctx context.Context, messages []Messa
 
 					switch attempt {
 					case 0:
-						onChunk(fmt.Sprintf("\n\n⏳ Quota excedida (%d). Aguardando %ds...", resp.StatusCode, totalSeconds))
+						onChunk(fmt.Sprintf("\n\n⏳ **Quota excedida.** Aguardando %d segundos...\n", totalSeconds))
 					case 1:
-						onChunk(fmt.Sprintf("\n\n⚠️ Nova falha de quota. Tentando fallback para 'gemini-1.5-flash' em %ds...", totalSeconds))
+						onChunk(fmt.Sprintf("\n\n⚠️ **Nova falha.** Tentando modelo alternativo em %d segundos...\n", totalSeconds))
 					}
 
-					for remaining := totalSeconds - 1; remaining >= 0; remaining-- {
-						select {
-						case <-time.After(1 * time.Second):
-							if remaining > 0 {
-								onChunk(fmt.Sprintf(" %d...", remaining))
-							}
-						case <-ctx.Done():
-							return "", nil, ctx.Err()
-						}
+					// Aguardar silenciosamente
+					select {
+					case <-time.After(time.Duration(totalSeconds) * time.Second):
+						onChunk("\n✅ **Retomando...**\n\n")
+					case <-ctx.Done():
+						return "", nil, ctx.Err()
 					}
-					onChunk("\n\n✅ Retomando...\n\n")
 					continue
 				} else {
 					onChunk("\n\n❌ Quota excedida mesmo após fallback. Possível limite diário atingido.\n\n")

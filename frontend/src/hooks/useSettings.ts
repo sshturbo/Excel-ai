@@ -150,7 +150,20 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
             await SetAPIKey(apiKey)
             const selectedModel = useCustomModel ? customModel : model
             await SetModel(selectedModel)
-            await UpdateConfig(maxRowsContext, maxContextChars, maxRowsPreview, includeHeaders, 'normal', '', 'pt-BR', provider, baseUrl)
+
+            // Determinar URL correta baseado no provider
+            let correctBaseUrl = ''
+            if (provider === 'groq') {
+                correctBaseUrl = 'https://api.groq.com/openai/v1'
+            } else if (provider === 'google') {
+                correctBaseUrl = 'https://generativelanguage.googleapis.com/v1beta'
+            } else if (provider === 'openrouter') {
+                correctBaseUrl = 'https://openrouter.ai/api/v1'
+            } else {
+                correctBaseUrl = baseUrl
+            }
+
+            await UpdateConfig(maxRowsContext, maxContextChars, maxRowsPreview, includeHeaders, 'normal', '', 'pt-BR', provider, correctBaseUrl)
             toast.success('✅ Configurações salvas!')
             await loadModels()
         } catch (err) {

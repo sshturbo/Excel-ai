@@ -17,8 +17,15 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 
 	s.refreshConfig()
 
-	if s.client.GetAPIKey() == "" {
-		return "", fmt.Errorf("API key não configurada. Vá em Configurações e configure sua chave de API")
+	// Verificar API key do cliente correto baseado no provider
+	if s.provider == "google" {
+		if s.geminiClient.GetAPIKey() == "" {
+			return "", fmt.Errorf("API key não configurada. Vá em Configurações e configure sua chave de API do Google")
+		}
+	} else {
+		if s.client.GetAPIKey() == "" {
+			return "", fmt.Errorf("API key não configurada. Vá em Configurações e configure sua chave de API")
+		}
 	}
 
 	if s.currentConvID == "" {
@@ -801,6 +808,9 @@ func (s *Service) RejectPendingAction() {
 func (s *Service) refreshConfig() {
 	if s.storage != nil {
 		if cfg, err := s.storage.LoadConfig(); err == nil && cfg != nil {
+			fmt.Printf("[DEBUG refreshConfig] Provider do storage: %s, APIKey presente: %v, Model: %s, BaseURL: %s\n",
+				cfg.Provider, cfg.APIKey != "", cfg.Model, cfg.BaseURL)
+
 			s.provider = cfg.Provider
 			if cfg.APIKey != "" {
 				s.client.SetAPIKey(cfg.APIKey)
