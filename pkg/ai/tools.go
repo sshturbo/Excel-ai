@@ -142,7 +142,7 @@ func GetExcelTools() []Tool {
 			Type: "function",
 			Function: FunctionDeclaration{
 				Name:        "get_range_values",
-				Description: "Obtém os valores de um intervalo específico de células.",
+				Description: "Obtém os valores de um intervalo de células. Use max_rows para limitar a quantidade de dados retornados e evitar excesso de tokens.",
 				Parameters: FunctionParameters{
 					Type: "object",
 					Properties: map[string]FunctionProperty{
@@ -152,7 +152,19 @@ func GetExcelTools() []Tool {
 						},
 						"range": {
 							Type:        "string",
-							Description: "Intervalo de células (ex: 'A1:C10')",
+							Description: "Intervalo de células (ex: 'A1:C10' ou 'A:C' para todas as linhas)",
+						},
+						"max_rows": {
+							Type:        "integer",
+							Description: "Limite máximo de linhas a retornar (ex: 10, 50, 100). Use para economizar tokens.",
+						},
+						"filter_column": {
+							Type:        "string",
+							Description: "Coluna para filtrar (ex: 'A', 'Status'). Opcional.",
+						},
+						"filter_value": {
+							Type:        "string",
+							Description: "Valor para filtrar na coluna especificada. Opcional.",
 						},
 					},
 					Required: []string{"sheet", "range"},
@@ -890,13 +902,13 @@ func GetExcelTools() []Tool {
 			Type: "function",
 			Function: FunctionDeclaration{
 				Name:        "execute_macro",
-				Description: "Executa múltiplas ações em sequência de forma atômica. Use quando precisar fazer várias operações relacionadas (ex: criar planilha + escrever dados + formatar).",
+				Description: "Executa múltiplas ações/consultas em sequência de forma atômica. Use quando precisar fazer várias operações relacionadas (ex: criar planilha + escrever dados + formatar). Também suporta consultas como list_sheets, get_headers, get_range_values, etc.",
 				Parameters: FunctionParameters{
 					Type: "object",
 					Properties: map[string]FunctionProperty{
 						"actions": {
 							Type:        "array",
-							Description: "Lista de ações a executar em sequência. Cada ação deve ter 'tool' (nome da ferramenta) e 'args' (argumentos).",
+							Description: "Lista de ações/consultas a executar em sequência. Cada ação deve ter 'tool' (nome da ferramenta) e 'args' (argumentos). Ex: [{\"tool\":\"get_headers\",\"args\":{\"sheet\":\"Plan1\",\"range\":\"A:E\"}}, {\"tool\":\"get_row_count\",\"args\":{\"sheet\":\"Plan1\"}}]",
 							Items: &FunctionProperty{
 								Type:        "object",
 								Description: "Uma ação individual com 'tool' e 'args'",
@@ -904,6 +916,35 @@ func GetExcelTools() []Tool {
 						},
 					},
 					Required: []string{"actions"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: FunctionDeclaration{
+				Name:        "query_batch",
+				Description: "Executa múltiplas consultas de uma vez para obter informações da planilha. Use para economizar chamadas de API quando precisar de várias informações simultaneamente.",
+				Parameters: FunctionParameters{
+					Type: "object",
+					Properties: map[string]FunctionProperty{
+						"sheet": {
+							Type:        "string",
+							Description: "Nome da planilha a consultar",
+						},
+						"queries": {
+							Type:        "array",
+							Description: "Lista de consultas a executar. Opções: 'headers', 'row_count', 'used_range', 'sample_data', 'column_count'",
+							Items: &FunctionProperty{
+								Type: "string",
+								Enum: []string{"headers", "row_count", "used_range", "sample_data", "column_count"},
+							},
+						},
+						"sample_rows": {
+							Type:        "integer",
+							Description: "Número de linhas de amostra a retornar quando 'sample_data' está nas queries (default: 5)",
+						},
+					},
+					Required: []string{"sheet", "queries"},
 				},
 			},
 		},
@@ -948,6 +989,7 @@ func IsQueryTool(name string) bool {
 		"list_charts":       true,
 		"list_tables":       true,
 		"list_pivot_tables": true,
+		"query_batch":       true,
 	}
 	return queryTools[name]
 }

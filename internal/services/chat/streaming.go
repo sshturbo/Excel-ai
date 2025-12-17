@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"excel-ai/internal/domain"
@@ -231,7 +232,23 @@ func (s *Service) executeToolCall(toolName string, args map[string]interface{}) 
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("Valores: %v", values), nil
+
+		// Aplicar max_rows se especificado
+		if maxRows, ok := args["max_rows"].(float64); ok && maxRows > 0 {
+			limit := int(maxRows)
+			if len(values) > limit {
+				values = values[:limit]
+			}
+		}
+
+		// Aplicar filtro se especificado
+		if filterCol, ok := args["filter_column"].(string); ok && filterCol != "" {
+			if filterVal, ok := args["filter_value"].(string); ok && filterVal != "" {
+				values = s.filterValues(values, filterCol, filterVal)
+			}
+		}
+
+		return fmt.Sprintf("Valores (%d linhas): %v", len(values), values), nil
 
 	case "get_row_count":
 		sheet, _ := args["sheet"].(string)
@@ -296,6 +313,43 @@ func (s *Service) executeToolCall(toolName string, args map[string]interface{}) 
 			return "", err
 		}
 		return fmt.Sprintf("Tabelas dinâmicas: %v", pivots), nil
+
+	case "query_batch":
+		sheet, _ := args["sheet"].(string)
+		queries, _ := args["queries"].([]interface{})
+		sampleRows := 5
+		if sr, ok := args["sample_rows"].(float64); ok {
+			sampleRows = int(sr)
+		}
+
+		var results []string
+		for _, q := range queries {
+			queryName, _ := q.(string)
+			switch queryName {
+			case "headers":
+				if h, err := s.excelService.GetHeaders(sheet, "A:Z"); err == nil {
+					results = append(results, fmt.Sprintf("Cabeçalhos: %v", h))
+				}
+			case "row_count":
+				if count, err := s.excelService.GetRowCount(sheet); err == nil {
+					results = append(results, fmt.Sprintf("Linhas: %d", count))
+				}
+			case "used_range":
+				if rng, err := s.excelService.GetUsedRange(sheet); err == nil {
+					results = append(results, fmt.Sprintf("Intervalo: %s", rng))
+				}
+			case "column_count":
+				if count, err := s.excelService.GetColumnCount(sheet); err == nil {
+					results = append(results, fmt.Sprintf("Colunas: %d", count))
+				}
+			case "sample_data":
+				rng := fmt.Sprintf("A1:Z%d", sampleRows+1)
+				if vals, err := s.excelService.GetRangeValues(sheet, rng); err == nil {
+					results = append(results, fmt.Sprintf("Amostra (%d linhas): %v", len(vals), vals))
+				}
+			}
+		}
+		return strings.Join(results, "\n"), nil
 
 	// ===== ACTIONS =====
 	case "write_cell":
@@ -863,6 +917,8 @@ DICAS IMPORTANTES:
 MODO DE RACIOCÍNIO:
 Ao fazer tarefas complexas, explique seu raciocínio passo a passo antes de executar.
 
+DICA DE EFICIÊNCIA: Use query_batch para fazer múltiplas consultas de uma vez e economizar chamadas de API.
+
 NÃO gere código VBA. Use apenas as ferramentas disponíveis.`
 
 	if len(s.chatHistory) > 0 {
@@ -880,4 +936,42 @@ NÃO gere código VBA. Use apenas as ferramentas disponíveis.`
 		Timestamp: time.Now(),
 	}
 	s.chatHistory = append([]domain.Message{sysMsg}, s.chatHistory...)
+}
+
+// filterValues filtra valores baseado em uma coluna e valor
+func (s *Service) filterValues(values [][]string, filterCol string, filterVal string) [][]string {
+	if len(values) < 2 {
+		return values
+	}
+
+	// Encontrar índice da coluna de filtro
+	headers := values[0]
+	colIndex := -1
+	for i, h := range headers {
+		if h == filterCol {
+			colIndex = i
+			break
+		}
+	}
+
+	// Se não encontrou por nome, tentar como letra de coluna (A, B, C...)
+	if colIndex == -1 && len(filterCol) == 1 {
+		colIndex = int(filterCol[0] - 'A')
+	}
+
+	if colIndex == -1 || colIndex >= len(headers) {
+		return values
+	}
+
+	// Filtrar linhas
+	filtered := [][]string{headers}
+	for i := 1; i < len(values); i++ {
+		if colIndex < len(values[i]) {
+			if values[i][colIndex] == filterVal {
+				filtered = append(filtered, values[i])
+			}
+		}
+	}
+
+	return filtered
 }
