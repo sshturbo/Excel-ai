@@ -79,16 +79,6 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 		// Converter para AI messages
 		aiHistory := s.toAIMessages(s.chatHistory)
 
-		// DEBUG: Log das últimas mensagens
-		fmt.Printf("\n[DEBUG] Step %d - Sending %d messages to AI\n", step, len(aiHistory))
-		for i, msg := range aiHistory {
-			preview := msg.Content
-			if len(preview) > 100 {
-				preview = preview[:100] + "..."
-			}
-			fmt.Printf("[DEBUG] Msg %d: Role=%s, Content=%s\n", i, msg.Role, preview)
-		}
-
 		// Chamar IA com tools
 		var currentResponse string
 		var toolCalls []ai.ToolCall
