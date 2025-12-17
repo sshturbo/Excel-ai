@@ -1,9 +1,10 @@
 // Types for the Excel-AI application
 
 export interface Message {
-    role: 'user' | 'assistant'
+    role: 'user' | 'assistant' | 'system'
     content: string
     hasActions?: boolean
+    hidden?: boolean  // Se true, não aparece no chat UI
 }
 
 export interface Workbook {

@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -79,6 +78,16 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 
 		// Converter para AI messages
 		aiHistory := s.toAIMessages(s.chatHistory)
+
+		// DEBUG: Log das últimas mensagens
+		fmt.Printf("\n[DEBUG] Step %d - Sending %d messages to AI\n", step, len(aiHistory))
+		for i, msg := range aiHistory {
+			preview := msg.Content
+			if len(preview) > 100 {
+				preview = preview[:100] + "..."
+			}
+			fmt.Printf("[DEBUG] Msg %d: Role=%s, Content=%s\n", i, msg.Role, preview)
+		}
 
 		// Chamar IA com tools
 		var currentResponse string
@@ -165,14 +174,14 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 			}
 		}
 
-		// Adicionar resultados ao histórico para a IA ver
-		resultsJSON, _ := json.Marshal(executionResults)
-		toolResultMsg := fmt.Sprintf("TOOL RESULTS:\n%s\nContinue your task based on these results.", string(resultsJSON))
+		// Adicionar resultados ao histórico para a IA ver (Hidden = não aparece no chat)
+		toolResultMsg := fmt.Sprintf("Resultados das ferramentas executadas:\n\n%s\n\nUse estes dados para responder ao usuário. NÃO execute a mesma ferramenta novamente.", strings.Join(executionResults, "\n\n"))
 
 		s.chatHistory = append(s.chatHistory, domain.Message{
-			Role:      domain.RoleSystem,
+			Role:      domain.RoleUser,
 			Content:   toolResultMsg,
 			Timestamp: time.Now(),
+			Hidden:    true,
 		})
 
 		// Throttle para não estourar rate limit
@@ -774,12 +783,13 @@ func (s *Service) ConfirmPendingAction(onChunk func(string) error) (string, erro
 		onChunk(fmt.Sprintf("\n✅ %s\n", result))
 	}
 
-	// Add execution results to chat history
-	toolMsg := fmt.Sprintf("TOOL RESULTS:\n%s\nContinue your task based on these results.", executionResults)
+	// Add execution results to chat history (Hidden = não aparece no chat)
+	toolMsg := fmt.Sprintf("Resultados das ferramentas executadas:\n%s\n\nAgora responda ao usuário ou execute a próxima ação necessária.", executionResults)
 	s.chatHistory = append(s.chatHistory, domain.Message{
-		Role:      domain.RoleSystem,
+		Role:      domain.RoleUser,
 		Content:   toolMsg,
 		Timestamp: time.Now(),
+		Hidden:    true,
 	})
 
 	// Resume the AI loop with function calling

@@ -16,4 +16,5 @@ type Message struct {
 	Role      MessageRole `json:"role"`
 	Content   string      `json:"content"`
 	Timestamp time.Time   `json:"timestamp"`
+	Hidden    bool        `json:"hidden,omitempty"` // Se true, não aparece no chat UI
 }

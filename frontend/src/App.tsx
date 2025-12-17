@@ -540,26 +540,28 @@ export default function App() {
                             {chat.messages.length === 0 ? (
                                 <EmptyState selectedSheets={excel.selectedSheets} />
                             ) : (
-                                chat.messages.map((msg, idx) => (
-                                    <MessageBubble
-                                        key={idx}
-                                        message={msg}
-                                        index={idx}
-                                        isLastAssistant={msg.role === 'assistant' && idx === chat.messages.length - 1}
-                                        isLoading={chat.isLoading}
-                                        isEditing={chat.editingMessageIndex === idx}
-                                        editContent={chat.editContent}
-                                        onEditContentChange={(value) => chat.handleEditMessage(idx, value)}
-                                        onStartEdit={chat.handleEditMessage}
-                                        onCancelEdit={chat.handleCancelEdit}
-                                        onSaveEdit={chat.handleSaveEdit}
-                                        onCopy={chat.handleCopy}
-                                        onShare={chat.handleShare}
-                                        onRegenerate={chat.handleRegenerate}
-                                        onUndo={msg.hasActions ? handleUndo : undefined}
-                                        renderContent={renderMessageContent}
-                                    />
-                                ))
+                                chat.messages
+                                    .filter(msg => !msg.hidden && msg.role !== 'system')
+                                    .map((msg, idx) => (
+                                        <MessageBubble
+                                            key={idx}
+                                            message={msg}
+                                            index={idx}
+                                            isLastAssistant={msg.role === 'assistant' && idx === chat.messages.filter(m => !m.hidden && m.role !== 'system').length - 1}
+                                            isLoading={chat.isLoading}
+                                            isEditing={chat.editingMessageIndex === idx}
+                                            editContent={chat.editContent}
+                                            onEditContentChange={(value) => chat.handleEditMessage(idx, value)}
+                                            onStartEdit={chat.handleEditMessage}
+                                            onCancelEdit={chat.handleCancelEdit}
+                                            onSaveEdit={chat.handleSaveEdit}
+                                            onCopy={chat.handleCopy}
+                                            onShare={chat.handleShare}
+                                            onRegenerate={chat.handleRegenerate}
+                                            onUndo={msg.hasActions ? handleUndo : undefined}
+                                            renderContent={renderMessageContent}
+                                        />
+                                    ))
                             )}
                             <div ref={chat.messagesEndRef} />
                         </div>
