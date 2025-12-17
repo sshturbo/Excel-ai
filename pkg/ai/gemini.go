@@ -101,16 +101,31 @@ type GeminiMessage struct {
 	Parts []GeminiPart `json:"parts"`
 }
 
-// GeminiPart parte de uma mensagem
+// GeminiPart parte de uma mensagem (pode ser texto ou function call)
 type GeminiPart struct {
-	Text string `json:"text"`
+	Text             string                  `json:"text,omitempty"`
+	FunctionCall     *GeminiFunctionCall     `json:"functionCall,omitempty"`
+	FunctionResponse *GeminiFunctionResponse `json:"functionResponse,omitempty"`
+}
+
+// GeminiFunctionCall representa uma chamada de função retornada pelo modelo
+type GeminiFunctionCall struct {
+	Name string                 `json:"name"`
+	Args map[string]interface{} `json:"args"`
+}
+
+// GeminiFunctionResponse representa o resultado de uma função para enviar de volta ao modelo
+type GeminiFunctionResponse struct {
+	Name     string                 `json:"name"`
+	Response map[string]interface{} `json:"response"`
 }
 
 // GeminiRequest requisição para Gemini API
 type GeminiRequest struct {
-	Contents          []GeminiMessage   `json:"contents"`
-	SystemInstruction *GeminiMessage    `json:"systemInstruction,omitempty"`
-	GenerationConfig  *GenerationConfig `json:"generationConfig,omitempty"`
+	Contents          []GeminiMessage          `json:"contents"`
+	SystemInstruction *GeminiMessage           `json:"systemInstruction,omitempty"`
+	GenerationConfig  *GenerationConfig        `json:"generationConfig,omitempty"`
+	Tools             []map[string]interface{} `json:"tools,omitempty"`
 }
 
 // GenerationConfig configurações de geração
@@ -121,18 +136,30 @@ type GenerationConfig struct {
 
 // GeminiResponse resposta do Gemini
 type GeminiResponse struct {
-	Candidates []struct {
-		Content struct {
-			Parts []struct {
-				Text string `json:"text"`
-			} `json:"parts"`
-		} `json:"content"`
-	} `json:"candidates"`
-	Error *struct {
+	Candidates []GeminiCandidate `json:"candidates"`
+	Error      *struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`
 		Status  string `json:"status"`
 	} `json:"error,omitempty"`
+}
+
+// GeminiCandidate representa um candidato de resposta
+type GeminiCandidate struct {
+	Content      GeminiContent `json:"content"`
+	FinishReason string        `json:"finishReason,omitempty"`
+}
+
+// GeminiContent representa o conteúdo de uma resposta
+type GeminiContent struct {
+	Parts []GeminiResponsePart `json:"parts"`
+	Role  string               `json:"role,omitempty"`
+}
+
+// GeminiResponsePart parte de uma resposta (texto ou function call)
+type GeminiResponsePart struct {
+	Text         string              `json:"text,omitempty"`
+	FunctionCall *GeminiFunctionCall `json:"functionCall,omitempty"`
 }
 
 // NewGeminiClient cria um novo cliente Gemini
@@ -489,6 +516,184 @@ func (c *GeminiClient) ChatStream(ctx context.Context, messages []Message, onChu
 	}
 
 	return "", lastErr
+}
+
+// ChatStreamWithTools envia mensagens com tools e retorna texto e/ou function calls
+func (c *GeminiClient) ChatStreamWithTools(ctx context.Context, messages []Message, tools []map[string]interface{}, onChunk func(string) error) (string, []ToolCall, error) {
+	if c.apiKey == "" {
+		return "", nil, fmt.Errorf("API key não configurada")
+	}
+
+	maxRetries := 2
+	var lastErr error
+
+	// Guardar modelo original
+	originalModel := c.model
+	defer func() { c.model = originalModel }()
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Logica de Fallback
+		if attempt == 2 {
+			c.model = "gemini-1.5-flash"
+		}
+
+		// Pruning messages
+		prunedMessages := PruneMessages(messages, c.maxInputTokens)
+
+		contents, systemInstruction := c.convertToGeminiFormat(prunedMessages)
+
+		reqBody := GeminiRequest{
+			Contents:          contents,
+			SystemInstruction: systemInstruction,
+			GenerationConfig: &GenerationConfig{
+				MaxOutputTokens: 8192,
+			},
+			Tools: tools,
+		}
+
+		jsonData, err := json.Marshal(reqBody)
+		if err != nil {
+			return "", nil, err
+		}
+
+		url := fmt.Sprintf("%s/models/%s:streamGenerateContent?alt=sse&key=%s", c.baseURL, c.model, c.apiKey)
+
+		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+		if err != nil {
+			return "", nil, err
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+
+			errStr := string(body)
+
+			// Check for Quota/Rate Limit
+			if resp.StatusCode == 429 || strings.Contains(errStr, "RESOURCE_EXHAUSTED") || strings.Contains(errStr, "Quota exceeded") {
+				lastErr = formatGeminiError(resp.StatusCode, errStr, c.model)
+
+				if attempt < maxRetries {
+					waitDuration := parseRetryAfter(resp)
+
+					totalSeconds := int(waitDuration.Seconds())
+					if totalSeconds < 1 {
+						totalSeconds = 1
+					}
+
+					switch attempt {
+					case 0:
+						onChunk(fmt.Sprintf("\n\n⏳ Quota excedida (%d). Aguardando %ds...", resp.StatusCode, totalSeconds))
+					case 1:
+						onChunk(fmt.Sprintf("\n\n⚠️ Nova falha de quota. Tentando fallback para 'gemini-1.5-flash' em %ds...", totalSeconds))
+					}
+
+					for remaining := totalSeconds - 1; remaining >= 0; remaining-- {
+						select {
+						case <-time.After(1 * time.Second):
+							if remaining > 0 {
+								onChunk(fmt.Sprintf(" %d...", remaining))
+							}
+						case <-ctx.Done():
+							return "", nil, ctx.Err()
+						}
+					}
+					onChunk("\n\n✅ Retomando...\n\n")
+					continue
+				} else {
+					onChunk("\n\n❌ Quota excedida mesmo após fallback. Possível limite diário atingido.\n\n")
+				}
+			}
+
+			return "", nil, formatGeminiError(resp.StatusCode, errStr, c.model)
+		}
+
+		reader := bufio.NewReader(resp.Body)
+		var fullResponse strings.Builder
+		var toolCalls []ToolCall
+
+		// Read stream
+		for {
+			line, err := reader.ReadBytes('\n')
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				resp.Body.Close()
+				return fullResponse.String(), toolCalls, err
+			}
+
+			line = bytes.TrimSpace(line)
+			if !bytes.HasPrefix(line, []byte("data: ")) {
+				continue
+			}
+
+			data := bytes.TrimPrefix(line, []byte("data: "))
+			if len(data) == 0 {
+				continue
+			}
+
+			var chunk struct {
+				Candidates []struct {
+					Content struct {
+						Parts []struct {
+							Text         string `json:"text,omitempty"`
+							FunctionCall *struct {
+								Name string                 `json:"name"`
+								Args map[string]interface{} `json:"args"`
+							} `json:"functionCall,omitempty"`
+						} `json:"parts"`
+					} `json:"content"`
+					FinishReason string `json:"finishReason,omitempty"`
+				} `json:"candidates"`
+			}
+
+			if err := json.Unmarshal(data, &chunk); err != nil {
+				continue
+			}
+
+			if len(chunk.Candidates) > 0 {
+				for _, part := range chunk.Candidates[0].Content.Parts {
+					// Handle text
+					if part.Text != "" {
+						fullResponse.WriteString(part.Text)
+						if err := onChunk(part.Text); err != nil {
+							resp.Body.Close()
+							return "", nil, err
+						}
+					}
+
+					// Handle function call
+					if part.FunctionCall != nil {
+						// Convert args to JSON string for ToolCall
+						argsJSON, _ := json.Marshal(part.FunctionCall.Args)
+						tc := ToolCall{
+							ID:   fmt.Sprintf("call_%d", len(toolCalls)),
+							Type: "function",
+							Function: FunctionCall{
+								Name:      part.FunctionCall.Name,
+								Arguments: string(argsJSON),
+							},
+						}
+						toolCalls = append(toolCalls, tc)
+					}
+				}
+			}
+		}
+		resp.Body.Close()
+
+		return fullResponse.String(), toolCalls, nil
+	}
+
+	return "", nil, lastErr
 }
 
 // GetAvailableModels retorna modelos Gemini disponíveis

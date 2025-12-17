@@ -480,3 +480,195 @@ func (c *Client) ChatStream(ctx context.Context, messages []Message, onChunk fun
 
 	return "", lastErr
 }
+
+// ChatStreamWithTools envia mensagens com tools e retorna texto e/ou function calls
+func (c *Client) ChatStreamWithTools(ctx context.Context, messages []Message, tools []Tool, onChunk func(string) error) (string, []ToolCall, error) {
+	if c.config.APIKey == "" {
+		return "", nil, fmt.Errorf("API key não configurada")
+	}
+
+	maxRetries := 2
+	var lastErr error
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Aplicar pruning no histórico
+		prunedMessages := PruneMessages(messages, c.config.MaxInputTokens)
+
+		reqBody := struct {
+			Model      string    `json:"model"`
+			Messages   []Message `json:"messages"`
+			Stream     bool      `json:"stream"`
+			MaxTokens  int       `json:"max_tokens,omitempty"`
+			Tools      []Tool    `json:"tools,omitempty"`
+			ToolChoice string    `json:"tool_choice,omitempty"`
+		}{
+			Model:      c.config.Model,
+			Messages:   prunedMessages,
+			Stream:     true,
+			MaxTokens:  4096,
+			Tools:      tools,
+			ToolChoice: "auto",
+		}
+
+		jsonData, err := json.Marshal(reqBody)
+		if err != nil {
+			return "", nil, err
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "POST", c.config.BaseURL+"/chat/completions", bytes.NewBuffer(jsonData))
+		if err != nil {
+			return "", nil, err
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+		req.Header.Set("HTTP-Referer", "https://excel-ai-app.local")
+		req.Header.Set("X-Title", "Excel-AI")
+		req.Close = true
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			errorMsg := string(body)
+
+			// Rate Limit / Quota errors
+			if resp.StatusCode == 429 || strings.Contains(errorMsg, "rate limit") || strings.Contains(errorMsg, "quota") {
+				lastErr = fmt.Errorf("limite de quota atingido: %s", errorMsg)
+
+				if attempt < maxRetries {
+					waitDuration := parseRetryAfterHeader(resp)
+					var msg string
+					switch attempt {
+					case 0:
+						msg = fmt.Sprintf("\n\n⏳ Quota excedida (%d). Aguardando %.0fs antes de nova tentativa...\n\n", resp.StatusCode, waitDuration.Seconds())
+					case 1:
+						msg = "\n\n⚠️ Nova falha de quota. Tentando novamente...\n\n"
+					}
+					onChunk(msg)
+
+					select {
+					case <-time.After(waitDuration):
+						continue
+					case <-ctx.Done():
+						return "", nil, ctx.Err()
+					}
+				} else {
+					onChunk("\n\n❌ Quota excedida após múltiplas tentativas.\n\n")
+				}
+
+				return "", nil, lastErr
+			}
+
+			// Tratamento amigável para erro de política de dados
+			if strings.Contains(errorMsg, "No endpoints found matching your data policy") {
+				return "", nil, fmt.Errorf("para usar modelos gratuitos, habilite a coleta de dados no OpenRouter: https://openrouter.ai/settings/privacy")
+			}
+
+			// Tratamento amigável para erro de autenticação
+			if resp.StatusCode == 401 || strings.Contains(errorMsg, "Unauthorized") || strings.Contains(errorMsg, "cookie auth") {
+				return "", nil, fmt.Errorf("API key inválida ou não autorizada - verifique se a chave está correta para o provedor selecionado")
+			}
+
+			return "", nil, fmt.Errorf("erro na API: %s - %s", resp.Status, errorMsg)
+		}
+
+		reader := bufio.NewReader(resp.Body)
+		var fullResponse strings.Builder
+		var toolCalls []ToolCall
+
+		// Map para acumular tool calls parciais (streaming envia em partes)
+		toolCallsMap := make(map[int]*ToolCall)
+
+		for {
+			line, err := reader.ReadBytes('\n')
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				resp.Body.Close()
+				return "", nil, err
+			}
+
+			line = bytes.TrimSpace(line)
+			if !bytes.HasPrefix(line, []byte("data: ")) {
+				continue
+			}
+
+			data := bytes.TrimPrefix(line, []byte("data: "))
+			if string(data) == "[DONE]" {
+				break
+			}
+
+			var chunk struct {
+				Choices []struct {
+					Delta struct {
+						Content   string `json:"content,omitempty"`
+						ToolCalls []struct {
+							Index    int    `json:"index"`
+							ID       string `json:"id,omitempty"`
+							Type     string `json:"type,omitempty"`
+							Function struct {
+								Name      string `json:"name,omitempty"`
+								Arguments string `json:"arguments,omitempty"`
+							} `json:"function,omitempty"`
+						} `json:"tool_calls,omitempty"`
+					} `json:"delta"`
+					FinishReason string `json:"finish_reason,omitempty"`
+				} `json:"choices"`
+			}
+
+			if err := json.Unmarshal(data, &chunk); err != nil {
+				continue
+			}
+
+			if len(chunk.Choices) > 0 {
+				delta := chunk.Choices[0].Delta
+
+				// Handle text content
+				if delta.Content != "" {
+					fullResponse.WriteString(delta.Content)
+					if err := onChunk(delta.Content); err != nil {
+						resp.Body.Close()
+						return "", nil, err
+					}
+				}
+
+				// Handle tool calls (streaming - may come in parts)
+				for _, tc := range delta.ToolCalls {
+					if existing, ok := toolCallsMap[tc.Index]; ok {
+						// Append to existing tool call
+						existing.Function.Arguments += tc.Function.Arguments
+					} else {
+						// New tool call
+						toolCallsMap[tc.Index] = &ToolCall{
+							ID:   tc.ID,
+							Type: tc.Type,
+							Function: FunctionCall{
+								Name:      tc.Function.Name,
+								Arguments: tc.Function.Arguments,
+							},
+						}
+					}
+				}
+			}
+		}
+		resp.Body.Close()
+
+		// Convert toolCallsMap to slice
+		for i := 0; i < len(toolCallsMap); i++ {
+			if tc, ok := toolCallsMap[i]; ok {
+				toolCalls = append(toolCalls, *tc)
+			}
+		}
+
+		return fullResponse.String(), toolCalls, nil
+	}
+
+	return "", nil, lastErr
+}

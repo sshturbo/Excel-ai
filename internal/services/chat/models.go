@@ -18,10 +18,7 @@ func (s *Service) GetAvailableModels(apiKey, baseURL string) []dto.ModelInfo {
 		if err != nil {
 			// Return fallback Gemini models
 			return []dto.ModelInfo{
-				{ID: "gemini-2.0-flash-exp", Name: "Gemini 2.0 Flash (Experimental)", ContextLength: 1000000},
-				{ID: "gemini-1.5-flash", Name: "Gemini 1.5 Flash", ContextLength: 1000000},
-				{ID: "gemini-1.5-flash-8b", Name: "Gemini 1.5 Flash 8B", ContextLength: 1000000},
-				{ID: "gemini-1.5-pro", Name: "Gemini 1.5 Pro", ContextLength: 2000000},
+				{ID: "gemini-2.0-flash", Name: "Gemini 2.0 Flash", ContextLength: 1000000},
 			}
 		}
 		var result []dto.ModelInfo

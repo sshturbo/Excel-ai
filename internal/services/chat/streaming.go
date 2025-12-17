@@ -2,18 +2,17 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"excel-ai/internal/domain"
+	"excel-ai/pkg/ai"
 )
 
-// SendMessage envia mensagem para IA e gerencia o loop autônomo de execução
+// SendMessage envia mensagem para IA e gerencia o loop autônomo de execução com function calling nativo
 func (s *Service) SendMessage(message string, contextStr string, askBeforeApply bool, onChunk func(string) error) (string, error) {
 	s.mu.Lock()
-	// Lock é perigoso se o loop demorar muito e bloquear outras leituras,
-	// mas necessário para proteger s.chatHistory.
-	// O ideal seria travar apenas nas modificações de histórico, mas vamos manter assim por segurança.
 	defer s.mu.Unlock()
 
 	s.refreshConfig()
@@ -26,15 +25,9 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 		s.currentConvID = s.generateID()
 	}
 
-	if len(s.chatHistory) == 0 {
-		s.ensureSystemPrompt()
-	} else {
-		s.ensureSystemPrompt() // Garante injecão mesmo se histórico não estiver vazio
-	}
+	s.ensureSystemPrompt()
 
-	// 1. Adicionar mensagem do usuário
-	// 1. Adicionar mensagem do usuário
-	// Separar contexto (System - oculto) da pergunta (User - visível)
+	// 1. Adicionar contexto do Excel (se houver) como mensagem de sistema
 	if contextStr != "" {
 		s.chatHistory = append(s.chatHistory, domain.Message{
 			Role:      domain.RoleSystem,
@@ -43,6 +36,7 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 		})
 	}
 
+	// 2. Adicionar mensagem do usuário
 	s.chatHistory = append(s.chatHistory, domain.Message{
 		Role:      domain.RoleUser,
 		Content:   message,
@@ -58,10 +52,14 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 		s.cancelMu.Lock()
 		s.cancelFunc = nil
 		s.cancelMu.Unlock()
-		cancel() // Garante limpeza
+		cancel()
 	}()
 
-	// LOOP AUTÔNOMO (Max 5 passos para economizar quota no tier gratuito)
+	// Obter ferramentas Excel para function calling
+	tools := ai.GetExcelTools()
+	geminiTools := ai.GetGeminiTools()
+
+	// LOOP AUTÔNOMO (Max 5 passos para economizar quota)
 	maxSteps := 5
 	var finalResponse string
 
@@ -74,25 +72,23 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 		// Converter para AI messages
 		aiHistory := s.toAIMessages(s.chatHistory)
 
-		// Call AI
+		// Chamar IA com tools
 		var currentResponse string
+		var toolCalls []ai.ToolCall
 		var err error
 
-		// Wrapper para onChunk acumular resposta atual
 		chunkWrapper := func(chunk string) error {
 			currentResponse += chunk
-			return onChunk(chunk) // Passa pro frontend
+			return onChunk(chunk)
 		}
 
 		if s.provider == "google" {
-			_, err = s.geminiClient.ChatStream(ctx, aiHistory, chunkWrapper)
+			currentResponse, toolCalls, err = s.geminiClient.ChatStreamWithTools(ctx, aiHistory, geminiTools, chunkWrapper)
 		} else {
-			_, err = s.client.ChatStream(ctx, aiHistory, chunkWrapper)
+			currentResponse, toolCalls, err = s.client.ChatStreamWithTools(ctx, aiHistory, tools, chunkWrapper)
 		}
 
 		if err != nil {
-			// Se erro, removemos a última mensagem do usuário se for o primeiro passo?
-			// Melhor não, apenas retornamos erro.
 			return finalResponse, err
 		}
 
@@ -103,91 +99,490 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 			Timestamp: time.Now(),
 		})
 
-		// Atualiza resposta final (acumulativa ou última? Geralmente a última conversa é o que importa)
 		finalResponse = currentResponse
 
-		// PARSE COMMANDS
-		commands := s.ParseToolCommands(currentResponse)
-
-		// DEBUG: Log para ver se comandos foram parseados
-		if len(commands) > 0 {
-			fmt.Printf("[DEBUG] Parsed %d command(s) from AI response\n", len(commands))
-			for i, cmd := range commands {
-				fmt.Printf("[DEBUG] Command %d: Type=%s\n", i+1, cmd.Type)
+		// DEBUG: Log tool calls
+		if len(toolCalls) > 0 {
+			fmt.Printf("[DEBUG] Received %d tool call(s) from AI\n", len(toolCalls))
+			for i, tc := range toolCalls {
+				fmt.Printf("[DEBUG] Tool call %d: %s\n", i+1, tc.Function.Name)
 			}
 		} else {
-			fmt.Println("[DEBUG] No commands parsed from AI response")
+			fmt.Println("[DEBUG] No tool calls received from AI")
 		}
 
-		if len(commands) == 0 {
-			// Sem comandos, terminamos o turno
+		// Se não há tool calls, terminamos o turno
+		if len(toolCalls) == 0 {
 			break
 		}
 
-		// Notificar usuário sobre progresso do passo
-		stepMsg := fmt.Sprintf("\n\n🔄 *[Passo %d/%d] Executando %d ação(ões)...*\n\n", step+1, maxSteps, len(commands))
+		// Notificar usuário sobre progresso
+		stepMsg := fmt.Sprintf("\n\n🔄 *[Passo %d/%d] Executando %d ferramenta(s)...*\n\n", step+1, maxSteps, len(toolCalls))
 		onChunk(stepMsg)
 
-		// Executar Comandos
-		var executionResults string
-		for _, cmd := range commands {
-			// Se o usuário pediu para confirmar antes de aplicar (AskBeforeApply)
-			// E o comando é de escrita/modificação (não busca), pausamos.
-			if askBeforeApply && cmd.Type == "action" {
-				// Salvar o comando pendente para execução posterior
-				s.pendingAction = &cmd
+		// Executar tool calls
+		var executionResults []string
+		for _, tc := range toolCalls {
+			// Parsear argumentos
+			args, parseErr := tc.ParseArguments()
+			if parseErr != nil {
+				executionResults = append(executionResults, fmt.Sprintf("ERROR parsing %s: %v", tc.Function.Name, parseErr))
+				continue
+			}
+
+			// Verificar se é ação e precisa de confirmação
+			if askBeforeApply && ai.IsActionTool(tc.Function.Name) {
+				// Salvar ação pendente
+				s.pendingAction = &ToolCommand{
+					Type:    ToolTypeAction,
+					Content: tc.Function.Arguments,
+					Payload: args,
+				}
+				s.pendingAction.Payload.(map[string]interface{})["_tool_name"] = tc.Function.Name
 				s.pendingContextStr = contextStr
 				s.pendingOnChunk = onChunk
 
-				pauseMsg := "\n\n🛑 *[Ação Pendente]* Aguardando aprovação do usuário para executar.\n"
+				pauseMsg := fmt.Sprintf("\n\n🛑 *[Ação Pendente: %s]* Aguardando aprovação do usuário para executar.\n", tc.Function.Name)
 				onChunk(pauseMsg)
 				finalResponse += pauseMsg
 
-				// Salvar conversa para garantir que o contexto atual (proposta) fique salvo
 				go s.saveCurrentConversation(contextStr)
-
 				return finalResponse, nil
 			}
 
-			result, err := s.ExecuteTool(cmd)
-			if err != nil {
-				executionResults += fmt.Sprintf("ERROR Executing %s: %v\n", cmd.Content, err)
+			// Executar ferramenta
+			result, execErr := s.executeToolCall(tc.Function.Name, args)
+			if execErr != nil {
+				executionResults = append(executionResults, fmt.Sprintf("ERROR %s: %v", tc.Function.Name, execErr))
+				onChunk(fmt.Sprintf("\n❌ Erro em %s: %v\n", tc.Function.Name, execErr))
 			} else {
-				executionResults += fmt.Sprintf("SUCCESS: %s\n", result)
+				executionResults = append(executionResults, fmt.Sprintf("SUCCESS %s: %s", tc.Function.Name, result))
+				onChunk(fmt.Sprintf("\n✅ %s: %s\n", tc.Function.Name, result))
 			}
 		}
 
-		// Adicionar resultados ao histórico como System Message para a IA ver
-		// Isso alimenta o próximo passo do loop
-		toolMsg := fmt.Sprintf("TOOL RESULTS:\n%s\nContinue your task based on these results.", executionResults)
+		// Adicionar resultados ao histórico para a IA ver
+		resultsJSON, _ := json.Marshal(executionResults)
+		toolResultMsg := fmt.Sprintf("TOOL RESULTS:\n%s\nContinue your task based on these results.", string(resultsJSON))
 
 		s.chatHistory = append(s.chatHistory, domain.Message{
-			Role:      domain.RoleSystem, // Changed to System to hide from UI but keep in context
-			Content:   toolMsg,
+			Role:      domain.RoleSystem,
+			Content:   toolResultMsg,
 			Timestamp: time.Now(),
 		})
 
-		// Verificar se atingimos o limite de passos
+		// Verificar limite de passos
 		if step == maxSteps-1 {
 			pauseMsg := "\n\n⚠️ *[Limite de Passos Atingido]* O agente atingiu o máximo de 5 passos por turno.\n\n:::agent-paused:::\n"
 			onChunk(pauseMsg)
-			finalResponse += pauseMsg // Incluir na resposta final para detecção
+			finalResponse += pauseMsg
 		}
 
-		// THROTTLE: Aguardar para não estourar o Rate Limit da API (RPM)
-		// Aumentado para 6s para melhor compatibilidade com tier gratuito
-		time.Sleep(6 * time.Second)
-
-		// Loop continua...
+		// Throttle para não estourar rate limit
+		time.Sleep(3 * time.Second)
 	}
-
-	// Verificar se saímos por limite de passos (não por falta de comandos)
-	// Se o loop rodou todas as iterações possíveis, emitir marcador de pausa
-	// Note: Este código é alcançado apenas pelo for loop normal, não pelo break
 
 	go s.saveCurrentConversation(contextStr)
 
 	return finalResponse, nil
+}
+
+// executeToolCall executa uma ferramenta baseada no nome e argumentos
+func (s *Service) executeToolCall(toolName string, args map[string]interface{}) (string, error) {
+	if s.excelService == nil {
+		return "", fmt.Errorf("excel service not connected")
+	}
+
+	// Mapear nome da ferramenta para operação
+	switch toolName {
+	// ===== QUERIES =====
+	case "list_sheets":
+		sheets, err := s.excelService.ListSheets()
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Planilhas: %v", sheets), nil
+
+	case "sheet_exists":
+		name, _ := args["name"].(string)
+		exists, err := s.excelService.SheetExists(name)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Planilha '%s' existe: %v", name, exists), nil
+
+	case "get_used_range":
+		sheet, _ := args["sheet"].(string)
+		rng, err := s.excelService.GetUsedRange(sheet)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Intervalo usado: %s", rng), nil
+
+	case "get_headers":
+		sheet, _ := args["sheet"].(string)
+		rng, _ := args["range"].(string)
+		headers, err := s.excelService.GetHeaders(sheet, rng)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Cabeçalhos: %v", headers), nil
+
+	case "get_range_values":
+		sheet, _ := args["sheet"].(string)
+		rng, _ := args["range"].(string)
+		values, err := s.excelService.GetRangeValues(sheet, rng)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Valores: %v", values), nil
+
+	case "get_row_count":
+		sheet, _ := args["sheet"].(string)
+		count, err := s.excelService.GetRowCount(sheet)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Linhas: %d", count), nil
+
+	case "get_column_count":
+		sheet, _ := args["sheet"].(string)
+		count, err := s.excelService.GetColumnCount(sheet)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Colunas: %d", count), nil
+
+	case "get_cell_formula":
+		sheet, _ := args["sheet"].(string)
+		cell, _ := args["cell"].(string)
+		formula, err := s.excelService.GetCellFormula(sheet, cell)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Fórmula: %s", formula), nil
+
+	case "get_active_cell":
+		cell, err := s.excelService.GetActiveCell()
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Célula ativa: %s", cell), nil
+
+	case "has_filter":
+		sheet, _ := args["sheet"].(string)
+		hasFilter, err := s.excelService.HasFilter(sheet)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Tem filtro: %v", hasFilter), nil
+
+	case "list_charts":
+		sheet, _ := args["sheet"].(string)
+		charts, err := s.excelService.ListCharts(sheet)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Gráficos: %v", charts), nil
+
+	case "list_tables":
+		sheet, _ := args["sheet"].(string)
+		tables, err := s.excelService.ListTables(sheet)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Tabelas: %v", tables), nil
+
+	case "list_pivot_tables":
+		sheet, _ := args["sheet"].(string)
+		pivots, err := s.excelService.ListPivotTables(sheet)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Tabelas dinâmicas: %v", pivots), nil
+
+	// ===== ACTIONS =====
+	case "write_cell":
+		sheet, _ := args["sheet"].(string)
+		cell, _ := args["cell"].(string)
+		value, _ := args["value"].(string)
+		err := s.excelService.UpdateCell("", sheet, cell, value)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Escrito '%s' em %s", value, cell), nil
+
+	case "write_range":
+		sheet, _ := args["sheet"].(string)
+		cell, _ := args["cell"].(string)
+		data, _ := args["data"].([]interface{})
+
+		// Converter para [][]interface{}
+		batchData := make([][]interface{}, len(data))
+		for i, row := range data {
+			if rowArr, ok := row.([]interface{}); ok {
+				batchData[i] = rowArr
+			} else {
+				batchData[i] = []interface{}{row}
+			}
+		}
+
+		err := s.excelService.WriteRange(sheet, cell, batchData)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Escrito %d linhas a partir de %s", len(batchData), cell), nil
+
+	case "create_sheet":
+		name, _ := args["name"].(string)
+		err := s.excelService.CreateNewSheet(name)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Planilha '%s' criada", name), nil
+
+	case "delete_sheet":
+		name, _ := args["name"].(string)
+		err := s.excelService.DeleteSheet(name)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Planilha '%s' excluída", name), nil
+
+	case "rename_sheet":
+		oldName, _ := args["old_name"].(string)
+		newName, _ := args["new_name"].(string)
+		err := s.excelService.RenameSheet(oldName, newName)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Planilha renomeada: %s -> %s", oldName, newName), nil
+
+	case "format_range":
+		sheet, _ := args["sheet"].(string)
+		rng, _ := args["range"].(string)
+		bold, _ := args["bold"].(bool)
+		italic, _ := args["italic"].(bool)
+		fontSize := int(getFloat(args["font_size"]))
+		fontColor, _ := args["font_color"].(string)
+		bgColor, _ := args["bg_color"].(string)
+
+		err := s.excelService.FormatRange(sheet, rng, bold, italic, fontSize, fontColor, bgColor)
+		if err != nil {
+			return "", err
+		}
+		return "Formatação aplicada", nil
+
+	case "autofit_columns":
+		sheet, _ := args["sheet"].(string)
+		rng, _ := args["range"].(string)
+		err := s.excelService.AutoFitColumns(sheet, rng)
+		if err != nil {
+			return "", err
+		}
+		return "Colunas ajustadas", nil
+
+	case "clear_range":
+		sheet, _ := args["sheet"].(string)
+		rng, _ := args["range"].(string)
+		err := s.excelService.ClearRange(sheet, rng)
+		if err != nil {
+			return "", err
+		}
+		return "Intervalo limpo", nil
+
+	case "insert_rows":
+		sheet, _ := args["sheet"].(string)
+		row := int(getFloat(args["row"]))
+		count := int(getFloat(args["count"]))
+		err := s.excelService.InsertRows(sheet, row, count)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%d linhas inseridas", count), nil
+
+	case "delete_rows":
+		sheet, _ := args["sheet"].(string)
+		row := int(getFloat(args["row"]))
+		count := int(getFloat(args["count"]))
+		err := s.excelService.DeleteRows(sheet, row, count)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%d linhas excluídas", count), nil
+
+	case "merge_cells":
+		sheet, _ := args["sheet"].(string)
+		rng, _ := args["range"].(string)
+		err := s.excelService.MergeCells(sheet, rng)
+		if err != nil {
+			return "", err
+		}
+		return "Células mescladas", nil
+
+	case "unmerge_cells":
+		sheet, _ := args["sheet"].(string)
+		rng, _ := args["range"].(string)
+		err := s.excelService.UnmergeCells(sheet, rng)
+		if err != nil {
+			return "", err
+		}
+		return "Mesclagem desfeita", nil
+
+	case "set_borders":
+		sheet, _ := args["sheet"].(string)
+		rng, _ := args["range"].(string)
+		style, _ := args["style"].(string)
+		err := s.excelService.SetBorders(sheet, rng, style)
+		if err != nil {
+			return "", err
+		}
+		return "Bordas aplicadas", nil
+
+	case "set_column_width":
+		sheet, _ := args["sheet"].(string)
+		rng, _ := args["range"].(string)
+		width := getFloat(args["width"])
+		err := s.excelService.SetColumnWidth(sheet, rng, width)
+		if err != nil {
+			return "", err
+		}
+		return "Largura definida", nil
+
+	case "set_row_height":
+		sheet, _ := args["sheet"].(string)
+		rng, _ := args["range"].(string)
+		height := getFloat(args["height"])
+		err := s.excelService.SetRowHeight(sheet, rng, height)
+		if err != nil {
+			return "", err
+		}
+		return "Altura definida", nil
+
+	case "apply_filter":
+		sheet, _ := args["sheet"].(string)
+		rng, _ := args["range"].(string)
+		err := s.excelService.ApplyFilter(sheet, rng)
+		if err != nil {
+			return "", err
+		}
+		return "Filtro aplicado", nil
+
+	case "clear_filters":
+		sheet, _ := args["sheet"].(string)
+		err := s.excelService.ClearFilters(sheet)
+		if err != nil {
+			return "", err
+		}
+		return "Filtros removidos", nil
+
+	case "sort_range":
+		sheet, _ := args["sheet"].(string)
+		rng, _ := args["range"].(string)
+		col := int(getFloat(args["column"]))
+		asc, _ := args["ascending"].(bool)
+		err := s.excelService.SortRange(sheet, rng, col, asc)
+		if err != nil {
+			return "", err
+		}
+		return "Dados ordenados", nil
+
+	case "copy_range":
+		sheet, _ := args["sheet"].(string)
+		src, _ := args["source"].(string)
+		dest, _ := args["dest"].(string)
+		err := s.excelService.CopyRange(sheet, src, dest)
+		if err != nil {
+			return "", err
+		}
+		return "Intervalo copiado", nil
+
+	case "create_chart":
+		sheet, _ := args["sheet"].(string)
+		rng, _ := args["range"].(string)
+		chartType, _ := args["chart_type"].(string)
+		title, _ := args["title"].(string)
+		err := s.excelService.CreateChart(sheet, rng, chartType, title)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Gráfico '%s' criado", title), nil
+
+	case "delete_chart":
+		sheet, _ := args["sheet"].(string)
+		name, _ := args["name"].(string)
+		err := s.excelService.DeleteChart(sheet, name)
+		if err != nil {
+			return "", err
+		}
+		return "Gráfico excluído", nil
+
+	case "create_pivot_table":
+		srcSheet, _ := args["source_sheet"].(string)
+		srcRange, _ := args["source_range"].(string)
+		destSheet, _ := args["dest_sheet"].(string)
+		destCell, _ := args["dest_cell"].(string)
+		name, _ := args["name"].(string)
+		err := s.excelService.CreatePivotTable(srcSheet, srcRange, destSheet, destCell, name)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Tabela dinâmica '%s' criada", name), nil
+
+	case "create_table":
+		sheet, _ := args["sheet"].(string)
+		rng, _ := args["range"].(string)
+		name, _ := args["name"].(string)
+		style, _ := args["style"].(string)
+		err := s.excelService.CreateTable(sheet, rng, name, style)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Tabela '%s' criada", name), nil
+
+	case "delete_table":
+		sheet, _ := args["sheet"].(string)
+		name, _ := args["name"].(string)
+		err := s.excelService.DeleteTable(sheet, name)
+		if err != nil {
+			return "", err
+		}
+		return "Tabela removida", nil
+
+	case "execute_macro":
+		// Executar múltiplas ações em sequência
+		actions, _ := args["actions"].([]interface{})
+		if len(actions) == 0 {
+			return "", fmt.Errorf("execute_macro requires 'actions' array")
+		}
+
+		s.excelService.StartUndoBatch()
+		var results []string
+
+		for i, action := range actions {
+			actionMap, ok := action.(map[string]interface{})
+			if !ok {
+				results = append(results, fmt.Sprintf("Action %d: SKIP (invalid format)", i+1))
+				continue
+			}
+
+			tool, _ := actionMap["tool"].(string)
+			actionArgs, _ := actionMap["args"].(map[string]interface{})
+
+			result, err := s.executeToolCall(tool, actionArgs)
+			if err != nil {
+				results = append(results, fmt.Sprintf("Action %d (%s): ERROR - %v", i+1, tool, err))
+				break // Stop on error
+			}
+			results = append(results, fmt.Sprintf("Action %d (%s): %s", i+1, tool, result))
+		}
+
+		s.excelService.EndUndoBatch()
+		return fmt.Sprintf("MACRO completada (%d ações): %v", len(actions), results), nil
+
+	default:
+		return "", fmt.Errorf("unknown tool: %s", toolName)
+	}
 }
 
 // SendErrorFeedback mantém a lógica simples de 1 turno
@@ -420,117 +815,26 @@ func (s *Service) refreshConfig() {
 }
 
 func (s *Service) ensureSystemPrompt() {
-	systemPrompt := `Você é um AGENTE Excel inteligente. Você trabalha de forma autônoma para completar tarefas.
+	systemPrompt := `Você é um AGENTE Excel inteligente com acesso a ferramentas para consultar e modificar planilhas do Microsoft Excel.
 
-IDIOMA: SEMPRE responda em Português do Brasil. Todas as suas mensagens, explicações e raciocínios devem ser em português.
+IDIOMA: SEMPRE responda em Português do Brasil.
+
+MODO DE TRABALHO:
+1. PRIMEIRO PASSO CRÍTICO: Antes de qualquer ação, use "list_sheets" para verificar se o Excel está conectado e quais planilhas existem. Se não houver planilhas, avise o usuário para abrir um arquivo Excel.
+2. CONSULTE antes de AGIR: Use ferramentas de consulta (get_headers, get_used_range, etc.) para entender os dados antes de modificá-los.
+3. Use "execute_macro" para múltiplas ações em sequência (criar planilha + escrever + formatar).
+
+DICAS IMPORTANTES:
+- Use autofit_columns após inserir dados para melhor visualização
+- Use format_range para destacar cabeçalhos com negrito e cores
+- Para fórmulas, use sintaxe PT-BR (SOMA, MÉDIA, PROCV) com ponto-e-vírgula como separador
+- Em write_range, use array 2D: [["Col1", "Col2"], ["Val1", "Val2"]]
+- Sempre especifique o parâmetro "sheet" em operações de escrita
 
 MODO DE RACIOCÍNIO:
-Ao fazer tarefas complexas, SEMPRE mostre seu raciocínio usando:
-:::thinking
-[Seu raciocínio passo a passo aqui]
-:::
-Isso ajuda o usuário a entender seu processo de pensamento. Pense em voz alta!
+Ao fazer tarefas complexas, explique seu raciocínio passo a passo antes de executar.
 
-MODO AGENTE:
-PRIMEIRO PASSO CRÍTICO: Antes de QUALQUER ação, SEMPRE execute list-sheets primeiro para verificar se o Excel está conectado e tem uma pasta de trabalho aberta. Se falhar ou retornar vazio, avise o usuário para abrir um arquivo Excel!
-
-1. PRIMEIRO faça consultas para entender o estado atual
-2. DEPOIS execute ações baseadas nos resultados
-3. Os resultados das consultas serão enviados de volta - USE-OS!
-
-CONSULTAS (verificar estado):
-:::excel-query
-{"type": "list-sheets"}
-{"type": "sheet-exists", "name": "NomeDaPlanilha"}
-{"type": "list-pivot-tables", "sheet": "NomeDaPlanilha"}
-{"type": "get-headers", "sheet": "NomeDaPlanilha", "range": "A:F"}
-{"type": "get-used-range", "sheet": "NomeDaPlanilha"}
-{"type": "get-row-count", "sheet": "NomeDaPlanilha"}
-{"type": "get-column-count", "sheet": "NomeDaPlanilha"}
-{"type": "get-cell-formula", "sheet": "NomeDaPlanilha", "cell": "A1"}
-{"type": "has-filter", "sheet": "NomeDaPlanilha"}
-{"type": "get-active-cell"}
-{"type": "get-range-values", "sheet": "NomeDaPlanilha", "range": "A1:C10"}
-{"type": "list-charts", "sheet": "NomeDaPlanilha"}
-:::
-
-AÇÕES (modificar Excel):
-:::excel-action
-{"op": "macro", "actions": [{"op": "create-sheet", "name": "Dados"}, {"op": "write", "sheet": "Dados", "cell": "A1", "data": [["Col1", "Col2"], ["Val1", "Val2"]]}, {"op": "format-range", "sheet": "Dados", "range": "A1:B1", "bold": true}, {"op": "autofit", "sheet": "Dados", "range": "A:B"}]}
-{"op": "write", "cell": "A1", "value": "valor texto"}
-{"op": "write", "cell": "B1", "formula": "=SOMA(A1:A10)"}
-{"op": "write", "cell": "C1", "formula": "=PROCV(A1; 'OutraAba'!A:B; 2; FALSO)"}
-{"op": "write", "sheet": "NomeDaPlanilha", "cell": "A1", "data": [["Cabeçalho1", "Cabeçalho2"], ["ValorLinha1Col1", "ValorLinha1Col2"]]}
-{"op": "create-workbook", "name": "Nova.xlsx"}
-{"op": "create-sheet", "name": "NovaPlanilha"}
-{"op": "create-chart", "sheet": "X", "range": "A1:B10", "chartType": "line", "title": "Título"}
-{"op": "create-pivot", "sourceSheet": "X", "sourceRange": "A:F", "destSheet": "Y", "destCell": "A1", "tableName": "Nome", "rowFields": ["campo1"], "valueFields": [{"field": "campo2", "function": "sum"}]}
-{"op": "format-range", "sheet": "X", "range": "A1:B5", "bold": true, "italic": false, "fontSize": 12, "fontColor": "#FF0000", "bgColor": "#FFFF00"}
-{"op": "delete-sheet", "name": "PlanilhaParaDeletar"}
-{"op": "rename-sheet", "oldName": "NomeAntigo", "newName": "NomeNovo"}
-{"op": "clear-range", "sheet": "X", "range": "A1:C10"}
-{"op": "autofit", "sheet": "X", "range": "A:D"}
-{"op": "insert-rows", "sheet": "X", "row": 5, "count": 3}
-{"op": "delete-rows", "sheet": "X", "row": 5, "count": 2}
-{"op": "merge-cells", "sheet": "X", "range": "A1:C1"}
-{"op": "unmerge-cells", "sheet": "X", "range": "A1:C1"}
-{"op": "set-borders", "sheet": "X", "range": "A1:D10", "style": "thin"}
-{"op": "set-column-width", "sheet": "X", "range": "A:B", "width": 20}
-{"op": "set-row-height", "sheet": "X", "range": "1:5", "height": 25}
-{"op": "apply-filter", "sheet": "X", "range": "A1:D100"}
-{"op": "clear-filters", "sheet": "X"}
-{"op": "sort", "sheet": "X", "range": "A1:D100", "column": 1, "ascending": true}
-{"op": "copy-range", "sheet": "X", "source": "A1:B10", "dest": "D1"}
-{"op": "list-charts", "sheet": "X"}
-{"op": "delete-chart", "sheet": "X", "name": "Chart1"}
-{"op": "create-table", "sheet": "X", "range": "A1:D10", "name": "MinhaTabela", "style": "TableStyleMedium2"}
-{"op": "delete-table", "sheet": "X", "name": "MinhaTabela"}
-:::
-
-REGRAS DO AGENTE:
-1. Para criar GRÁFICO: primeiro use get-headers e get-used-range para conhecer os dados
-2. Para criar PIVOT: primeiro verifique se a planilha de destino existe com sheet-exists
-3. Para qualquer tarefa complexa: faça consultas primeiro!
-4. Você receberá resultados e pode continuar automaticamente
-5. Use format-range para deixar cabeçalhos em negrito ou destacar dados
-6. Use autofit para ajustar largura das colunas após inserir dados
-7. CRÍTICO: SEMPRE especifique o parâmetro "sheet" nas ações write/format! Após criar nova planilha, use o nome dela em TODAS as ações seguintes.
-8. Para inserção em lote, use o campo "data" com array 2D: {"op": "write", "sheet": "MinhaAba", "cell": "A1", "data": [["Col1", "Col2"], ["Val1", "Val2"]]}
-9. **MACRO OBRIGATÓRIA**: Ao fazer QUALQUER tarefa multi-passo (criar planilha + escrever dados + formatar + autofit), você DEVE usar MACRO! NUNCA faça ações separadas quando podem ser combinadas. Ações individuais são apenas para operações verdadeiramente isoladas.
-10. **FÓRMULAS**: Use o campo "formula" explícito. Ex: {"op": "write", "cell": "A1", "formula": "=SOMA(B1:B10)"}. Use ponto-e-vírgula (;) como separador se estiver em ambiente PT-BR.
-11. **VALORES NULOS**: NUNCA envie "value": null. Se quiser limpar, use "". Ou use op: "clear-range".
-
-EXEMPLO - Usuário pede para criar tabela com produtos (USE MACRO!):
-:::thinking
-Usuário quer uma tabela com produtos. Vou usar MACRO para fazer tudo de uma vez:
-1. Criar planilha
-2. Escrever dados em lote
-3. Formatar cabeçalhos
-4. Ajustar colunas
-:::
-:::excel-action
-{"op": "macro", "actions": [
-  {"op": "create-sheet", "name": "Produtos"},
-  {"op": "write", "sheet": "Produtos", "cell": "A1", "data": [["Produto", "Preço"], ["Caneta", 2.50], ["Lápis", 1.00], ["Borracha", 0.50]]},
-  {"op": "format-range", "sheet": "Produtos", "range": "A1:B1", "bold": true, "bgColor": "#4472C4", "fontColor": "#FFFFFF"},
-  {"op": "autofit", "sheet": "Produtos", "range": "A:B"}
-]}
-:::
-
-EXEMPLO - Criar gráfico com raciocínio:
-:::thinking
-Usuário quer um gráfico. Preciso:
-1. Descobrir quais dados existem
-2. Obter o intervalo dos dados
-3. Identificar cabeçalhos para labels do gráfico
-4. Criar tipo de gráfico apropriado
-:::
-:::excel-query
-{"type": "get-used-range", "sheet": "Dados"}
-:::
-(Sistema responderá com o intervalo, então eu continuo)
-
-Use fórmulas em PT-BR (SOMA, MÉDIA, SE, PROCV). NÃO gere VBA.`
+NÃO gere código VBA. Use apenas as ferramentas disponíveis.`
 
 	if len(s.chatHistory) > 0 {
 		if s.chatHistory[0].Role == domain.RoleSystem {
