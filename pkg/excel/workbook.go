@@ -21,10 +21,13 @@ func (c *Client) GetOpenWorkbooks() ([]Workbook, error) {
 			return nil, err
 		}
 
+		fmt.Printf("[DEBUG] Excel detectou %d pastas de trabalho abertas\n", int(count.Val))
+
 		var result []Workbook
 		for i := 1; i <= int(count.Val); i++ {
 			wb, err := oleutil.GetProperty(workbooks.ToIDispatch(), "Item", i)
 			if err != nil {
+				fmt.Printf("[DEBUG] Erro ao ler workbook %d: %v\n", i, err)
 				continue
 			}
 			wbDisp := wb.ToIDispatch()
