@@ -71,20 +71,42 @@ export function ApiTab({
                                 <SelectItem value="openrouter">OpenRouter (Recomendado)</SelectItem>
                                 <SelectItem value="google">Google AI (Gemini)</SelectItem>
                                 <SelectItem value="groq">Groq (Rápido e Gratuito)</SelectItem>
+                                <SelectItem value="ollama">Ollama (Local/Self-hosted)</SelectItem>
                                 <SelectItem value="custom">Personalizado (OpenAI Compatible)</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
 
-                    {provider === 'custom' && (
+                    {(provider === 'custom' || provider === 'ollama') && (
                         <div className="space-y-2">
                             <Label>Base URL</Label>
                             <Input
                                 type="text"
                                 value={baseUrl}
                                 onChange={(e) => onBaseUrlChange(e.target.value)}
-                                placeholder="https://api.exemplo.com/v1"
+                                placeholder={provider === 'ollama' ? "https://ollama.hiposystem.com.br" : "https://api.exemplo.com/v1"}
                             />
+                            {provider === 'ollama' && (
+                                <p className="text-xs text-muted-foreground">
+                                    URL da sua instância Ollama. Para local use: http://localhost:11434
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    {provider === 'ollama' && (
+                        <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg space-y-2">
+                            <p className="text-sm font-medium text-amber-600 dark:text-amber-400">⚠️ Modelos recomendados para Function Calling:</p>
+                            <ul className="text-xs text-muted-foreground space-y-1">
+                                <li>✅ <code className="bg-muted px-1 rounded">qwen2.5:7b</code> - Excelente suporte a tools</li>
+                                <li>✅ <code className="bg-muted px-1 rounded">llama3.1:8b</code> - Bom suporte geral</li>
+                                <li>✅ <code className="bg-muted px-1 rounded">mistral:7b</code> - Bom suporte</li>
+                                <li>⚠️ <code className="bg-muted px-1 rounded">llama3.2:3b</code> - Mínimo recomendado</li>
+                                <li>❌ <code className="bg-muted px-1 rounded">llama3.2:1b</code> - Muito pequeno (não recomendado)</li>
+                            </ul>
+                            <p className="text-xs text-muted-foreground">
+                                Modelos com menos de 3B parâmetros podem ter dificuldade com function calling.
+                            </p>
                         </div>
                     )}
 
@@ -101,6 +123,8 @@ export function ApiTab({
                                 <>Obtenha em <a href="https://console.groq.com/keys" target="_blank" className="text-primary hover:underline">console.groq.com/keys</a></>
                             ) : provider === 'google' ? (
                                 <>Obtenha em <a href="https://aistudio.google.com/apikey" target="_blank" className="text-primary hover:underline">aistudio.google.com/apikey</a></>
+                            ) : provider === 'ollama' ? (
+                                <>Ollama não requer API key. Deixe qualquer valor ou "ollama".</>
                             ) : (
                                 <>Obtenha em <a href="https://openrouter.ai/keys" target="_blank" className="text-primary hover:underline">openrouter.ai/keys</a></>
                             )}

@@ -70,6 +70,10 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 	maxSteps := 50
 	var finalResponse string
 
+	// Detectar se é provider que pode retornar tool calls como texto (apenas custom agora)
+	// Ollama agora usa cliente nativo que processa tool calls corretamente
+	isTextToolCallProvider := s.provider == "custom"
+
 	for step := 0; step < maxSteps; step++ {
 		// Verificar cancelamento
 		if ctx.Err() != nil {
@@ -84,19 +88,101 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 		var toolCalls []ai.ToolCall
 		var err error
 
+		// Buffer para acumular resposta antes de enviar (para providers que retornam tool calls como texto)
+		var responseBuffer strings.Builder
+		var lastSentLength int
+
 		chunkWrapper := func(chunk string) error {
+			if isTextToolCallProvider {
+				// Acumular no buffer e enviar apenas texto que não parece ser JSON de tool call
+				responseBuffer.WriteString(chunk)
+				fullText := responseBuffer.String()
+
+				// Verificar se estamos no meio de um JSON (detectar { sem } correspondente)
+				if !ai.IsPartialToolCallJSON(fullText) {
+					// Enviar apenas a parte nova que não foi enviada ainda
+					newContent := fullText[lastSentLength:]
+					if newContent != "" {
+						lastSentLength = len(fullText)
+						return onChunk(newContent)
+					}
+				}
+				return nil
+			}
+			// Provider normal - enviar direto
 			currentResponse += chunk
 			return onChunk(chunk)
 		}
 
-		if s.provider == "google" {
+		switch s.provider {
+		case "google":
 			currentResponse, toolCalls, err = s.geminiClient.ChatStreamWithTools(ctx, aiHistory, geminiTools, chunkWrapper)
-		} else {
+		case "ollama":
+			// Usar cliente nativo Ollama para melhor suporte a tools
+			currentResponse, toolCalls, err = s.ollamaClient.ChatStreamWithTools(ctx, aiHistory, tools, chunkWrapper)
+
+			// Fallback: se não recebemos tool calls estruturados, tentar extrair do texto
+			if len(toolCalls) == 0 && currentResponse != "" {
+				extractedCalls, cleanedResponse := ai.ParseToolCallsFromText(currentResponse)
+				if len(extractedCalls) > 0 {
+					toolCalls = extractedCalls
+					fmt.Printf("[OLLAMA] Fallback: extraídos %d tool calls do texto\n", len(extractedCalls))
+					currentResponse = cleanedResponse
+				}
+			}
+		default:
 			currentResponse, toolCalls, err = s.client.ChatStreamWithTools(ctx, aiHistory, tools, chunkWrapper)
+		}
+
+		// Para providers de texto (apenas custom agora, Ollama usa cliente nativo)
+		if s.provider == "custom" && isTextToolCallProvider {
+			currentResponse = responseBuffer.String()
 		}
 
 		if err != nil {
 			return finalResponse, err
+		}
+
+		// Filtrar tool calls inválidos (nome vazio ou null) que podem vir do Ollama
+		toolCalls = ai.FilterValidToolCalls(toolCalls)
+
+		// Se não recebemos tool calls estruturados válidos, tentar extrair do texto
+		// Isso é necessário para Ollama e outros provedores que retornam tool calls como JSON no texto
+		if len(toolCalls) == 0 && currentResponse != "" {
+			extractedCalls, cleanedResponse := ai.ParseToolCallsFromText(currentResponse)
+			if len(extractedCalls) > 0 {
+				toolCalls = extractedCalls
+				fmt.Printf("[DEBUG] Extracted %d tool call(s) from text response\n", len(extractedCalls))
+
+				// Enviar resposta limpa para UI (já que o JSON não foi enviado durante streaming)
+				if cleanedResponse != "" && cleanedResponse != currentResponse {
+					// Enviar apenas a parte de texto limpa
+					trimmedClean := strings.TrimSpace(cleanedResponse)
+					if trimmedClean != "" {
+						onChunk(trimmedClean)
+					}
+				}
+				currentResponse = cleanedResponse
+			} else if isTextToolCallProvider {
+				// Limpar JSONs malformados do texto mesmo se não extraímos tool calls válidos
+				_, cleanedResponse := ai.ParseToolCallsFromText(currentResponse)
+				if cleanedResponse != currentResponse {
+					currentResponse = cleanedResponse
+				}
+				// Enviar qualquer texto restante que não foi enviado durante streaming
+				if lastSentLength < len(currentResponse) {
+					remaining := currentResponse[lastSentLength:]
+					if remaining != "" {
+						onChunk(remaining)
+					}
+				}
+			}
+		}
+
+		// Limpeza final para Ollama - remover qualquer JSON residual da resposta
+		if s.provider == "ollama" && currentResponse != "" {
+			_, cleanedResponse := ai.ParseToolCallsFromText(currentResponse)
+			currentResponse = strings.TrimSpace(cleanedResponse)
 		}
 
 		// Adiciona resposta da IA ao histórico
@@ -104,6 +190,7 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 			Role:      domain.RoleAssistant,
 			Content:   currentResponse,
 			Timestamp: time.Now(),
+			ToolCalls: toolCalls,
 		})
 
 		finalResponse = currentResponse
@@ -820,6 +907,19 @@ func (s *Service) ConfirmPendingAction(onChunk func(string) error) (string, erro
 		return currentResponse, err
 	}
 
+	// Se não recebemos tool calls estruturados, tentar extrair do texto
+	// Isso é necessário para Ollama e outros provedores que retornam tool calls como JSON no texto
+	if len(toolCalls) == 0 && currentResponse != "" {
+		extractedCalls, cleanedResponse := ai.ParseToolCallsFromText(currentResponse)
+		if len(extractedCalls) > 0 {
+			toolCalls = extractedCalls
+			if cleanedResponse != currentResponse {
+				currentResponse = cleanedResponse
+				fmt.Printf("[DEBUG ResumePending] Extracted %d tool call(s) from text response\n", len(extractedCalls))
+			}
+		}
+	}
+
 	// Add response to history
 	s.chatHistory = append(s.chatHistory, domain.Message{
 		Role:      domain.RoleAssistant,
@@ -887,50 +987,81 @@ func (s *Service) refreshConfig() {
 			// Configurar limite de tokens (hardcoded por enquanto, mas aumentado)
 			s.client.SetMaxInputTokens(50000) // Default segura para modelos modernos (GPT-4o, Claude)
 
-			if cfg.BaseURL != "" {
-				s.client.SetBaseURL(cfg.BaseURL)
-			} else if cfg.Provider == "groq" {
-				// Groq limits
-				s.client.SetBaseURL("https://api.groq.com/openai/v1")
-				s.client.SetMaxInputTokens(8000) // Llama 3 limit safe
-			}
+			// Configuração específica por provider
+			if cfg.Provider == "ollama" {
+				// Ollama - usar cliente nativo para melhor suporte a tools
+				baseURL := cfg.BaseURL
+				if baseURL == "" {
+					baseURL = "http://localhost:11434"
+				}
+				s.ollamaClient.SetBaseURL(baseURL)
+				s.ollamaClient.SetModel(cfg.Model)
 
-			if cfg.Provider == "google" {
-				s.geminiClient.SetAPIKey(cfg.APIKey)
-				s.geminiClient.SetModel(cfg.Model)
+				// Também configurar client OpenAI-compatible como fallback
+				s.client.SetBaseURL(baseURL + "/v1")
+				s.client.SetMaxInputTokens(32000)
+				if cfg.APIKey == "" {
+					s.client.SetAPIKey("ollama")
+				}
+
+				// Verificar se modelo é adequado para tools
+				suitable, warning := ai.IsModelSuitableForTools(cfg.Model)
+				if !suitable {
+					fmt.Printf("[OLLAMA WARNING] %s\n", warning)
+				} else if warning != "" {
+					fmt.Printf("[OLLAMA INFO] %s\n", warning)
+				}
+			} else if cfg.Provider == "google" {
+				if cfg.APIKey != "" {
+					s.geminiClient.SetAPIKey(cfg.APIKey)
+				}
+				if cfg.Model != "" {
+					s.geminiClient.SetModel(cfg.Model)
+				}
 				// Gemini Flash has huge context.
 				s.geminiClient.SetMaxInputTokens(100000) // 100k tokens safe for Flash
 
 				if cfg.BaseURL != "" {
 					s.geminiClient.SetBaseURL(cfg.BaseURL)
 				}
+			} else if cfg.Provider == "groq" {
+				s.client.SetBaseURL("https://api.groq.com/openai/v1")
+				s.client.SetMaxInputTokens(8000) // Llama 3 limit safe
+			} else if cfg.BaseURL != "" {
+				// Custom ou outros providers com BaseURL
+				s.client.SetBaseURL(cfg.BaseURL)
 			}
 		}
 	}
 }
 
 func (s *Service) ensureSystemPrompt() {
-	systemPrompt := `Você é um AGENTE Excel inteligente com acesso a 6 ferramentas para consultar e modificar planilhas.
+	systemPrompt := `Você é um AGENTE Excel profissional e direto. Seu objetivo é ajudar o usuário com planilhas de forma eficiente.
 
 IDIOMA: Português do Brasil.
 
-FERRAMENTAS DISPONÍVEIS:
-📋 CONSULTAS:
-• list_sheets - Lista planilhas (verificar conexão)
-• query_batch - PRINCIPAL! Consultas em lote (headers, row_count, used_range, sample_data, column_count, has_filter, charts, tables)
-• get_range_values - Dados específicos com filtro e max_rows
-• get_cell_formula - Fórmula de célula
-• get_active_cell - Célula selecionada
+COMPORTAMENTO:
+- Seja direto e profissional. Evite explicações longas ou "pensamentos" internos.
+- NÃO use blocos de raciocínio ou tags como :::thinking:::.
+- Responda apenas o que foi solicitado.
 
-✏️ AÇÕES:
-• execute_macro - ÚNICA ferramenta de ações! Suporta: write_cell, write_range, create_sheet, delete_sheet, rename_sheet, format_range, autofit_columns, clear_range, insert_rows, delete_rows, merge_cells, set_borders, sort_range, apply_filter, create_chart
+QUANDO USAR FERRAMENTAS:
+- Use ferramentas apenas quando o usuário pedir explicitamente algo relacionado ao Excel.
+- Para saudações ou conversas gerais, responda de forma curta e educada.
 
-REGRAS CRÍTICAS:
-1. SEMPRE use query_batch para consultas iniciais
-2. SEMPRE use execute_macro para ações (não existem ferramentas individuais)
-3. Use max_rows em get_range_values para economizar tokens
+REGRAS:
+1. Use query_batch para consultas e execute_macro para ações.
+2. NUNCA retorne JSON ou definições de ferramentas no texto.
+3. Se precisar de mais informações, pergunte de forma clara.`
 
-Exemplo execute_macro: {actions: [{tool:"write_range", args:{sheet:"Plan1", cell:"A1", data:[["Nome","Valor"]]}}]}`
+	// Se for Ollama, simplificar ainda mais
+	if s.provider == "ollama" {
+		systemPrompt = `Você é um AGENTE Excel profissional. 
+Responda em Português do Brasil de forma direta e objetiva.
+NUNCA use blocos de "thinking" ou explicações desnecessárias.
+Use ferramentas apenas quando solicitado.
+Para saudações, seja breve e educado.`
+	}
 
 	if len(s.chatHistory) > 0 {
 		if s.chatHistory[0].Role == domain.RoleSystem {

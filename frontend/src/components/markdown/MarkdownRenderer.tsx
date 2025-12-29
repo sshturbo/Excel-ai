@@ -143,84 +143,21 @@ interface MarkdownRendererProps {
 }
 
 /**
- * Renders markdown content with custom styling and :::thinking block support
+ * Renders markdown content with custom styling
  */
 export function MarkdownRenderer({ content }: MarkdownRendererProps) {
     const markdownComponents = useMarkdownComponents()
 
-    // First clean technical blocks
+    // First clean technical blocks (including :::thinking)
     const cleanedContent = cleanTechnicalBlocks(content)
 
     if (!cleanedContent) {
         return null
     }
 
-    const thinkingRegex = /:::thinking\s*([\s\S]*?)\s*:::/g
-    const parts: JSX.Element[] = []
-    let lastIndex = 0
-    let match
-    let key = 0
-
-    while ((match = thinkingRegex.exec(cleanedContent)) !== null) {
-        // Add text before thinking block
-        if (match.index > lastIndex) {
-            const textBefore = cleanedContent.slice(lastIndex, match.index)
-            if (textBefore.trim()) {
-                parts.push(
-                    <ReactMarkdown key={key++} remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                        {textBefore}
-                    </ReactMarkdown>
-                )
-            }
-        }
-
-        // Add thinking block with improved design
-        const thinkingContent = match[1].trim()
-        const lines = thinkingContent.split('\n').filter(line => line.trim())
-
-        parts.push(
-            <div key={key++} className="my-3 overflow-hidden rounded-lg border border-blue-500/20 bg-blue-500/5">
-                <div className="flex items-center gap-2 px-3 py-2 bg-blue-500/10 border-b border-blue-500/20">
-                    <span className="text-blue-400">💭</span>
-                    <span className="text-xs font-medium text-blue-400">Raciocínio</span>
-                </div>
-                <div className="p-3 space-y-1.5">
-                    {lines.map((line, i) => (
-                        <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground/80">
-                            <span className="text-blue-400/60 mt-0.5">→</span>
-                            <span>{line.trim().replace(/^\d+\.\s*/, '').replace(/^[-•]\s*/, '')}</span>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        )
-
-        lastIndex = match.index + match[0].length
-    }
-
-    // Add remaining text after last thinking block
-    if (lastIndex < cleanedContent.length) {
-        const textAfter = cleanedContent.slice(lastIndex)
-        if (textAfter.trim()) {
-            parts.push(
-                <ReactMarkdown key={key++} remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                    {textAfter}
-                </ReactMarkdown>
-            )
-        }
-    }
-
-    // If no valid parts after cleaning
-    if (parts.length === 0) {
-        if (cleanedContent.trim()) {
-            return (
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                    {cleanedContent}
-                </ReactMarkdown>
-            )
-        }
-        return null
-    }
-
-    return <>{parts}</>
+    return (
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            {cleanedContent}
+        </ReactMarkdown>
+    )
 }

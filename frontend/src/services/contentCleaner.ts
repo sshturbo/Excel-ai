@@ -11,6 +11,8 @@ export function cleanTechnicalBlocks(content: string): string {
     let cleaned = content.replace(/:::excel-action\s*[\s\S]*?\s*:::/g, '')
     // Remove :::excel-query blocks completely
     cleaned = cleaned.replace(/:::excel-query\s*[\s\S]*?\s*:::/g, '')
+    // Remove :::thinking blocks completely
+    cleaned = cleaned.replace(/:::thinking\s*[\s\S]*?\s*:::/g, '')
     // Remove multiple empty lines
     cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
     return cleaned.trim()
@@ -25,17 +27,19 @@ export function processStreamingContent(rawContent: string): {
     cleanContent: string
     hasIncompleteAction: boolean
     hasIncompleteQuery: boolean
+    hasIncompleteThinking: boolean
 } {
     let cleanContent = rawContent
 
-    // Remove complete excel-action blocks
+    // Remove complete technical blocks
     cleanContent = cleanContent.replace(/:::excel-action\s*[\s\S]*?\s*:::/g, '')
-    // Remove complete excel-query blocks
     cleanContent = cleanContent.replace(/:::excel-query\s*[\s\S]*?\s*:::/g, '')
+    cleanContent = cleanContent.replace(/:::thinking\s*[\s\S]*?\s*:::/g, '')
 
-    // Check for incomplete technical blocks at the end (NOT thinking blocks)
+    // Check for incomplete technical blocks at the end
     const incompleteActionMatch = cleanContent.match(/:::excel-action[\s\S]*$/)
     const incompleteQueryMatch = cleanContent.match(/:::excel-query[\s\S]*$/)
+    const incompleteThinkingMatch = cleanContent.match(/:::thinking[\s\S]*$/)
 
     if (incompleteActionMatch) {
         cleanContent = cleanContent.replace(/:::excel-action[\s\S]*$/, '')
@@ -43,16 +47,21 @@ export function processStreamingContent(rawContent: string): {
     if (incompleteQueryMatch) {
         cleanContent = cleanContent.replace(/:::excel-query[\s\S]*$/, '')
     }
+    if (incompleteThinkingMatch) {
+        cleanContent = cleanContent.replace(/:::thinking[\s\S]*$/, '')
+    }
 
     cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n').trim()
 
     const hasIncompleteAction = /:::excel-action(?![\s\S]*:::)/.test(rawContent)
     const hasIncompleteQuery = /:::excel-query(?![\s\S]*:::)/.test(rawContent)
+    const hasIncompleteThinking = /:::thinking(?![\s\S]*:::)/.test(rawContent)
 
     return {
         cleanContent,
         hasIncompleteAction,
-        hasIncompleteQuery
+        hasIncompleteQuery,
+        hasIncompleteThinking
     }
 }
 
@@ -65,6 +74,7 @@ export function cleanAssistantContent(content: string): string {
     // Remove technical blocks
     let cleaned = content.replace(/:::excel-action\s*[\s\S]*?\s*:::/g, '')
     cleaned = cleaned.replace(/:::excel-query\s*[\s\S]*?\s*:::/g, '')
+    cleaned = cleaned.replace(/:::thinking\s*[\s\S]*?\s*:::/g, '')
     cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim()
     return cleaned
 }

@@ -16,13 +16,17 @@ export function useStreamingMessage(isLoading: boolean): UseStreamingMessageRetu
         const cleanup = EventsOn("chat:chunk", (chunk: string) => {
             rawStreamBufferRef.current += chunk
 
-            const { cleanContent, hasIncompleteAction, hasIncompleteQuery } =
+            const { cleanContent, hasIncompleteAction, hasIncompleteQuery, hasIncompleteThinking } =
                 processStreamingContent(rawStreamBufferRef.current)
 
             // If empty but there's technical activity, show status
             let displayContent = cleanContent
-            if (!cleanContent && (hasIncompleteAction || hasIncompleteQuery)) {
-                displayContent = hasIncompleteQuery ? '🔍 Consultando...' : '⏳ Executando...'
+            if (!cleanContent && (hasIncompleteAction || hasIncompleteQuery || hasIncompleteThinking)) {
+                if (hasIncompleteThinking) {
+                    displayContent = '💭 Pensando...'
+                } else {
+                    displayContent = hasIncompleteQuery ? '🔍 Consultando...' : '⏳ Executando...'
+                }
             }
 
             setStreamingContent(displayContent)

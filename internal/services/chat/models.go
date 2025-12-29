@@ -32,7 +32,7 @@ func (s *Service) GetAvailableModels(apiKey, baseURL string) []dto.ModelInfo {
 		return result
 	}
 
-	// OpenAI-compatible providers (OpenRouter, Groq, custom)
+	// OpenAI-compatible providers (OpenRouter, Groq, Ollama, custom)
 	var client *ai.Client
 	// Se uma URL base for fornecida, cria um cliente temporário para buscar os modelos
 	if baseURL != "" {
@@ -46,6 +46,53 @@ func (s *Service) GetAvailableModels(apiKey, baseURL string) []dto.ModelInfo {
 	if err != nil {
 		// Check BaseURL to determine fallback
 		currentBaseURL := client.GetBaseURL()
+
+		// Ollama fallback models
+		if strings.Contains(currentBaseURL, "ollama") || strings.Contains(currentBaseURL, "11434") {
+			return []dto.ModelInfo{
+				{
+					ID:            "llama3.2:latest",
+					Name:          "Llama 3.2 (3B)",
+					Description:   "Modelo compacto e rápido com suporte a tools",
+					ContextLength: 128000,
+					PricePrompt:   "0",
+					PriceComplete: "0",
+				},
+				{
+					ID:            "llama3.1:latest",
+					Name:          "Llama 3.1 (8B)",
+					Description:   "Modelo versátil com suporte a function calling",
+					ContextLength: 128000,
+					PricePrompt:   "0",
+					PriceComplete: "0",
+				},
+				{
+					ID:            "qwen2.5-coder:latest",
+					Name:          "Qwen 2.5 Coder",
+					Description:   "Especializado em código com suporte a tools",
+					ContextLength: 32000,
+					PricePrompt:   "0",
+					PriceComplete: "0",
+				},
+				{
+					ID:            "mistral:latest",
+					Name:          "Mistral 7B",
+					Description:   "Modelo rápido com suporte a function calling",
+					ContextLength: 32000,
+					PricePrompt:   "0",
+					PriceComplete: "0",
+				},
+				{
+					ID:            "llama3.1:70b",
+					Name:          "Llama 3.1 (70B)",
+					Description:   "Modelo grande e poderoso com function calling",
+					ContextLength: 128000,
+					PricePrompt:   "0",
+					PriceComplete: "0",
+				},
+			}
+		}
+
 		if strings.Contains(currentBaseURL, "groq.com") {
 			// Groq: todos os modelos suportam function calling
 			// Lista atualizada com modelos recomendados pela documentação
