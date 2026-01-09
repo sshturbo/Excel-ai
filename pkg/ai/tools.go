@@ -187,35 +187,17 @@ func GetExcelTools() []Tool {
 		{
 			Type: "function",
 			Function: FunctionDeclaration{
-				Name: "execute_macro",
-				Description: `FERRAMENTA ÚNICA DE AÇÕES. Executa uma ou mais operações no Excel.
-
-OPERAÇÕES DISPONÍVEIS:
-• create_sheet: {name} - Cria aba já com o nome final (NÃO precisa rename depois!)
-• write_cell: {sheet, cell, value}
-• write_range: {sheet, cell, data} - data é array 2D: [["col1","col2"],["v1","v2"]]
-• delete_sheet: {name}
-• rename_sheet: {old_name, new_name} - APENAS para abas existentes, NÃO após create_sheet!
-• format_range: {sheet, range, bold, italic, font_size, font_color, bg_color}
-• autofit_columns: {sheet, range}
-• clear_range: {sheet, range}
-• insert_rows/delete_rows: {sheet, row, count}
-• merge_cells: {sheet, range}
-• set_borders: {sheet, range, style}
-• sort_range: {sheet, range, column, ascending}
-• apply_filter: {sheet, range}
-• create_chart: {sheet, range, chart_type, title}
-
-Exemplo criar aba e escrever: {actions: [{tool:"create_sheet", args:{name:"MinhaAba"}}, {tool:"write_range", args:{sheet:"MinhaAba", cell:"A1", data:[["Nome","Idade"]]}}]}`,
+				Name:        "execute_macro",
+				Description: "Executa ações no Excel. Operações: create_sheet, write_cell, write_range, delete_sheet, rename_sheet, format_range, autofit_columns, clear_range, insert_rows, delete_rows, merge_cells, set_borders, sort_range, apply_filter, create_chart.",
 				Parameters: FunctionParameters{
 					Type: "object",
 					Properties: map[string]FunctionProperty{
 						"actions": {
 							Type:        "array",
-							Description: "Lista de ações. Cada ação: {tool, args}",
+							Description: "Lista de ações com tool e args",
 							Items: &FunctionProperty{
 								Type:        "object",
-								Description: "Uma ação com 'tool' e 'args'",
+								Description: "Ação: {tool, args}",
 							},
 						},
 					},

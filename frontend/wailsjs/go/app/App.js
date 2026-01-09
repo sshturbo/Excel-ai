@@ -42,6 +42,10 @@ export function ClearLastBatchID() {
   return window['go']['app']['App']['ClearLastBatchID']();
 }
 
+export function ClearOrchestratorCache() {
+  return window['go']['app']['App']['ClearOrchestratorCache']();
+}
+
 export function ClearRange(arg1, arg2) {
   return window['go']['app']['App']['ClearRange'](arg1, arg2);
 }
@@ -158,6 +162,14 @@ export function GetLicenseStatus() {
   return window['go']['app']['App']['GetLicenseStatus']();
 }
 
+export function GetOrchestration() {
+  return window['go']['app']['App']['GetOrchestration']();
+}
+
+export function GetOrchestratorStats() {
+  return window['go']['app']['App']['GetOrchestratorStats']();
+}
+
 export function GetPreviewData(arg1, arg2) {
   return window['go']['app']['App']['GetPreviewData'](arg1, arg2);
 }
@@ -218,6 +230,10 @@ export function NewConversation() {
   return window['go']['app']['App']['NewConversation']();
 }
 
+export function OrchestratorHealthCheck() {
+  return window['go']['app']['App']['OrchestratorHealthCheck']();
+}
+
 export function QueryExcel(arg1, arg2) {
   return window['go']['app']['App']['QueryExcel'](arg1, arg2);
 }
@@ -270,8 +286,20 @@ export function SetModel(arg1) {
   return window['go']['app']['App']['SetModel'](arg1);
 }
 
+export function SetOrchestration(arg1) {
+  return window['go']['app']['App']['SetOrchestration'](arg1);
+}
+
+export function SetOrchestratorCacheTTL(arg1) {
+  return window['go']['app']['App']['SetOrchestratorCacheTTL'](arg1);
+}
+
 export function SetRowHeight(arg1, arg2, arg3) {
   return window['go']['app']['App']['SetRowHeight'](arg1, arg2, arg3);
+}
+
+export function SetToolModel(arg1) {
+  return window['go']['app']['App']['SetToolModel'](arg1);
 }
 
 export function SheetExists(arg1) {
@@ -282,6 +310,10 @@ export function SortRange(arg1, arg2, arg3, arg4) {
   return window['go']['app']['App']['SortRange'](arg1, arg2, arg3, arg4);
 }
 
+export function StartOrchestrator() {
+  return window['go']['app']['App']['StartOrchestrator']();
+}
+
 export function StartUndoBatch() {
   return window['go']['app']['App']['StartUndoBatch']();
 }
@@ -290,12 +322,20 @@ export function StartWorkbookWatcher() {
   return window['go']['app']['App']['StartWorkbookWatcher']();
 }
 
+export function StopOrchestrator() {
+  return window['go']['app']['App']['StopOrchestrator']();
+}
+
 export function StopWorkbookWatcher() {
   return window['go']['app']['App']['StopWorkbookWatcher']();
 }
 
 export function SwitchProvider(arg1) {
   return window['go']['app']['App']['SwitchProvider'](arg1);
+}
+
+export function TriggerOrchestratorRecovery() {
+  return window['go']['app']['App']['TriggerOrchestratorRecovery']();
 }
 
 export function UndoByConversation(arg1) {
@@ -310,8 +350,8 @@ export function UnmergeCells(arg1, arg2) {
   return window['go']['app']['App']['UnmergeCells'](arg1, arg2);
 }
 
-export function UpdateConfig(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
-  return window['go']['app']['App']['UpdateConfig'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
+export function UpdateConfig(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10) {
+  return window['go']['app']['App']['UpdateConfig'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10);
 }
 
 export function UpdateExcelCell(arg1, arg2, arg3, arg4) {

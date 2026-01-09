@@ -15,14 +15,24 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Verificar se deve usar orquestrador
+	if s.useOrchestration {
+		return s.orchestrator.OrchestrateMessage(message, contextStr, askBeforeApply, onChunk)
+	}
+
 	s.refreshConfig()
 
 	// Verificar API key do cliente correto baseado no provider
-	if s.provider == "google" {
+	switch s.provider {
+	case "google":
 		if s.geminiClient.GetAPIKey() == "" {
 			return "", fmt.Errorf("API key não configurada. Vá em Configurações e configure sua chave de API do Google")
 		}
-	} else {
+	case "zai":
+		if s.zaiClient.GetBaseURL() == "" {
+			return "", fmt.Errorf("API key não configurada. Vá em Configurações e configure sua chave de API do Z.AI")
+		}
+	default:
 		if s.client.GetAPIKey() == "" {
 			return "", fmt.Errorf("API key não configurada. Vá em Configurações e configure sua chave de API")
 		}
@@ -114,23 +124,18 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 			return onChunk(chunk)
 		}
 
+		// Chamar IA com tools baseado no provider
 		switch s.provider {
 		case "google":
 			currentResponse, toolCalls, err = s.geminiClient.ChatStreamWithTools(ctx, aiHistory, geminiTools, chunkWrapper)
+		case "zai":
+			// Usar cliente nativo Z.AI
+			currentResponse, toolCalls, err = s.zaiClient.ChatStreamWithTools(ctx, aiHistory, tools, chunkWrapper)
 		case "ollama":
 			// Usar cliente nativo Ollama para melhor suporte a tools
 			currentResponse, toolCalls, err = s.ollamaClient.ChatStreamWithTools(ctx, aiHistory, tools, chunkWrapper)
-
-			// Fallback: se não recebemos tool calls estruturados, tentar extrair do texto
-			if len(toolCalls) == 0 && currentResponse != "" {
-				extractedCalls, cleanedResponse := ai.ParseToolCallsFromText(currentResponse)
-				if len(extractedCalls) > 0 {
-					toolCalls = extractedCalls
-					fmt.Printf("[OLLAMA] Fallback: extraídos %d tool calls do texto\n", len(extractedCalls))
-					currentResponse = cleanedResponse
-				}
-			}
 		default:
+			// OpenRouter, Groq, Custom
 			currentResponse, toolCalls, err = s.client.ChatStreamWithTools(ctx, aiHistory, tools, chunkWrapper)
 		}
 
@@ -897,9 +902,12 @@ func (s *Service) ConfirmPendingAction(onChunk func(string) error) (string, erro
 		return onChunk(chunk)
 	}
 
-	if s.provider == "google" {
+	switch s.provider {
+	case "google":
 		currentResponse, toolCalls, err = s.geminiClient.ChatStreamWithTools(ctx, aiHistory, geminiTools, chunkWrapper)
-	} else {
+	case "zai":
+		currentResponse, toolCalls, err = s.zaiClient.ChatStreamWithTools(ctx, aiHistory, tools, chunkWrapper)
+	default:
 		currentResponse, toolCalls, err = s.client.ChatStreamWithTools(ctx, aiHistory, tools, chunkWrapper)
 	}
 
@@ -974,8 +982,8 @@ func (s *Service) RejectPendingAction() {
 func (s *Service) refreshConfig() {
 	if s.storage != nil {
 		if cfg, err := s.storage.LoadConfig(); err == nil && cfg != nil {
-			fmt.Printf("[DEBUG refreshConfig] Provider do storage: %s, APIKey presente: %v, Model: %s, BaseURL: %s\n",
-				cfg.Provider, cfg.APIKey != "", cfg.Model, cfg.BaseURL)
+			fmt.Printf("[DEBUG refreshConfig] Provider do storage: %s, APIKey presente: %v, Model: %s, ToolModel: %s, BaseURL: %s\n",
+				cfg.Provider, cfg.APIKey != "", cfg.Model, cfg.ToolModel, cfg.BaseURL)
 
 			s.provider = cfg.Provider
 			if cfg.APIKey != "" {
@@ -1024,6 +1032,36 @@ func (s *Service) refreshConfig() {
 				if cfg.BaseURL != "" {
 					s.geminiClient.SetBaseURL(cfg.BaseURL)
 				}
+			} else if cfg.Provider == "zai" {
+				// Z.AI (GLM Models) - Usar cliente nativo com Coding API
+				if cfg.APIKey != "" {
+					s.zaiClient.SetAPIKey(cfg.APIKey)
+				}
+				if cfg.ToolModel != "" {
+					s.zaiClient.SetModel(cfg.ToolModel)
+				} else if cfg.Model != "" {
+					s.zaiClient.SetModel(cfg.Model)
+				}
+
+				// SEMPRE usar Coding API - ignorar BaseURL do storage se for a URL antiga
+				baseURL := cfg.BaseURL
+				if baseURL == "" || baseURL == "https://api.z.ai/api/paas/v4" || baseURL == "https://api.z.ai/api/paas/v4/" {
+					baseURL = "https://api.z.ai/api/coding/paas/v4/"
+				}
+				// Garantir que a URL termina com barra (requerido pela API Z.AI)
+				if !strings.HasSuffix(baseURL, "/") {
+					baseURL += "/"
+				}
+				s.zaiClient.SetBaseURL(baseURL)
+				s.zaiClient.SetMaxInputTokens(128000) // GLM models have 128k context
+
+				// Log detalhado para debug
+				apiKeyLen := 0
+				if cfg.APIKey != "" {
+					apiKeyLen = len(cfg.APIKey)
+				}
+				fmt.Printf("[Z.AI] Configurado com URL: %s, Context: 128k tokens\n", baseURL)
+				fmt.Printf("[Z.AI] API Key presente: %v, Comprimento: %d, Model: %s\n", cfg.APIKey != "", apiKeyLen, cfg.Model)
 			} else if cfg.Provider == "groq" {
 				s.client.SetBaseURL("https://api.groq.com/openai/v1")
 				s.client.SetMaxInputTokens(8000) // Llama 3 limit safe
@@ -1041,15 +1079,16 @@ func (s *Service) ensureSystemPrompt() {
 IDIOMA: Português do Brasil.
 
 COMPORTAMENTO:
-- Seja direto e profissional. Evite explicações longas ou "pensamentos" internos.
-- NÃO use blocos de raciocínio ou tags como :::thinking:::.
+- Seja direto e profissional. Evite explicações longas desnecessárias.
 - Responda apenas o que foi solicitado.
+- Você pode usar raciocínio interno quando necessário para tarefas complexas.
 
 QUANDO USAR FERRAMENTAS:
-- Use ferramentas apenas quando o usuário pedir explicitamente algo relacionado ao Excel.
-- Para saudações ou conversas gerais, responda de forma curta e educada.
+- Use ferramentas apenas quando o usuário pedir explicitamente ou quando for absolutamente necessário.
+- NÃO use ferramentas para perguntas simples ou conversação.
+- Antes de usar uma ferramenta, certifique-se de que é realmente necessária.
 
-REGRAS:
+FERRAMENTAS DISPONÍVEIS:
 1. Use query_batch para consultas e execute_macro para ações.
 2. NUNCA retorne JSON ou definições de ferramentas no texto.
 3. Se precisar de mais informações, pergunte de forma clara.`

@@ -13,6 +13,8 @@ export function cleanTechnicalBlocks(content: string): string {
     cleaned = cleaned.replace(/:::excel-query\s*[\s\S]*?\s*:::/g, '')
     // Remove :::thinking blocks completely
     cleaned = cleaned.replace(/:::thinking\s*[\s\S]*?\s*:::/g, '')
+    // Remove :::reasoning blocks (safety net, usually handled by component)
+    cleaned = cleaned.replace(/:::reasoning:::[\s\S]*?:::\/reasoning:::/g, '')
     // Remove multiple empty lines
     cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
     return cleaned.trim()
@@ -75,6 +77,7 @@ export function cleanAssistantContent(content: string): string {
     let cleaned = content.replace(/:::excel-action\s*[\s\S]*?\s*:::/g, '')
     cleaned = cleaned.replace(/:::excel-query\s*[\s\S]*?\s*:::/g, '')
     cleaned = cleaned.replace(/:::thinking\s*[\s\S]*?\s*:::/g, '')
+    cleaned = cleaned.replace(/:::reasoning:::[\s\S]*?:::\/reasoning:::/g, '')
     cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim()
     return cleaned
 }

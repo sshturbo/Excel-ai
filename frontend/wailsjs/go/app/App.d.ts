@@ -27,6 +27,8 @@ export function ClearFilters(arg1:string):Promise<void>;
 
 export function ClearLastBatchID():Promise<void>;
 
+export function ClearOrchestratorCache():Promise<void>;
+
 export function ClearRange(arg1:string,arg2:string):Promise<void>;
 
 export function ConfigurePivotFields(arg1:string,arg2:string,arg3:Array<string>,arg4:Array<Record<string, string>>):Promise<void>;
@@ -85,6 +87,10 @@ export function GetLicenseMessage():Promise<string>;
 
 export function GetLicenseStatus():Promise<license.LicenseStatus>;
 
+export function GetOrchestration():Promise<boolean>;
+
+export function GetOrchestratorStats():Promise<Record<string, any>>;
+
 export function GetPreviewData(arg1:string,arg2:string):Promise<dto.PreviewData>;
 
 export function GetSavedConfig():Promise<storage.Config>;
@@ -115,6 +121,8 @@ export function MergeCells(arg1:string,arg2:string):Promise<void>;
 
 export function NewConversation():Promise<string>;
 
+export function OrchestratorHealthCheck():Promise<Record<string, any>>;
+
 export function QueryExcel(arg1:string,arg2:Record<string, string>):Promise<app.QueryResult>;
 
 export function RefreshWorkbooks():Promise<dto.ExcelStatus>;
@@ -141,19 +149,31 @@ export function SetExcelContext(arg1:string,arg2:string):Promise<string>;
 
 export function SetModel(arg1:string):Promise<void>;
 
+export function SetOrchestration(arg1:boolean):Promise<void>;
+
+export function SetOrchestratorCacheTTL(arg1:number):Promise<void>;
+
 export function SetRowHeight(arg1:string,arg2:string,arg3:number):Promise<void>;
+
+export function SetToolModel(arg1:string):Promise<void>;
 
 export function SheetExists(arg1:string):Promise<boolean>;
 
 export function SortRange(arg1:string,arg2:string,arg3:number,arg4:boolean):Promise<void>;
 
+export function StartOrchestrator():Promise<void>;
+
 export function StartUndoBatch():Promise<void>;
 
 export function StartWorkbookWatcher():Promise<void>;
 
+export function StopOrchestrator():Promise<void>;
+
 export function StopWorkbookWatcher():Promise<void>;
 
 export function SwitchProvider(arg1:string):Promise<storage.Config>;
+
+export function TriggerOrchestratorRecovery():Promise<void>;
 
 export function UndoByConversation(arg1:string):Promise<number>;
 
@@ -161,7 +181,7 @@ export function UndoLastChange():Promise<void>;
 
 export function UnmergeCells(arg1:string,arg2:string):Promise<void>;
 
-export function UpdateConfig(arg1:number,arg2:number,arg3:number,arg4:boolean,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string):Promise<void>;
+export function UpdateConfig(arg1:number,arg2:number,arg3:number,arg4:boolean,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string):Promise<void>;
 
 export function UpdateExcelCell(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 

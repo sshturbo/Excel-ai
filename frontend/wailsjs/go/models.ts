@@ -239,6 +239,7 @@ export namespace storage {
 	export class ProviderConfig {
 	    apiKey?: string;
 	    model?: string;
+	    toolModel?: string;
 	    baseUrl?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -249,6 +250,7 @@ export namespace storage {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.apiKey = source["apiKey"];
 	        this.model = source["model"];
+	        this.toolModel = source["toolModel"];
 	        this.baseUrl = source["baseUrl"];
 	    }
 	}
@@ -256,6 +258,7 @@ export namespace storage {
 	    provider?: string;
 	    apiKey?: string;
 	    model: string;
+	    toolModel: string;
 	    baseUrl?: string;
 	    providerConfigs?: Record<string, ProviderConfig>;
 	    maxRowsContext: number;
@@ -277,6 +280,7 @@ export namespace storage {
 	        this.provider = source["provider"];
 	        this.apiKey = source["apiKey"];
 	        this.model = source["model"];
+	        this.toolModel = source["toolModel"];
 	        this.baseUrl = source["baseUrl"];
 	        this.providerConfigs = this.convertValues(source["providerConfigs"], ProviderConfig, true);
 	        this.maxRowsContext = source["maxRowsContext"];

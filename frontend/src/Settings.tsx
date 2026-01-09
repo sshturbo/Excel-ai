@@ -50,6 +50,7 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
                             apiKey={settings.apiKey}
                             baseUrl={settings.baseUrl}
                             model={settings.model}
+                            toolModel={settings.toolModel}
                             customModel={settings.customModel}
                             useCustomModel={settings.useCustomModel}
                             availableModels={settings.availableModels}
@@ -60,6 +61,7 @@ export default function Settings({ onClose, askBeforeApply, onAskBeforeApplyChan
                             onApiKeyChange={settings.setApiKey}
                             onBaseUrlChange={settings.setBaseUrl}
                             onModelChange={settings.setModel}
+                            onToolModelChange={settings.setToolModel}
                             onCustomModelChange={settings.setCustomModel}
                             onUseCustomModelChange={settings.setUseCustomModel}
                             onModelFilterChange={settings.setModelFilter}

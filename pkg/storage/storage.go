@@ -39,18 +39,20 @@ type ConversationSummary struct {
 
 // ProviderConfig armazena configurações específicas de um provedor
 type ProviderConfig struct {
-	APIKey  string `json:"apiKey,omitempty"`
-	Model   string `json:"model,omitempty"`
-	BaseURL string `json:"baseUrl,omitempty"`
+	APIKey    string `json:"apiKey,omitempty"`
+	Model     string `json:"model,omitempty"`
+	ToolModel string `json:"toolModel,omitempty"`
+	BaseURL   string `json:"baseUrl,omitempty"`
 }
 
 // Config armazena configurações do app
 type Config struct {
 	// Configurações atuais (provider selecionado)
-	Provider string `json:"provider,omitempty"` // "openrouter", "groq", "custom"
-	APIKey   string `json:"apiKey,omitempty"`   // API key do provider atual
-	Model    string `json:"model"`              // Modelo do provider atual
-	BaseURL  string `json:"baseUrl,omitempty"`  // URL base do provider atual
+	Provider  string `json:"provider,omitempty"` // "openrouter", "groq", "custom"
+	APIKey    string `json:"apiKey,omitempty"`   // API key do provider atual
+	Model     string `json:"model"`              // Modelo do provider atual
+	ToolModel string `json:"toolModel"`          // Modelo secundário para execução de ferramentas (opcional)
+	BaseURL   string `json:"baseUrl,omitempty"`  // URL base do provider atual
 
 	// Configurações salvas por provedor
 	ProviderConfigs map[string]ProviderConfig `json:"providerConfigs,omitempty"`
@@ -385,7 +387,7 @@ func (s *Storage) GetProviderConfig(providerName string) (*ProviderConfig, error
 }
 
 // SetProviderConfig salva configurações de um provedor específico
-func (s *Storage) SetProviderConfig(providerName string, apiKey, model, baseURL string) error {
+func (s *Storage) SetProviderConfig(providerName string, apiKey, model, toolModel, baseURL string) error {
 	cfg, err := s.LoadConfig()
 	if err != nil {
 		return err
@@ -396,9 +398,10 @@ func (s *Storage) SetProviderConfig(providerName string, apiKey, model, baseURL 
 	}
 
 	cfg.ProviderConfigs[providerName] = ProviderConfig{
-		APIKey:  apiKey,
-		Model:   model,
-		BaseURL: baseURL,
+		APIKey:    apiKey,
+		Model:     model,
+		ToolModel: toolModel,
+		BaseURL:   baseURL,
 	}
 
 	return s.SaveConfig(cfg)
@@ -418,11 +421,13 @@ func (s *Storage) SwitchProvider(providerName string) (*Config, error) {
 	if providerCfg, exists := cfg.ProviderConfigs[providerName]; exists {
 		cfg.APIKey = providerCfg.APIKey
 		cfg.Model = providerCfg.Model
+		cfg.ToolModel = providerCfg.ToolModel
 		cfg.BaseURL = providerCfg.BaseURL
 	} else {
 		// Sem configuração salva, limpar credenciais e usar defaults
 		cfg.APIKey = ""
 		cfg.Model = ""
+		cfg.ToolModel = ""
 
 		// Definir BaseURL padrão por provedor
 		switch providerName {

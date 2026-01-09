@@ -67,13 +67,16 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     }, [messages])
 
     const processMessage = useCallback(async (text: string) => {
+        console.log('[PROCESS] Starting processMessage, setting isLoading=true')
         setIsLoading(true)
 
         // Add placeholder for assistant message
         setMessages(prev => [...prev, { role: 'assistant', content: '' }])
 
         try {
+            console.log('[PROCESS] Calling SendMessage backend...')
             const response = await SendMessage(text, askBeforeApply)
+            console.log('[PROCESS] SendMessage completed, response length:', response?.length || 0)
 
             // Process response for display
             const { displayContent, actionsExecuted } = await processAIResponse(response, {
@@ -113,18 +116,26 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             // Remove placeholder on error
             setMessages(prev => prev.slice(0, -1))
         } finally {
+            console.log('[PROCESS] Setting isLoading=false')
             setIsLoading(false)
         }
     }, [askBeforeApply, onWorkbooksUpdate])
 
     const handleSendMessage = useCallback(async () => {
-        if (!inputMessage.trim() || isLoading) return
+        console.log('[SEND] handleSendMessage called, isLoading:', isLoading, 'inputMessage:', inputMessage.substring(0, 20))
+
+        if (!inputMessage.trim() || isLoading) {
+            console.log('[SEND] Blocked - empty or loading')
+            return
+        }
 
         const userMessage = inputMessage.trim()
         setInputMessage('')
         setMessages(prev => [...prev, { role: 'user', content: userMessage }])
 
+        console.log('[SEND] Calling processMessage...')
         await processMessage(userMessage)
+        console.log('[SEND] processMessage completed')
     }, [inputMessage, isLoading, processMessage])
 
     const handleCancelChat = useCallback(async () => {

@@ -17,6 +17,7 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { ChatInput } from '@/components/chat/ChatInput'
 import { MessageBubble } from '@/components/chat/MessageBubble'
 import { EmptyState } from '@/components/chat/EmptyState'
+import { ThinkingIndicator } from '@/components/chat/ThinkingIndicator'
 import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer'
 import { DataPreview } from '@/components/excel/DataPreview'
 import { ChartViewer } from '@/components/excel/ChartViewer'
@@ -78,27 +79,65 @@ export default function App() {
         onWorkbooksUpdate: excel.setWorkbooks
     })
 
-    const { streamingContent } = useStreamingMessage(chat.isLoading)
+    const { streamingContent, reasoningContent } = useStreamingMessage(chat.isLoading)
 
     // Update streaming content to messages
     const lastContentRef = useRef('')
+    const lastReasoningRef = useRef('')
+
+    // Unified streaming effect: Updates message with both reasoning and content
     useEffect(() => {
-        if (!chat.isLoading || !streamingContent) return
-        if (streamingContent === lastContentRef.current) return
+        if (!chat.isLoading) return
+
+        // Construct full visually formatted content
+        let displayContent = streamingContent
+        if (reasoningContent) {
+            // ALWAYS prepend reasoning if it exists during streaming
+            displayContent = `:::reasoning:::${reasoningContent}:::/reasoning:::\n\n${streamingContent}`
+        }
+
+        // If nothing to show yet, do nothing
+        if (!displayContent) return
 
         lastContentRef.current = streamingContent
+
         chat.setMessages(prev => {
             const newMsgs = [...prev]
             const lastIndex = newMsgs.length - 1
             if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
-                if (newMsgs[lastIndex].content !== streamingContent) {
-                    newMsgs[lastIndex] = { ...newMsgs[lastIndex], content: streamingContent }
+                // Only update if content changed
+                if (newMsgs[lastIndex].content !== displayContent) {
+                    newMsgs[lastIndex] = { ...newMsgs[lastIndex], content: displayContent }
                     return newMsgs
                 }
             }
             return prev
         })
-    }, [streamingContent, chat.isLoading])
+    }, [streamingContent, reasoningContent, chat.isLoading])
+
+    // Save reasoning content to message when loading completes (persistence)
+    useEffect(() => {
+        if (!chat.isLoading && reasoningContent && reasoningContent !== lastReasoningRef.current) {
+            lastReasoningRef.current = reasoningContent
+            // Final update to ensure reasoning is saved
+            chat.setMessages(prev => {
+                const newMsgs = [...prev]
+                const lastIndex = newMsgs.length - 1
+                if (lastIndex >= 0 && newMsgs[lastIndex].role === 'assistant') {
+                    const currentContent = newMsgs[lastIndex].content
+                    // If content doesn't already have reasoning tags (e.g. from streaming update above), add them
+                    if (!currentContent.includes(':::reasoning:::')) {
+                        newMsgs[lastIndex] = {
+                            ...newMsgs[lastIndex],
+                            content: `:::reasoning:::${reasoningContent}:::/reasoning:::\n\n${currentContent}`
+                        }
+                        return newMsgs
+                    }
+                }
+                return prev
+            })
+        }
+    }, [chat.isLoading, reasoningContent])
 
     // Load saved config on mount
     useEffect(() => {
@@ -403,9 +442,17 @@ export default function App() {
 
     // Handle new conversation
     const handleNewConversation = async () => {
-        await conversations.handleNewConversation()
-        chat.setMessages([])
-        // Could also reset excel selection here if desired
+        console.log('[DEBUG] Nova conversa clicada')
+        try {
+            await conversations.handleNewConversation()
+            chat.setMessages([])
+            // Reset reasoning content
+            lastReasoningRef.current = ''
+            console.log('[DEBUG] Nova conversa criada com sucesso')
+        } catch (err) {
+            console.error('[ERROR] Erro ao criar nova conversa:', err)
+            toast.error('Erro ao criar nova conversa')
+        }
     }
 
     // Handle loading a conversation
@@ -536,32 +583,38 @@ export default function App() {
 
                     {/* Chat Messages */}
                     {!showPreview && !showChart && (
-                        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
                             {chat.messages.length === 0 ? (
                                 <EmptyState selectedSheets={excel.selectedSheets} />
                             ) : (
-                                chat.messages
-                                    .filter(msg => !msg.hidden && msg.role !== 'system' && !msg.content.startsWith('Resultados das ferramentas'))
-                                    .map((msg, idx) => (
-                                        <MessageBubble
-                                            key={idx}
-                                            message={msg}
-                                            index={idx}
-                                            isLastAssistant={msg.role === 'assistant' && idx === chat.messages.filter(m => !m.hidden && m.role !== 'system' && !m.content.startsWith('Resultados das ferramentas')).length - 1}
-                                            isLoading={chat.isLoading}
-                                            isEditing={chat.editingMessageIndex === idx}
-                                            editContent={chat.editContent}
-                                            onEditContentChange={(value) => chat.handleEditMessage(idx, value)}
-                                            onStartEdit={chat.handleEditMessage}
-                                            onCancelEdit={chat.handleCancelEdit}
-                                            onSaveEdit={chat.handleSaveEdit}
-                                            onCopy={chat.handleCopy}
-                                            onShare={chat.handleShare}
-                                            onRegenerate={chat.handleRegenerate}
-                                            onUndo={msg.hasActions ? handleUndo : undefined}
-                                            renderContent={renderMessageContent}
-                                        />
-                                    ))
+                                <>
+                                    {chat.messages
+                                        .filter(msg => !msg.hidden && msg.role !== 'system' && !msg.content.startsWith('Resultados das ferramentas'))
+                                        .filter(msg => msg.role !== 'assistant' || msg.content.trim().length > 0) // Hide empty assistant messages
+                                        .map((msg, idx) => (
+                                            <MessageBubble
+                                                key={idx}
+                                                message={msg}
+                                                index={idx}
+                                                isLastAssistant={msg.role === 'assistant' && idx === chat.messages.filter(m => !m.hidden && m.role !== 'system' && !m.content.startsWith('Resultados das ferramentas')).length - 1}
+                                                isLoading={chat.isLoading}
+                                                isEditing={chat.editingMessageIndex === idx}
+                                                editContent={chat.editContent}
+                                                onEditContentChange={(value) => chat.handleEditMessage(idx, value)}
+                                                onStartEdit={chat.handleEditMessage}
+                                                onCancelEdit={chat.handleCancelEdit}
+                                                onSaveEdit={chat.handleSaveEdit}
+                                                onCopy={chat.handleCopy}
+                                                onShare={chat.handleShare}
+                                                onRegenerate={chat.handleRegenerate}
+                                                onUndo={msg.hasActions ? handleUndo : undefined}
+                                                renderContent={renderMessageContent}
+                                            />
+                                        ))}
+
+                                    {/* Thinking Indicator */}
+
+                                </>
                             )}
                             <div ref={chat.messagesEndRef} />
                         </div>

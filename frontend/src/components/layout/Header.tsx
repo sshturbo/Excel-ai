@@ -39,7 +39,13 @@ export function Header({
                     {theme === 'dark' ? '☀️' : '🌙'}
                 </button>
 
-                <Button onClick={onNewConversation} variant="default">
+                <Button
+                    onClick={() => {
+                        console.log('[HEADER] Botão Nova Conversa clicado')
+                        onNewConversation()
+                    }}
+                    variant="default"
+                >
                     ➕ Nova Conversa
                 </Button>
                 <Button onClick={onOpenSettings} variant="secondary">

@@ -60,8 +60,6 @@ func NewClient(apiKey, model, baseURL string) *Client {
 	if baseURL == "" {
 		baseURL = "https://openrouter.ai/api/v1"
 	}
-	// Remover barra final se existir
-	baseURL = strings.TrimRight(baseURL, "/")
 
 	return &Client{
 		config: Config{
@@ -81,7 +79,8 @@ func (c *Client) SetBaseURL(url string) {
 	if url == "" {
 		url = "https://openrouter.ai/api/v1"
 	}
-	c.config.BaseURL = strings.TrimRight(url, "/")
+	// Não remover barra final - algumas APIs como Z.AI requerem
+	c.config.BaseURL = url
 }
 
 // SetModel altera o modelo utilizado
@@ -109,6 +108,21 @@ func (c *Client) SetMaxInputTokens(limit int) {
 	c.config.MaxInputTokens = limit
 }
 
+// buildURL constrói a URL completa evitando barras duplas
+func (c *Client) buildURL(path string) string {
+	baseURL := c.config.BaseURL
+	// Se a base URL termina com / e o path começa com /, remover uma barra
+	if strings.HasSuffix(baseURL, "/") && strings.HasPrefix(path, "/") {
+		return baseURL + path[1:]
+	}
+	// Se a base URL não termina com / e o path não começa com /, adicionar barra
+	if !strings.HasSuffix(baseURL, "/") && !strings.HasPrefix(path, "/") {
+		return baseURL + "/" + path
+	}
+	// Caso contrário, concatenar diretamente
+	return baseURL + path
+}
+
 // Chat envia mensagens para a IA e retorna a resposta
 func (c *Client) Chat(messages []Message) (string, error) {
 	if c.config.APIKey == "" {
@@ -129,17 +143,24 @@ func (c *Client) Chat(messages []Message) (string, error) {
 		return "", err
 	}
 
-	req, err := http.NewRequest("POST", c.config.BaseURL+"/chat/completions", bytes.NewBuffer(jsonData))
+	url := c.buildURL("/chat/completions")
+	fmt.Printf("[HTTP REQUEST] POST %s\n", url)
+	fmt.Printf("[HTTP REQUEST] Model: %s, Messages: %d\n", c.config.Model, len(prunedMessages))
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+	req.Header.Set("Authorization", "Bearer "+c.config.APIKey[:10]+"...")
+	req.Header.Set("Accept-Language", "en-US,en")
 	req.Header.Set("HTTP-Referer", "https://excel-ai-app.local")
 	req.Header.Set("X-Title", "Excel-AI")
 
+	fmt.Printf("[HTTP REQUEST] Enviando requisição...\n")
 	resp, err := c.httpClient.Do(req)
+	fmt.Printf("[HTTP RESPONSE] Status: %d, Error: %v\n", resp.StatusCode, err)
 	if err != nil {
 		return "", err
 	}
@@ -251,7 +272,7 @@ type ModelsResponse struct {
 
 // GetAvailableModels busca os modelos disponíveis na API (apenas com suporte a function calling)
 func (c *Client) GetAvailableModels() ([]ModelInfo, error) {
-	url := c.config.BaseURL + "/models"
+	url := c.buildURL("/models")
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -382,18 +403,25 @@ func (c *Client) ChatStream(ctx context.Context, messages []Message, onChunk fun
 			return "", err
 		}
 
-		req, err := http.NewRequestWithContext(ctx, "POST", c.config.BaseURL+"/chat/completions", bytes.NewBuffer(jsonData))
+		url := c.buildURL("/chat/completions")
+		fmt.Printf("[STREAM REQUEST] Tentativa %d/%d - POST %s\n", attempt+1, maxRetries+1, url)
+		fmt.Printf("[STREAM REQUEST] Model: %s, Messages: %d, Stream: true\n", c.config.Model, len(prunedMessages))
+
+		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 		if err != nil {
 			return "", err
 		}
 
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+		req.Header.Set("Authorization", "Bearer "+c.config.APIKey[:10]+"...")
+		req.Header.Set("Accept-Language", "en-US,en")
 		req.Header.Set("HTTP-Referer", "https://excel-ai-app.local")
 		req.Header.Set("X-Title", "Excel-AI")
 		req.Close = true
 
+		fmt.Printf("[STREAM REQUEST] Enviando requisição...\n")
 		resp, err := c.httpClient.Do(req)
+		fmt.Printf("[STREAM RESPONSE] Status: %d, Error: %v\n", resp.StatusCode, err)
 		if err != nil {
 			lastErr = err
 			continue
@@ -403,6 +431,8 @@ func (c *Client) ChatStream(ctx context.Context, messages []Message, onChunk fun
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			errorMsg := string(body)
+
+			fmt.Printf("[STREAM ERROR] Status %d, Body: %s\n", resp.StatusCode, errorMsg)
 
 			// Rate Limit / Quota errors
 			if resp.StatusCode == 429 || strings.Contains(errorMsg, "rate limit") || strings.Contains(errorMsg, "quota") {
@@ -536,18 +566,25 @@ func (c *Client) ChatStreamWithTools(ctx context.Context, messages []Message, to
 			return "", nil, err
 		}
 
-		req, err := http.NewRequestWithContext(ctx, "POST", c.config.BaseURL+"/chat/completions", bytes.NewBuffer(jsonData))
+		url := c.buildURL("/chat/completions")
+		fmt.Printf("[TOOLS REQUEST] Tentativa %d/%d - POST %s\n", attempt+1, maxRetries+1, url)
+		fmt.Printf("[TOOLS REQUEST] Model: %s, Messages: %d, Tools: %d\n", c.config.Model, len(prunedMessages), len(tools))
+
+		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 		if err != nil {
 			return "", nil, err
 		}
 
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+		req.Header.Set("Authorization", "Bearer "+c.config.APIKey[:10]+"...")
+		req.Header.Set("Accept-Language", "en-US,en")
 		req.Header.Set("HTTP-Referer", "https://excel-ai-app.local")
 		req.Header.Set("X-Title", "Excel-AI")
 		req.Close = true
 
+		fmt.Printf("[TOOLS REQUEST] Enviando requisição...\n")
 		resp, err := c.httpClient.Do(req)
+		fmt.Printf("[TOOLS RESPONSE] Status: %d, Error: %v\n", resp.StatusCode, err)
 		if err != nil {
 			lastErr = err
 			continue
@@ -557,6 +594,8 @@ func (c *Client) ChatStreamWithTools(ctx context.Context, messages []Message, to
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			errorMsg := string(body)
+
+			fmt.Printf("[TOOLS ERROR] Status %d, Body: %s\n", resp.StatusCode, errorMsg)
 
 			// Rate Limit / Quota errors
 			if resp.StatusCode == 429 || strings.Contains(errorMsg, "rate limit") || strings.Contains(errorMsg, "quota") {

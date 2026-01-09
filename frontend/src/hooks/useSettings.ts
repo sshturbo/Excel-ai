@@ -20,6 +20,8 @@ export const popularModels = [
     { value: 'anthropic/claude-3-haiku', label: 'Claude 3 Haiku', desc: 'Ultra rápido' },
     { value: 'google/gemini-pro-1.5', label: 'Gemini Pro 1.5', desc: 'Contexto longo' },
     { value: 'deepseek/deepseek-chat', label: 'DeepSeek Chat', desc: 'Ótimo custo' },
+    { value: 'glm-4.7', label: 'GLM-4.7', desc: 'Z.AI - Coding otimizado' },
+    { value: 'glm-4.6', label: 'GLM-4.6', desc: 'Z.AI - Versátil' },
 ]
 
 interface UseSettingsProps {
@@ -31,6 +33,7 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
     // API settings
     const [apiKey, setApiKey] = useState('')
     const [model, setModel] = useState('openai/gpt-4o-mini')
+    const [toolModel, setToolModel] = useState('') // New secondary model state
     const [provider, setProvider] = useState('openrouter')
     const [baseUrl, setBaseUrl] = useState('')
     const [customModel, setCustomModel] = useState('')
@@ -81,6 +84,11 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
                         setUseCustomModel(true)
                     }
                 }
+                if (cfg.toolModel) {
+                    setToolModel(cfg.toolModel)
+                } else {
+                    setToolModel('')
+                }
                 if (cfg.maxRowsContext) setMaxRowsContext(cfg.maxRowsContext)
                 if (cfg.maxContextChars) setMaxContextChars(cfg.maxContextChars)
                 if (cfg.maxRowsPreview) setMaxRowsPreview(cfg.maxRowsPreview)
@@ -108,6 +116,8 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
                 url = 'https://api.groq.com/openai/v1'
             } else if (provider === 'google') {
                 url = 'https://generativelanguage.googleapis.com/v1beta'
+            } else if (provider === 'zai') {
+                url = 'https://api.z.ai/api/paas/v4'
             } else if (provider === 'openrouter') {
                 url = 'https://openrouter.ai/api/v1'
             } else {
@@ -157,6 +167,8 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
                 correctBaseUrl = 'https://api.groq.com/openai/v1'
             } else if (provider === 'google') {
                 correctBaseUrl = 'https://generativelanguage.googleapis.com/v1beta'
+            } else if (provider === 'zai') {
+                correctBaseUrl = 'https://api.z.ai/api/paas/v4'
             } else if (provider === 'openrouter') {
                 correctBaseUrl = 'https://openrouter.ai/api/v1'
             } else {
@@ -191,11 +203,18 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
                 } else {
                     setModel('')
                 }
+                if (cfg.toolModel) {
+                    setToolModel(cfg.toolModel)
+                } else {
+                    setToolModel('')
+                }
                 if (cfg.baseUrl) {
                     setBaseUrl(cfg.baseUrl)
                 } else {
                     if (val === 'groq') {
                         setBaseUrl('https://api.groq.com/openai/v1')
+                    } else if (val === 'zai') {
+                        setBaseUrl('https://api.z.ai/api/paas/v4')
                     } else if (val === 'openrouter') {
                         setBaseUrl('https://openrouter.ai/api/v1')
                     } else if (val === 'google') {
@@ -215,6 +234,8 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
             console.error('Erro ao trocar provider:', err)
             if (val === 'groq') {
                 setBaseUrl('https://api.groq.com/openai/v1')
+            } else if (val === 'zai') {
+                setBaseUrl('https://api.z.ai/api/paas/v4')
             } else if (val === 'openrouter') {
                 setBaseUrl('https://openrouter.ai/api/v1')
             } else if (val === 'google') {
@@ -230,6 +251,8 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
         setApiKey,
         model,
         setModel,
+        toolModel,
+        setToolModel,
         provider,
         baseUrl,
         setBaseUrl,

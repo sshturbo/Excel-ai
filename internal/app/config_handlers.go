@@ -63,7 +63,33 @@ func (a *App) SetModel(model string) error {
 	return nil
 }
 
-// GetAvailableModels retorna modelos disponíveis
+// SetToolModel configura o modelo secundário da IA
+func (a *App) SetToolModel(toolModel string) error {
+	// a.chatService.SetToolModel(toolModel) // Implementar se necessário no service
+	// Save to storage
+	if a.storage != nil {
+		cfg, _ := a.storage.LoadConfig()
+		if cfg == nil {
+			cfg = &storage.Config{}
+		}
+		if cfg.ProviderConfigs == nil {
+			cfg.ProviderConfigs = make(map[string]storage.ProviderConfig)
+		}
+		cfg.ToolModel = toolModel
+
+		// Também salvar no mapa do provedor atual
+		provider := cfg.Provider
+		if provider == "" {
+			provider = "openrouter"
+		}
+		providerCfg := cfg.ProviderConfigs[provider]
+		providerCfg.ToolModel = toolModel
+		cfg.ProviderConfigs[provider] = providerCfg
+
+		return a.storage.SaveConfig(cfg)
+	}
+	return nil
+}
 func (a *App) GetAvailableModels(apiKey, baseURL string) ([]dto.ModelInfo, error) {
 	return a.chatService.GetAvailableModels(apiKey, baseURL), nil
 }
@@ -77,7 +103,7 @@ func (a *App) GetSavedConfig() (*storage.Config, error) {
 }
 
 // UpdateConfig atualiza configurações
-func (a *App) UpdateConfig(maxRowsContext, maxContextChars, maxRowsPreview int, includeHeaders bool, detailLevel, customPrompt, language, provider, baseUrl string) error {
+func (a *App) UpdateConfig(maxRowsContext, maxContextChars, maxRowsPreview int, includeHeaders bool, detailLevel, customPrompt, language, provider, toolModel, baseUrl string) error {
 	if a.storage == nil {
 		return fmt.Errorf("storage não disponível")
 	}
@@ -99,12 +125,14 @@ func (a *App) UpdateConfig(maxRowsContext, maxContextChars, maxRowsPreview int, 
 	cfg.Language = language
 	cfg.Provider = provider
 	cfg.BaseURL = baseUrl
+	cfg.ToolModel = toolModel
 
 	// Salvar configurações do provedor atual no mapa de providers
 	cfg.ProviderConfigs[provider] = storage.ProviderConfig{
-		APIKey:  cfg.APIKey,
-		Model:   cfg.Model,
-		BaseURL: baseUrl,
+		APIKey:    cfg.APIKey,
+		Model:     cfg.Model,
+		ToolModel: toolModel,
+		BaseURL:   baseUrl,
 	}
 
 	// Atualizar serviço
@@ -112,6 +140,8 @@ func (a *App) UpdateConfig(maxRowsContext, maxContextChars, maxRowsPreview int, 
 		a.chatService.SetBaseURL(baseUrl)
 	} else if provider == "groq" {
 		a.chatService.SetBaseURL("https://api.groq.com/openai/v1")
+	} else if provider == "zai" {
+		a.chatService.SetBaseURL("https://api.z.ai/api/paas/v4")
 	} else {
 		a.chatService.SetBaseURL("https://openrouter.ai/api/v1")
 	}
@@ -165,6 +195,8 @@ func (a *App) SwitchProvider(providerName string) (*storage.Config, error) {
 	if cfg.Model != "" {
 		a.chatService.SetModel(cfg.Model)
 	}
+	// ToolModel é usado apenas internamente na execução de tools, mas podemos setar se houver método
+	// a.chatService.SetToolModel(cfg.ToolModel)
 	if cfg.BaseURL != "" {
 		a.chatService.SetBaseURL(cfg.BaseURL)
 	}
