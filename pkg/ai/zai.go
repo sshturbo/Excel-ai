@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"excel-ai/pkg/logger"
 )
 
 // ZAIClient cliente específico para Z.AI (GLM Models)
@@ -109,8 +111,8 @@ func (c *ZAIClient) ChatStream(ctx context.Context, messages []Message, onChunk 
 	}
 
 	url := c.baseURL + "chat/completions"
-	fmt.Printf("[Z.AI STREAM] POST %s\n", url)
-	fmt.Printf("[Z.AI STREAM] Model: %s, Messages: %d\n", c.model, len(prunedMessages))
+	logger.AIDebug(fmt.Sprintf("[Z.AI STREAM] POST %s", url))
+	logger.AIDebug(fmt.Sprintf("[Z.AI STREAM] Model: %s, Messages: %d", c.model, len(prunedMessages)))
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -129,25 +131,25 @@ func (c *ZAIClient) ChatStream(ctx context.Context, messages []Message, onChunk 
 	} else if c.apiKey != "" {
 		apiKeyPreview = "***"
 	}
-	fmt.Printf("[Z.AI STREAM] API Key: %s (len=%d)\n", apiKeyPreview, len(c.apiKey))
-	fmt.Printf("[Z.AI STREAM] Headers: Content-Type=%s, Accept-Language=%s\n",
-		req.Header.Get("Content-Type"), req.Header.Get("Accept-Language"))
-	fmt.Printf("[Z.AI STREAM] Request Body: %s\n", string(jsonData))
+	logger.AIDebug(fmt.Sprintf("[Z.AI STREAM] API Key: %s (len=%d)", apiKeyPreview, len(c.apiKey)))
+	logger.AIDebug(fmt.Sprintf("[Z.AI STREAM] Headers: Content-Type=%s, Accept-Language=%s",
+		req.Header.Get("Content-Type"), req.Header.Get("Accept-Language")))
+	logger.AIDebug(fmt.Sprintf("[Z.AI STREAM] Request Body: %s", string(jsonData)))
 
-	fmt.Printf("[Z.AI STREAM] Enviando requisição...\n")
+	logger.AIDebug("[Z.AI STREAM] Enviando requisição...")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		fmt.Printf("[Z.AI STREAM] Erro na requisição: %v\n", err)
+		logger.AIError(fmt.Sprintf("[Z.AI STREAM] Erro na requisição: %v", err))
 		return "", err
 	}
 	defer resp.Body.Close()
 
-	fmt.Printf("[Z.AI STREAM] Status: %d\n", resp.StatusCode)
+	logger.AIDebug(fmt.Sprintf("[Z.AI STREAM] Status: %d", resp.StatusCode))
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		errorMsg := string(body)
-		fmt.Printf("[Z.AI ERROR] Status %d, Body: %s\n", resp.StatusCode, errorMsg)
+		logger.AIError(fmt.Sprintf("[Z.AI ERROR] Status %d, Body: %s", resp.StatusCode, errorMsg))
 
 		// Tratamento específico de erros Z.AI
 		if resp.StatusCode == 401 {
@@ -166,14 +168,14 @@ func (c *ZAIClient) ChatStream(ctx context.Context, messages []Message, onChunk 
 	reader := bufio.NewReader(resp.Body)
 	var fullResponse strings.Builder
 
-	fmt.Printf("[Z.AI STREAM] Iniciando leitura de chunks...\n")
+	logger.AIDebug("[Z.AI STREAM] Iniciando leitura de chunks...")
 	chunkCount := 0
 
 	for {
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
 			if err == io.EOF {
-				fmt.Printf("[Z.AI STREAM] EOF alcançado. Total de chunks: %d\n", chunkCount)
+				logger.AIDebug(fmt.Sprintf("[Z.AI STREAM] EOF alcançado. Total de chunks: %d", chunkCount))
 				break
 			}
 			return "", err
@@ -186,13 +188,13 @@ func (c *ZAIClient) ChatStream(ctx context.Context, messages []Message, onChunk 
 
 		data := bytes.TrimPrefix(line, []byte("data: "))
 		if string(data) == "[DONE]" {
-			fmt.Printf("[Z.AI STREAM] [DONE] recebido. Total de chunks: %d\n", chunkCount)
+			logger.AIDebug(fmt.Sprintf("[Z.AI STREAM] [DONE] recebido. Total de chunks: %d", chunkCount))
 			break
 		}
 
 		chunkCount++
 		if chunkCount%10 == 0 {
-			fmt.Printf("[Z.AI STREAM] Processados %d chunks...\n", chunkCount)
+			logger.AIDebug(fmt.Sprintf("[Z.AI STREAM] Processados %d chunks...", chunkCount))
 		}
 
 		var chunk struct {
@@ -210,9 +212,9 @@ func (c *ZAIClient) ChatStream(ctx context.Context, messages []Message, onChunk 
 
 		// Debug: log chunk structure
 		if len(chunk.Choices) > 0 {
-			fmt.Printf("[Z.AI DEBUG] Chunk - Content: %q, Reasoning: %q\n",
+			logger.AIDebug(fmt.Sprintf("[Z.AI DEBUG] Chunk - Content: %q, Reasoning: %q",
 				chunk.Choices[0].Delta.Content,
-				chunk.Choices[0].Delta.ReasoningContent)
+				chunk.Choices[0].Delta.ReasoningContent))
 		}
 
 		if len(chunk.Choices) > 0 {
@@ -285,8 +287,8 @@ func (c *ZAIClient) ChatStreamWithTools(ctx context.Context, messages []Message,
 	}
 
 	url := c.baseURL + "chat/completions"
-	fmt.Printf("[Z.AI TOOLS] POST %s\n", url)
-	fmt.Printf("[Z.AI TOOLS] Model: %s, Messages: %d, Tools: %d\n", c.model, len(prunedMessages), len(tools))
+	logger.AIDebug(fmt.Sprintf("[Z.AI TOOLS] POST %s", url))
+	logger.AIDebug(fmt.Sprintf("[Z.AI TOOLS] Model: %s, Messages: %d, Tools: %d", c.model, len(prunedMessages), len(tools)))
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -305,31 +307,31 @@ func (c *ZAIClient) ChatStreamWithTools(ctx context.Context, messages []Message,
 	} else if c.apiKey != "" {
 		apiKeyPreview = "***"
 	}
-	fmt.Printf("[Z.AI TOOLS] API Key: %s (len=%d)\n", apiKeyPreview, len(c.apiKey))
-	fmt.Printf("[Z.AI TOOLS] Headers: Content-Type=%s, Accept-Language=%s\n",
-		req.Header.Get("Content-Type"), req.Header.Get("Accept-Language"))
+	logger.AIDebug(fmt.Sprintf("[Z.AI TOOLS] API Key: %s (len=%d)", apiKeyPreview, len(c.apiKey)))
+	logger.AIDebug(fmt.Sprintf("[Z.AI TOOLS] Headers: Content-Type=%s, Accept-Language=%s",
+		req.Header.Get("Content-Type"), req.Header.Get("Accept-Language")))
 
 	// Log do request body (limitado a 500 chars para não poluir)
 	requestBodyPreview := string(jsonData)
 	if len(requestBodyPreview) > 500 {
 		requestBodyPreview = requestBodyPreview[:500] + "...[truncated]"
 	}
-	fmt.Printf("[Z.AI TOOLS] Request Body: %s\n", requestBodyPreview)
+	logger.AIDebug(fmt.Sprintf("[Z.AI TOOLS] Request Body: %s", requestBodyPreview))
 
-	fmt.Printf("[Z.AI TOOLS] Enviando requisição...\n")
+	logger.AIDebug("[Z.AI TOOLS] Enviando requisição...")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		fmt.Printf("[Z.AI TOOLS] Erro na requisição: %v\n", err)
+		logger.AIError(fmt.Sprintf("[Z.AI TOOLS] Erro na requisição: %v", err))
 		return "", nil, err
 	}
 	defer resp.Body.Close()
 
-	fmt.Printf("[Z.AI TOOLS] Status: %d\n", resp.StatusCode)
+	logger.AIDebug(fmt.Sprintf("[Z.AI TOOLS] Status: %d", resp.StatusCode))
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		errorMsg := string(body)
-		fmt.Printf("[Z.AI ERROR] Status %d, Body: %s\n", resp.StatusCode, errorMsg)
+		logger.AIError(fmt.Sprintf("[Z.AI ERROR] Status %d, Body: %s", resp.StatusCode, errorMsg))
 
 		// Tratamento específico de erros Z.AI
 		if resp.StatusCode == 401 {
@@ -352,14 +354,14 @@ func (c *ZAIClient) ChatStreamWithTools(ctx context.Context, messages []Message,
 	// Map para acumular tool calls parciais
 	toolCallsMap := make(map[int]*ToolCall)
 
-	fmt.Printf("[Z.AI TOOLS STREAM] Iniciando leitura de chunks...\n")
+	logger.AIDebug("[Z.AI TOOLS STREAM] Iniciando leitura de chunks...")
 	chunkCount := 0
 
 	for {
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
 			if err == io.EOF {
-				fmt.Printf("[Z.AI TOOLS STREAM] EOF alcançado. Total de chunks: %d\n", chunkCount)
+				logger.AIDebug(fmt.Sprintf("[Z.AI TOOLS STREAM] EOF alcançado. Total de chunks: %d", chunkCount))
 				break
 			}
 			return "", nil, err
@@ -372,13 +374,13 @@ func (c *ZAIClient) ChatStreamWithTools(ctx context.Context, messages []Message,
 
 		data := bytes.TrimPrefix(line, []byte("data: "))
 		if string(data) == "[DONE]" {
-			fmt.Printf("[Z.AI TOOLS STREAM] [DONE] recebido. Total de chunks: %d\n", chunkCount)
+			logger.AIDebug(fmt.Sprintf("[Z.AI TOOLS STREAM] [DONE] recebido. Total de chunks: %d", chunkCount))
 			break
 		}
 
 		chunkCount++
 		if chunkCount%10 == 0 {
-			fmt.Printf("[Z.AI TOOLS STREAM] Processados %d chunks...\n", chunkCount)
+			logger.AIDebug(fmt.Sprintf("[Z.AI TOOLS STREAM] Processados %d chunks...", chunkCount))
 		}
 
 		var chunk struct {

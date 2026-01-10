@@ -1,0 +1,18 @@
+{
+  "level": "INFO",
+  "output": "console",
+  "file_path": "excel-ai.log",
+  "components": {
+    "APP": "INFO",
+    "CHAT": "INFO",
+    "EXCEL": "INFO",
+    "AI": "INFO",
+    "CACHE": "WARN",
+    "STORAGE": "WARN",
+    "LICENSE": "INFO",
+    "HTTP": "INFO",
+    "STREAM": "INFO",
+    "TOOLS": "INFO",
+    "UNDO": "INFO"
+  }
+}

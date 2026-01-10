@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"excel-ai/pkg/logger"
 )
 
 // Config configuração do cliente AI
@@ -144,8 +146,8 @@ func (c *Client) Chat(messages []Message) (string, error) {
 	}
 
 	url := c.buildURL("/chat/completions")
-	fmt.Printf("[HTTP REQUEST] POST %s\n", url)
-	fmt.Printf("[HTTP REQUEST] Model: %s, Messages: %d\n", c.config.Model, len(prunedMessages))
+	logger.AIDebug(fmt.Sprintf("[HTTP REQUEST] POST %s", url))
+	logger.AIDebug(fmt.Sprintf("[HTTP REQUEST] Model: %s, Messages: %d", c.config.Model, len(prunedMessages)))
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -158,9 +160,9 @@ func (c *Client) Chat(messages []Message) (string, error) {
 	req.Header.Set("HTTP-Referer", "https://excel-ai-app.local")
 	req.Header.Set("X-Title", "Excel-AI")
 
-	fmt.Printf("[HTTP REQUEST] Enviando requisição...\n")
+	logger.AIDebug("[HTTP REQUEST] Enviando requisição...")
 	resp, err := c.httpClient.Do(req)
-	fmt.Printf("[HTTP RESPONSE] Status: %d, Error: %v\n", resp.StatusCode, err)
+	logger.AIDebug(fmt.Sprintf("[HTTP RESPONSE] Status: %d, Error: %v", resp.StatusCode, err))
 	if err != nil {
 		return "", err
 	}
@@ -404,8 +406,8 @@ func (c *Client) ChatStream(ctx context.Context, messages []Message, onChunk fun
 		}
 
 		url := c.buildURL("/chat/completions")
-		fmt.Printf("[STREAM REQUEST] Tentativa %d/%d - POST %s\n", attempt+1, maxRetries+1, url)
-		fmt.Printf("[STREAM REQUEST] Model: %s, Messages: %d, Stream: true\n", c.config.Model, len(prunedMessages))
+		logger.AIDebug(fmt.Sprintf("[STREAM REQUEST] Tentativa %d/%d - POST %s", attempt+1, maxRetries+1, url))
+		logger.AIDebug(fmt.Sprintf("[STREAM REQUEST] Model: %s, Messages: %d, Stream: true", c.config.Model, len(prunedMessages)))
 
 		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 		if err != nil {
@@ -419,9 +421,9 @@ func (c *Client) ChatStream(ctx context.Context, messages []Message, onChunk fun
 		req.Header.Set("X-Title", "Excel-AI")
 		req.Close = true
 
-		fmt.Printf("[STREAM REQUEST] Enviando requisição...\n")
+		logger.AIDebug("[STREAM REQUEST] Enviando requisição...")
 		resp, err := c.httpClient.Do(req)
-		fmt.Printf("[STREAM RESPONSE] Status: %d, Error: %v\n", resp.StatusCode, err)
+		logger.AIDebug(fmt.Sprintf("[STREAM RESPONSE] Status: %d, Error: %v", resp.StatusCode, err))
 		if err != nil {
 			lastErr = err
 			continue
@@ -432,7 +434,7 @@ func (c *Client) ChatStream(ctx context.Context, messages []Message, onChunk fun
 			resp.Body.Close()
 			errorMsg := string(body)
 
-			fmt.Printf("[STREAM ERROR] Status %d, Body: %s\n", resp.StatusCode, errorMsg)
+			logger.AIError(fmt.Sprintf("[STREAM ERROR] Status %d, Body: %s", resp.StatusCode, errorMsg))
 
 			// Rate Limit / Quota errors
 			if resp.StatusCode == 429 || strings.Contains(errorMsg, "rate limit") || strings.Contains(errorMsg, "quota") {
@@ -567,8 +569,8 @@ func (c *Client) ChatStreamWithTools(ctx context.Context, messages []Message, to
 		}
 
 		url := c.buildURL("/chat/completions")
-		fmt.Printf("[TOOLS REQUEST] Tentativa %d/%d - POST %s\n", attempt+1, maxRetries+1, url)
-		fmt.Printf("[TOOLS REQUEST] Model: %s, Messages: %d, Tools: %d\n", c.config.Model, len(prunedMessages), len(tools))
+		logger.AIDebug(fmt.Sprintf("[TOOLS REQUEST] Tentativa %d/%d - POST %s", attempt+1, maxRetries+1, url))
+		logger.AIDebug(fmt.Sprintf("[TOOLS REQUEST] Model: %s, Messages: %d, Tools: %d", c.config.Model, len(prunedMessages), len(tools)))
 
 		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 		if err != nil {
@@ -582,9 +584,9 @@ func (c *Client) ChatStreamWithTools(ctx context.Context, messages []Message, to
 		req.Header.Set("X-Title", "Excel-AI")
 		req.Close = true
 
-		fmt.Printf("[TOOLS REQUEST] Enviando requisição...\n")
+		logger.AIDebug("[TOOLS REQUEST] Enviando requisição...")
 		resp, err := c.httpClient.Do(req)
-		fmt.Printf("[TOOLS RESPONSE] Status: %d, Error: %v\n", resp.StatusCode, err)
+		logger.AIDebug(fmt.Sprintf("[TOOLS RESPONSE] Status: %d, Error: %v", resp.StatusCode, err))
 		if err != nil {
 			lastErr = err
 			continue
@@ -595,7 +597,7 @@ func (c *Client) ChatStreamWithTools(ctx context.Context, messages []Message, to
 			resp.Body.Close()
 			errorMsg := string(body)
 
-			fmt.Printf("[TOOLS ERROR] Status %d, Body: %s\n", resp.StatusCode, errorMsg)
+			logger.AIError(fmt.Sprintf("[TOOLS ERROR] Status %d, Body: %s", resp.StatusCode, errorMsg))
 
 			// Rate Limit / Quota errors
 			if resp.StatusCode == 429 || strings.Contains(errorMsg, "rate limit") || strings.Contains(errorMsg, "quota") {

@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/go-ole/go-ole/oleutil"
+
+	"excel-ai/pkg/logger"
 )
 
 // CreatePivotTable cria uma tabela dinâmica usando PivotTableWizard
@@ -82,7 +84,7 @@ func (c *Client) CreatePivotTable(workbookName, sourceSheet, sourceRange, destSh
 			}
 		}
 
-		fmt.Printf("[DEBUG] Range expandido: %s\n", expandedSourceRange)
+		logger.ExcelDebug(fmt.Sprintf("[DEBUG] Range expandido: %s", expandedSourceRange))
 
 		// Obter range de origem
 		srcRange, err := oleutil.GetProperty(srcSheetDisp, "Range", expandedSourceRange)
@@ -103,7 +105,7 @@ func (c *Client) CreatePivotTable(workbookName, sourceSheet, sourceRange, destSh
 			srcAddressProp, _ := oleutil.GetProperty(srcRangeDisp, "Address", true, true)
 			fullSourceAddress = fmt.Sprintf("'%s'!%s", sourceSheet, srcAddressProp.ToString())
 		}
-		fmt.Printf("[DEBUG] Endereço completo da fonte: %s\n", fullSourceAddress)
+		logger.ExcelDebug(fmt.Sprintf("[DEBUG] Endereço completo da fonte: %s", fullSourceAddress))
 
 		// Obter aba de destino
 		destSheetObj, err := oleutil.GetProperty(worksheetsDisp, "Item", destSheet)
@@ -131,7 +133,7 @@ func (c *Client) CreatePivotTable(workbookName, sourceSheet, sourceRange, destSh
 		// Usar PivotTableWizard
 		// Parâmetros: SourceType, SourceData, TableDestination, TableName
 		// xlDatabase = 1
-		fmt.Printf("[DEBUG] Chamando PivotTableWizard com:\n  Source: %s\n  Dest: %s\n  Name: %s\n", fullSourceAddress, fullDestAddress, tableName)
+		logger.ExcelDebug(fmt.Sprintf("[DEBUG] Chamando PivotTableWizard com:\n  Source: %s\n  Dest: %s\n  Name: %s", fullSourceAddress, fullDestAddress, tableName))
 
 		// Tentar primeiro usando objeto Range para fonte (mais preciso)
 		_, err = oleutil.CallMethod(destSheetDisp, "PivotTableWizard",
@@ -141,7 +143,7 @@ func (c *Client) CreatePivotTable(workbookName, sourceSheet, sourceRange, destSh
 			tableName,     // TableName
 		)
 		if err != nil {
-			fmt.Printf("[DEBUG] PivotTableWizard com Range objects falhou: %v\n", err)
+			logger.ExcelDebug(fmt.Sprintf("[DEBUG] PivotTableWizard com Range objects falhou: %v", err))
 
 			// Tentar usando a aba de ORIGEM para chamar PivotTableWizard
 			_, err = oleutil.CallMethod(srcSheetDisp, "PivotTableWizard",
@@ -151,7 +153,7 @@ func (c *Client) CreatePivotTable(workbookName, sourceSheet, sourceRange, destSh
 				tableName,     // TableName
 			)
 			if err != nil {
-				fmt.Printf("[DEBUG] PivotTableWizard via srcSheet falhou: %v\n", err)
+				logger.ExcelDebug(fmt.Sprintf("[DEBUG] PivotTableWizard via srcSheet falhou: %v", err))
 
 				// Tentar com endereço como string para fonte
 				_, err = oleutil.CallMethod(destSheetDisp, "PivotTableWizard",
@@ -162,7 +164,7 @@ func (c *Client) CreatePivotTable(workbookName, sourceSheet, sourceRange, destSh
 				)
 				if err != nil {
 					errStr := err.Error()
-					fmt.Printf("[DEBUG] PivotTableWizard com string source falhou: %v\n", err)
+					logger.ExcelDebug(fmt.Sprintf("[DEBUG] PivotTableWizard com string source falhou: %v", err))
 					// Verificar se é erro de campos inválidos
 					if strings.Contains(errStr, "campo") || strings.Contains(errStr, "field") || strings.Contains(errStr, "colunas rotuladas") {
 						return fmt.Errorf("os dados de origem têm colunas sem cabeçalho. Verifique se todas as colunas na primeira linha têm um título")
@@ -172,7 +174,7 @@ func (c *Client) CreatePivotTable(workbookName, sourceSheet, sourceRange, destSh
 			}
 		}
 
-		fmt.Println("[DEBUG] Tabela Dinâmica criada com sucesso!")
+		logger.ExcelDebug("[DEBUG] Tabela Dinâmica criada com sucesso!")
 		return nil
 	})
 }
@@ -236,7 +238,7 @@ func (c *Client) ConfigurePivotFields(workbookName, sheetName, tableName string,
 		for _, fieldName := range rowFields {
 			pivotField, err := oleutil.CallMethod(pivotTableDisp, "PivotFields", fieldName)
 			if err != nil {
-				fmt.Printf("[DEBUG] Campo '%s' não encontrado: %v\n", fieldName, err)
+				logger.ExcelDebug(fmt.Sprintf("[DEBUG] Campo '%s' não encontrado: %v", fieldName, err))
 				continue
 			}
 			pivotFieldDisp := pivotField.ToIDispatch()
@@ -244,9 +246,9 @@ func (c *Client) ConfigurePivotFields(workbookName, sheetName, tableName string,
 			// xlRowField = 1
 			_, err = oleutil.PutProperty(pivotFieldDisp, "Orientation", 1)
 			if err != nil {
-				fmt.Printf("[DEBUG] Erro ao definir campo linha '%s': %v\n", fieldName, err)
+				logger.ExcelDebug(fmt.Sprintf("[DEBUG] Erro ao definir campo linha '%s': %v", fieldName, err))
 			} else {
-				fmt.Printf("[DEBUG] Campo '%s' adicionado às linhas\n", fieldName)
+				logger.ExcelDebug(fmt.Sprintf("[DEBUG] Campo '%s' adicionado às linhas", fieldName))
 			}
 			pivotFieldDisp.Release()
 		}
@@ -261,7 +263,7 @@ func (c *Client) ConfigurePivotFields(workbookName, sheetName, tableName string,
 
 			pivotField, err := oleutil.CallMethod(pivotTableDisp, "PivotFields", fieldName)
 			if err != nil {
-				fmt.Printf("[DEBUG] Campo '%s' não encontrado: %v\n", fieldName, err)
+				logger.ExcelDebug(fmt.Sprintf("[DEBUG] Campo '%s' não encontrado: %v", fieldName, err))
 				continue
 			}
 			pivotFieldDisp := pivotField.ToIDispatch()
@@ -269,7 +271,7 @@ func (c *Client) ConfigurePivotFields(workbookName, sheetName, tableName string,
 			// xlDataField = 4
 			_, err = oleutil.PutProperty(pivotFieldDisp, "Orientation", 4)
 			if err != nil {
-				fmt.Printf("[DEBUG] Erro ao definir campo dados '%s': %v\n", fieldName, err)
+				logger.ExcelDebug(fmt.Sprintf("[DEBUG] Erro ao definir campo dados '%s': %v", fieldName, err))
 				pivotFieldDisp.Release()
 				continue
 			}
@@ -294,14 +296,14 @@ func (c *Client) ConfigurePivotFields(workbookName, sheetName, tableName string,
 
 			_, err = oleutil.PutProperty(pivotFieldDisp, "Function", funcVal)
 			if err != nil {
-				fmt.Printf("[DEBUG] Erro ao definir função '%s' para '%s': %v\n", function, fieldName, err)
+				logger.ExcelDebug(fmt.Sprintf("[DEBUG] Erro ao definir função '%s' para '%s': %v", function, fieldName, err))
 			} else {
-				fmt.Printf("[DEBUG] Campo '%s' adicionado aos valores com função '%s'\n", fieldName, function)
+				logger.ExcelDebug(fmt.Sprintf("[DEBUG] Campo '%s' adicionado aos valores com função '%s'", fieldName, function))
 			}
 			pivotFieldDisp.Release()
 		}
 
-		fmt.Println("[DEBUG] Campos da tabela dinâmica configurados!")
+		logger.ExcelDebug("[DEBUG] Campos da tabela dinâmica configurados!")
 		return nil
 	})
 }

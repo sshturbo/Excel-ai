@@ -7,6 +7,8 @@ import (
 	"time"
 
 	bolt "go.etcd.io/bbolt"
+
+	"excel-ai/pkg/logger"
 )
 
 const (
@@ -35,13 +37,13 @@ type CacheStatus struct {
 
 // PersistentCache implementa cache persistente em BoltDB
 type PersistentCache struct {
-	db               *bolt.DB
-	mu               sync.RWMutex
-	cacheHits        int64
-	cacheMisses      int64
+	db                 *bolt.DB
+	mu                 sync.RWMutex
+	cacheHits          int64
+	cacheMisses        int64
 	cacheInvalidations int64
-	cacheTTL         time.Duration
-	dbPath           string
+	cacheTTL           time.Duration
+	dbPath             string
 }
 
 // NewPersistentCache cria um novo cache persistente em BoltDB
@@ -136,11 +138,11 @@ func (c *PersistentCache) Get(key string) (string, bool) {
 	})
 
 	if err != nil {
-		fmt.Printf("[CACHE DB] Erro ao atualizar contador: %v\n", err)
+		logger.CacheError(fmt.Sprintf("[CACHE DB] Erro ao atualizar contador: %v", err))
 	}
 
 	c.cacheHits++
-	fmt.Printf("[CACHE DB] Hit: %s (acessos: %d)\n", key, entry.AccessCount+1)
+	logger.CacheDebug(fmt.Sprintf("[CACHE DB] Hit: %s (acessos: %d)", key, entry.AccessCount+1))
 
 	return result, true
 }
@@ -154,7 +156,7 @@ func (c *PersistentCache) Set(key string, result string, tags []string) error {
 		Key:         key,
 		Result:      result,
 		StoredAt:    time.Now(),
-		AccessCount:  1,
+		AccessCount: 1,
 		TTL:         c.cacheTTL,
 		Tags:        tags,
 	}
@@ -179,7 +181,7 @@ func (c *PersistentCache) Set(key string, result string, tags []string) error {
 	}
 
 	c.cacheMisses++
-	fmt.Printf("[CACHE DB] Set: %s (TTL: %v, tags: %v)\n", key, c.cacheTTL, tags)
+	logger.CacheDebug(fmt.Sprintf("[CACHE DB] Set: %s (TTL: %v, tags: %v)", key, c.cacheTTL, tags))
 	return nil
 }
 
@@ -201,7 +203,7 @@ func (c *PersistentCache) Delete(key string) error {
 		return fmt.Errorf("erro ao deletar do cache: %w", err)
 	}
 
-	fmt.Printf("[CACHE DB] Delete: %s\n", key)
+	logger.CacheDebug(fmt.Sprintf("[CACHE DB] Delete: %s", key))
 	return nil
 }
 
@@ -269,7 +271,7 @@ func (c *PersistentCache) Invalidate(tags []string) (int64, error) {
 	c.cacheInvalidations += count
 
 	if count > 0 {
-		fmt.Printf("[CACHE DB] Invalidação: %d entradas removidas (tags: %v)\n", count, tags)
+		logger.CacheInfo(fmt.Sprintf("[CACHE DB] Invalidação: %d entradas removidas (tags: %v)", count, tags))
 	}
 
 	return count, nil
@@ -301,7 +303,7 @@ func (c *PersistentCache) Clear() error {
 		return fmt.Errorf("erro ao limpar cache: %w", err)
 	}
 
-	fmt.Printf("[CACHE DB] Limpo: %d entradas removidas\n", count)
+	logger.CacheInfo(fmt.Sprintf("[CACHE DB] Limpo: %d entradas removidas", count))
 	return nil
 }
 
@@ -358,7 +360,7 @@ func (c *PersistentCache) Cleanup() (int, error) {
 	}
 
 	if count > 0 {
-		fmt.Printf("[CACHE DB] Limpeza: %d entradas expiradas removidas\n", count)
+		logger.CacheInfo(fmt.Sprintf("[CACHE DB] Limpeza: %d entradas expiradas removidas", count))
 	}
 
 	return count, nil
@@ -383,7 +385,7 @@ func (c *PersistentCache) GetStatus() CacheStatus {
 	})
 
 	if err != nil {
-		fmt.Printf("[CACHE DB] Erro ao contar entradas: %v\n", err)
+		logger.CacheError(fmt.Sprintf("[CACHE DB] Erro ao contar entradas: %v", err))
 	}
 
 	// Obter tamanho do banco
@@ -569,6 +571,6 @@ func (c *PersistentCache) Vacuum() error {
 		return fmt.Errorf("erro ao compactar banco: %w", err)
 	}
 
-	fmt.Printf("[CACHE DB] Banco compactado (mantidas %d entradas)\n", count)
+	logger.CacheInfo(fmt.Sprintf("[CACHE DB] Banco compactado (mantidas %d entradas)", count))
 	return nil
 }

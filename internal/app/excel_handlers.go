@@ -4,17 +4,26 @@ import (
 	"fmt"
 
 	"excel-ai/internal/dto"
+	apperrors "excel-ai/pkg/errors"
 	"excel-ai/pkg/excel"
+	"excel-ai/pkg/logger"
 )
 
 // ConnectExcel tenta conectar a uma instância do Excel
 func (a *App) ConnectExcel() (*dto.ExcelStatus, error) {
+	logger.ExcelInfo("Tentando conectar ao Excel...")
 	result, err := a.excelService.Connect()
-	if err == nil && result.Connected {
+	if err != nil {
+		logger.ExcelError("Falha ao conectar ao Excel: " + err.Error())
+		return nil, apperrors.ExcelNotConnected("não foi possível conectar ao Excel: " + err.Error())
+	}
+
+	if result.Connected {
+		logger.ExcelInfo("Conectado ao Excel com sucesso")
 		// Iniciar watcher automaticamente ao conectar
 		a.StartWorkbookWatcher()
 	}
-	return result, err
+	return result, nil
 }
 
 // RefreshWorkbooks atualiza a lista de pastas de trabalho
@@ -52,8 +61,15 @@ func (a *App) GetActiveSelection() (*excel.SheetData, error) {
 
 // UpdateExcelCell atualiza uma célula no Excel
 func (a *App) UpdateExcelCell(workbook, sheet, cell, value string) error {
-	fmt.Printf("[DEBUG] UpdateExcelCell request: WB='%s' Sheet='%s' Cell='%s' Value='%s'\n", workbook, sheet, cell, value)
-	return a.excelService.UpdateCell(workbook, sheet, cell, value)
+	logger.ExcelDebug(fmt.Sprintf("UpdateExcelCell: WB='%s' Sheet='%s' Cell='%s' Value='%s'", workbook, sheet, cell, value))
+
+	err := a.excelService.UpdateCell(workbook, sheet, cell, value)
+	if err != nil {
+		logger.ExcelError("Erro ao atualizar célula: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao atualizar célula")
+	}
+
+	return nil
 }
 
 // CreateNewWorkbook cria uma nova pasta de trabalho
@@ -63,12 +79,28 @@ func (a *App) CreateNewWorkbook() (string, error) {
 
 // CreateChart cria um gráfico
 func (a *App) CreateChart(sheet, rangeAddr, chartType, title string) error {
-	return a.excelService.CreateChart(sheet, rangeAddr, chartType, title)
+	logger.ExcelInfo(fmt.Sprintf("Criando gráfico: tipo=%s, range=%s", chartType, rangeAddr))
+
+	err := a.excelService.CreateChart(sheet, rangeAddr, chartType, title)
+	if err != nil {
+		logger.ExcelError("Erro ao criar gráfico: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao criar gráfico")
+	}
+
+	return nil
 }
 
 // CreatePivotTable cria uma tabela dinâmica
 func (a *App) CreatePivotTable(sourceSheet, sourceRange, destSheet, destCell, tableName string) error {
-	return a.excelService.CreatePivotTable(sourceSheet, sourceRange, destSheet, destCell, tableName)
+	logger.ExcelInfo(fmt.Sprintf("Criando tabela dinâmica: %s", tableName))
+
+	err := a.excelService.CreatePivotTable(sourceSheet, sourceRange, destSheet, destCell, tableName)
+	if err != nil {
+		logger.ExcelError("Erro ao criar tabela dinâmica: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao criar tabela dinâmica")
+	}
+
+	return nil
 }
 
 // ConfigurePivotFields configura os campos de uma tabela dinâmica
@@ -78,7 +110,16 @@ func (a *App) ConfigurePivotFields(sheetName, tableName string, rowFields []stri
 
 // UndoLastChange desfaz a última alteração
 func (a *App) UndoLastChange() error {
-	return a.excelService.UndoLastChange()
+	logger.AppInfo("Desfazendo última alteração")
+
+	err := a.excelService.UndoLastChange()
+	if err != nil {
+		logger.AppError("Erro ao desfazer alteração: " + err.Error())
+		return err
+	}
+
+	logger.AppInfo("Alteração desfeita com sucesso")
+	return nil
 }
 
 // StartUndoBatch inicia um lote de alterações
@@ -123,77 +164,201 @@ func (a *App) SetConversationIDForUndo(convID string) {
 
 // FormatRange aplica formatação a um range
 func (a *App) FormatRange(sheet, rangeAddr string, bold, italic bool, fontSize int, fontColor, bgColor string) error {
-	return a.excelService.FormatRange(sheet, rangeAddr, bold, italic, fontSize, fontColor, bgColor)
+	logger.ExcelInfo(fmt.Sprintf("Aplicando formatação: range=%s", rangeAddr))
+
+	err := a.excelService.FormatRange(sheet, rangeAddr, bold, italic, fontSize, fontColor, bgColor)
+	if err != nil {
+		logger.ExcelError("Erro ao aplicar formatação: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao aplicar formatação")
+	}
+
+	return nil
 }
 
 // DeleteSheet exclui uma aba
 func (a *App) DeleteSheet(sheetName string) error {
-	return a.excelService.DeleteSheet(sheetName)
+	logger.ExcelInfo("Excluindo planilha: " + sheetName)
+
+	err := a.excelService.DeleteSheet(sheetName)
+	if err != nil {
+		logger.ExcelError("Erro ao excluir planilha: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeInvalidSheet, "falha ao excluir planilha")
+	}
+
+	return nil
 }
 
 // RenameSheet renomeia uma aba
 func (a *App) RenameSheet(oldName, newName string) error {
-	return a.excelService.RenameSheet(oldName, newName)
+	logger.ExcelInfo(fmt.Sprintf("Renomeando planilha: %s -> %s", oldName, newName))
+
+	err := a.excelService.RenameSheet(oldName, newName)
+	if err != nil {
+		logger.ExcelError("Erro ao renomear planilha: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeInvalidSheet, "falha ao renomear planilha")
+	}
+
+	return nil
 }
 
 // ClearRange limpa o conteúdo de um range
 func (a *App) ClearRange(sheet, rangeAddr string) error {
-	return a.excelService.ClearRange(sheet, rangeAddr)
+	logger.ExcelInfo(fmt.Sprintf("Limpando range: %s", rangeAddr))
+
+	err := a.excelService.ClearRange(sheet, rangeAddr)
+	if err != nil {
+		logger.ExcelError("Erro ao limpar range: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao limpar range")
+	}
+
+	return nil
 }
 
 // AutoFitColumns ajusta largura das colunas
 func (a *App) AutoFitColumns(sheet, rangeAddr string) error {
-	return a.excelService.AutoFitColumns(sheet, rangeAddr)
+	logger.ExcelInfo(fmt.Sprintf("Auto-fit colunas: %s", rangeAddr))
+
+	err := a.excelService.AutoFitColumns(sheet, rangeAddr)
+	if err != nil {
+		logger.ExcelError("Erro ao auto-fit colunas: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao auto-fit colunas")
+	}
+
+	return nil
 }
 
 // InsertRows insere linhas
 func (a *App) InsertRows(sheet string, rowNumber, count int) error {
-	return a.excelService.InsertRows(sheet, rowNumber, count)
+	logger.ExcelInfo(fmt.Sprintf("Inserindo %d linhas na linha %d", count, rowNumber))
+
+	err := a.excelService.InsertRows(sheet, rowNumber, count)
+	if err != nil {
+		logger.ExcelError("Erro ao inserir linhas: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao inserir linhas")
+	}
+
+	return nil
 }
 
 // DeleteRows exclui linhas
 func (a *App) DeleteRows(sheet string, rowNumber, count int) error {
-	return a.excelService.DeleteRows(sheet, rowNumber, count)
+	logger.ExcelInfo(fmt.Sprintf("Excluindo %d linhas a partir da linha %d", count, rowNumber))
+
+	err := a.excelService.DeleteRows(sheet, rowNumber, count)
+	if err != nil {
+		logger.ExcelError("Erro ao excluir linhas: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao excluir linhas")
+	}
+
+	return nil
 }
 
 // MergeCells mescla células
 func (a *App) MergeCells(sheet, rangeAddr string) error {
-	return a.excelService.MergeCells(sheet, rangeAddr)
+	logger.ExcelInfo(fmt.Sprintf("Mesclando células: %s", rangeAddr))
+
+	err := a.excelService.MergeCells(sheet, rangeAddr)
+	if err != nil {
+		logger.ExcelError("Erro ao mesclar células: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao mesclar células")
+	}
+
+	return nil
 }
 
 // UnmergeCells desfaz mesclagem
 func (a *App) UnmergeCells(sheet, rangeAddr string) error {
-	return a.excelService.UnmergeCells(sheet, rangeAddr)
+	logger.ExcelInfo(fmt.Sprintf("Desfazendo mesclagem: %s", rangeAddr))
+	
+	err := a.excelService.UnmergeCells(sheet, rangeAddr)
+	if err != nil {
+		logger.ExcelError("Erro ao desfazer mesclagem: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao desfazer mesclagem")
+	}
+	
+	return nil
 }
 
 // SetBorders adiciona bordas
 func (a *App) SetBorders(sheet, rangeAddr, style string) error {
-	return a.excelService.SetBorders(sheet, rangeAddr, style)
+	logger.ExcelInfo(fmt.Sprintf("Adicionando bordas: %s, estilo=%s", rangeAddr, style))
+
+	err := a.excelService.SetBorders(sheet, rangeAddr, style)
+	if err != nil {
+		logger.ExcelError("Erro ao adicionar bordas: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao adicionar bordas")
+	}
+
+	return nil
 }
 
 // SetColumnWidth define largura
 func (a *App) SetColumnWidth(sheet, rangeAddr string, width float64) error {
-	return a.excelService.SetColumnWidth(sheet, rangeAddr, width)
+	logger.ExcelInfo(fmt.Sprintf("Definindo largura de colunas: %s, width=%.2f", rangeAddr, width))
+	
+	err := a.excelService.SetColumnWidth(sheet, rangeAddr, width)
+	if err != nil {
+		logger.ExcelError("Erro ao definir largura de colunas: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao definir largura de colunas")
+	}
+	
+	return nil
 }
 
 // SetRowHeight define altura
 func (a *App) SetRowHeight(sheet, rangeAddr string, height float64) error {
-	return a.excelService.SetRowHeight(sheet, rangeAddr, height)
+	logger.ExcelInfo(fmt.Sprintf("Definindo altura de linhas: %s, height=%.2f", rangeAddr, height))
+	
+	err := a.excelService.SetRowHeight(sheet, rangeAddr, height)
+	if err != nil {
+		logger.ExcelError("Erro ao definir altura de linhas: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao definir altura de linhas")
+	}
+	
+	return nil
 }
 
 // ApplyFilter aplica filtro
 func (a *App) ApplyFilter(sheet, rangeAddr string) error {
-	return a.excelService.ApplyFilter(sheet, rangeAddr)
+	logger.ExcelInfo(fmt.Sprintf("Aplicando filtro: %s", rangeAddr))
+	
+	err := a.excelService.ApplyFilter(sheet, rangeAddr)
+	if err != nil {
+		logger.ExcelError("Erro ao aplicar filtro: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao aplicar filtro")
+	}
+	
+	return nil
 }
 
 // ClearFilters limpa filtros
 func (a *App) ClearFilters(sheet string) error {
-	return a.excelService.ClearFilters(sheet)
+	logger.ExcelInfo("Limpando filtros da planilha: " + sheet)
+	
+	err := a.excelService.ClearFilters(sheet)
+	if err != nil {
+		logger.ExcelError("Erro ao limpar filtros: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao limpar filtros")
+	}
+	
+	return nil
 }
 
 // SortRange ordena dados
 func (a *App) SortRange(sheet, rangeAddr string, column int, ascending bool) error {
-	return a.excelService.SortRange(sheet, rangeAddr, column, ascending)
+	order := "crescente"
+	if !ascending {
+		order = "decrescente"
+	}
+	logger.ExcelInfo(fmt.Sprintf("Ordenando range %s: col=%d, ordem=%s", rangeAddr, column, order))
+	
+	err := a.excelService.SortRange(sheet, rangeAddr, column, ascending)
+	if err != nil {
+		logger.ExcelError("Erro ao ordenar dados: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao ordenar dados")
+	}
+	
+	return nil
 }
 
 // CopyRange copia range
@@ -228,7 +393,15 @@ func (a *App) DeleteTable(sheet, tableName string) error {
 
 // WriteToExcel escreve valor
 func (a *App) WriteToExcel(row, col int, value string) error {
-	return a.excelService.WriteToExcel(row, col, value)
+	logger.ExcelDebug(fmt.Sprintf("Escrevendo na célula: row=%d, col=%d, value=%s", row, col, value))
+
+	err := a.excelService.WriteToExcel(row, col, value)
+	if err != nil {
+		logger.ExcelError("Erro ao escrever valor: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao escrever valor")
+	}
+
+	return nil
 }
 
 // ApplyFormula aplica fórmula
@@ -238,7 +411,15 @@ func (a *App) ApplyFormula(row, col int, formula string) error {
 
 // CreateNewSheet cria nova aba
 func (a *App) CreateNewSheet(name string) error {
-	return a.excelService.CreateNewSheet(name)
+	logger.ExcelInfo("Criando nova planilha: " + name)
+
+	err := a.excelService.CreateNewSheet(name)
+	if err != nil {
+		logger.ExcelError("Erro ao criar planilha: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao criar planilha")
+	}
+
+	return nil
 }
 
 // ========== OPERAÇÕES DE CONSULTA (QUERY) ==========

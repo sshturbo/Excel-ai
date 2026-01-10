@@ -9,6 +9,8 @@ import (
 
 	"github.com/go-ole/go-ole"
 	"github.com/go-ole/go-ole/oleutil"
+
+	"excel-ai/pkg/logger"
 )
 
 // NewClient cria um novo cliente Excel conectando-se a uma instância existente
@@ -94,13 +96,13 @@ func (c *Client) runOnCOMThread(fn func() error) error {
 			}
 			// Verificar erro COM de "Busy" ou "Call rejected"
 			errStr := err.Error()
-			fmt.Printf("[ExcelClient] Erro runOnCOMThread tentativa %d/10: %s\n", i+1, errStr) // DEBUG LOG
+			logger.ExcelDebug(fmt.Sprintf("[ExcelClient] Erro runOnCOMThread tentativa %d/10: %s", i+1, errStr))
 
 			if strings.Contains(errStr, "Call was rejected by callee") ||
 				strings.Contains(errStr, "A chamada foi rejeitada pelo chamado") ||
 				strings.Contains(errStr, "80010001") {
 
-				fmt.Printf("[ExcelClient] Excel ocupado. Aguardando 1s...\n")
+				logger.ExcelWarn("[ExcelClient] Excel ocupado. Aguardando 1s...")
 				time.Sleep(time.Millisecond * 1000)
 				continue
 			}
@@ -132,13 +134,13 @@ func runOnCOMThreadWithResult[T any](c *Client, fn func() (T, error)) (T, error)
 			}
 			// Verificar erro COM de "Busy" ou "Call rejected"
 			errStr := err.Error()
-			fmt.Printf("[ExcelClient] Erro runWithResult tentativa %d/10: %s\n", i+1, errStr) // DEBUG LOG
+			logger.ExcelDebug(fmt.Sprintf("[ExcelClient] Erro runWithResult tentativa %d/10: %s", i+1, errStr))
 
 			if strings.Contains(errStr, "Call was rejected by callee") ||
 				strings.Contains(errStr, "A chamada foi rejeitada pelo chamado") ||
 				strings.Contains(errStr, "80010001") {
 
-				fmt.Printf("[ExcelClient] Excel ocupado. Aguardando 1s...\n")
+				logger.ExcelWarn("[ExcelClient] Excel ocupado. Aguardando 1s...")
 				time.Sleep(time.Millisecond * 1000)
 				continue
 			}

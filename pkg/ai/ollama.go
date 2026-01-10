@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"excel-ai/pkg/logger"
 )
 
 // OllamaClient cliente para API nativa do Ollama (/api/chat)
@@ -183,10 +185,10 @@ func (c *OllamaClient) ChatStreamWithTools(ctx context.Context, messages []Messa
 	// Usar API nativa /api/chat (não /v1/chat/completions)
 	url := c.baseURL + "/api/chat"
 
-	fmt.Printf("[OLLAMA] URL: %s\n", url)
-	fmt.Printf("[OLLAMA] Model: %s\n", c.model)
-	fmt.Printf("[OLLAMA] Messages count: %d\n", len(ollamaMessages))
-	fmt.Printf("[OLLAMA] Tools count: %d\n", len(tools))
+	logger.AIDebug(fmt.Sprintf("[OLLAMA] URL: %s", url))
+	logger.AIDebug(fmt.Sprintf("[OLLAMA] Model: %s", c.model))
+	logger.AIDebug(fmt.Sprintf("[OLLAMA] Messages count: %d", len(ollamaMessages)))
+	logger.AIDebug(fmt.Sprintf("[OLLAMA] Tools count: %d", len(tools)))
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -202,7 +204,7 @@ func (c *OllamaClient) ChatStreamWithTools(ctx context.Context, messages []Messa
 	}
 	defer resp.Body.Close()
 
-	fmt.Printf("[OLLAMA] Response status: %d\n", resp.StatusCode)
+	logger.AIDebug(fmt.Sprintf("[OLLAMA] Response status: %d", resp.StatusCode))
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -232,14 +234,14 @@ func (c *OllamaClient) ChatStreamWithTools(ctx context.Context, messages []Messa
 		var chunk OllamaChatResponse
 		if err := json.Unmarshal(line, &chunk); err != nil {
 			// Log mas continue (pode ser linha inválida)
-			fmt.Printf("[OLLAMA] Erro ao parsear chunk: %v - raw: %s\n", err, string(line[:min(100, len(line))]))
+			logger.AIError(fmt.Sprintf("[OLLAMA] Erro ao parsear chunk: %v - raw: %s", err, string(line[:min(100, len(line))])))
 			continue
 		}
 
 		// DEBUG: Log do chunk
 		if chunk.Message.Content != "" || len(chunk.Message.ToolCalls) > 0 {
-			fmt.Printf("[OLLAMA] Chunk - Content: %q, ToolCalls: %d, Done: %v\n",
-				truncate(chunk.Message.Content, 50), len(chunk.Message.ToolCalls), chunk.Done)
+			logger.AIDebug(fmt.Sprintf("[OLLAMA] Chunk - Content: %q, ToolCalls: %d, Done: %v",
+				truncate(chunk.Message.Content, 50), len(chunk.Message.ToolCalls), chunk.Done))
 		}
 
 		// Processar conteúdo de texto
@@ -262,18 +264,18 @@ func (c *OllamaClient) ChatStreamWithTools(ctx context.Context, messages []Messa
 		if len(chunk.Message.ToolCalls) > 0 {
 			rawToolCalls += len(chunk.Message.ToolCalls)
 			for _, tc := range chunk.Message.ToolCalls {
-				fmt.Printf("[OLLAMA] Raw tool call: name=%q, args=%v\n", tc.Function.Name, tc.Function.Arguments)
+				logger.AIDebug(fmt.Sprintf("[OLLAMA] Raw tool call: name=%q, args=%v", tc.Function.Name, tc.Function.Arguments))
 
 				// Validar que temos nome válido
 				if tc.Function.Name == "" {
-					fmt.Printf("[OLLAMA] Ignorando tool call com nome vazio\n")
+					logger.AIWarn("[OLLAMA] Ignorando tool call com nome vazio")
 					continue
 				}
 
 				// Converter arguments de map para JSON string (formato esperado pelo resto do código)
 				argsJSON, err := json.Marshal(tc.Function.Arguments)
 				if err != nil {
-					fmt.Printf("[OLLAMA] Erro ao serializar arguments: %v\n", err)
+					logger.AIError(fmt.Sprintf("[OLLAMA] Erro ao serializar arguments: %v", err))
 					continue
 				}
 
@@ -287,14 +289,14 @@ func (c *OllamaClient) ChatStreamWithTools(ctx context.Context, messages []Messa
 				}
 				toolCalls = append(toolCalls, toolCall)
 
-				fmt.Printf("[OLLAMA] Tool call válido: %s\n", tc.Function.Name)
+				logger.AIDebug(fmt.Sprintf("[OLLAMA] Tool call válido: %s", tc.Function.Name))
 			}
 		}
 
 		// Se done, terminamos
 		if chunk.Done {
-			fmt.Printf("[OLLAMA] Stream finalizado. RawToolCalls: %d, ValidToolCalls: %d, ResponseLen: %d\n",
-				rawToolCalls, len(toolCalls), fullResponse.Len())
+			logger.AIDebug(fmt.Sprintf("[OLLAMA] Stream finalizado. RawToolCalls: %d, ValidToolCalls: %d, ResponseLen: %d",
+				rawToolCalls, len(toolCalls), fullResponse.Len()))
 			break
 		}
 	}

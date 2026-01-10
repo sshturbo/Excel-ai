@@ -2,6 +2,8 @@ package ai
 
 import (
 	"fmt"
+
+	"excel-ai/pkg/logger"
 )
 
 // EstimateTokens estima o número de tokens em uma string (aproximação simples)
@@ -33,7 +35,7 @@ func PruneMessages(messages []Message, maxInputTokens int) []Message {
 		return messages
 	}
 
-	fmt.Printf("[Prune] Total tokens (%d) exceeds limit (%d). Pruning...\n", totalTokens, maxInputTokens)
+	logger.AIDebug(fmt.Sprintf("[Prune] Total tokens (%d) exceeds limit (%d). Pruning...", totalTokens, maxInputTokens))
 
 	var pruned []Message
 	var systemMessage *Message
@@ -91,6 +93,6 @@ func PruneMessages(messages []Message, maxInputTokens int) []Message {
 	pruned = append(pruned, history...)
 	pruned = append(pruned, lastMessage)
 
-	fmt.Printf("[Prune] Pruned from %d to %d messages\n", len(messages), len(pruned))
+	logger.AIDebug(fmt.Sprintf("[Prune] Pruned from %d to %d messages", len(messages), len(pruned)))
 	return pruned
 }

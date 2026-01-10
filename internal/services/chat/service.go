@@ -2,12 +2,12 @@ package chat
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"excel-ai/internal/domain"
 	"excel-ai/internal/services/excel"
 	"excel-ai/pkg/ai"
+	"excel-ai/pkg/logger"
 	"excel-ai/pkg/storage"
 )
 
@@ -36,6 +36,8 @@ type Service struct {
 }
 
 func NewService(storage *storage.Storage) *Service {
+	logger.ChatInfo("Inicializando chat service")
+	
 	svc := &Service{
 		client:           ai.NewClient("", "", ""), // API Key, Model, BaseURL set later
 		geminiClient:     ai.NewGeminiClient("", ""),
@@ -50,8 +52,10 @@ func NewService(storage *storage.Storage) *Service {
 	// Inicializar orquestrador
 	orchestrator, err := NewOrchestrator(svc)
 	if err != nil {
-		fmt.Printf("[SERVICE] Erro ao inicializar orquestrador: %v\n", err)
+		logger.ChatError("Erro ao inicializar orquestrador: " + err.Error())
 		// Continuar mesmo sem orquestrador
+	} else {
+		logger.ChatInfo("Orquestrador inicializado com sucesso")
 	}
 	svc.orchestrator = orchestrator
 
@@ -59,18 +63,21 @@ func NewService(storage *storage.Storage) *Service {
 }
 
 func (s *Service) SetAPIKey(apiKey string) {
+	logger.ChatInfo("Atualizando API key")
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.client.SetAPIKey(apiKey)
 }
 
 func (s *Service) SetModel(modelID string) {
+	logger.ChatInfo("Atualizando modelo: " + modelID)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.client.SetModel(modelID)
 }
 
 func (s *Service) SetBaseURL(url string) {
+	logger.ChatInfo("Atualizando base URL: " + url)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.client.SetBaseURL(url)
@@ -81,6 +88,7 @@ func (s *Service) SetBaseURL(url string) {
 
 // SetProvider atualiza o provider e reconfigura os clientes
 func (s *Service) SetProvider(provider string) {
+	logger.ChatInfo("Atualizando provider: " + provider)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.provider = provider
@@ -88,10 +96,12 @@ func (s *Service) SetProvider(provider string) {
 
 // RefreshConfig recarrega configurações do storage
 func (s *Service) RefreshConfig() {
+	logger.ChatInfo("Recarregando configurações")
 	s.refreshConfig()
 }
 
 func (s *Service) SetExcelService(svc *excel.Service) {
+	logger.ChatInfo("Configurando Excel service")
 	s.excelService = svc
 }
 
@@ -102,9 +112,9 @@ func (s *Service) SetOrchestration(enabled bool) {
 	s.useOrchestration = enabled
 
 	if enabled {
-		fmt.Println("[SERVICE] Orquestração habilitada")
+		logger.ChatInfo("Orquestração habilitada")
 	} else {
-		fmt.Println("[SERVICE] Orquestração desabilitada")
+		logger.ChatInfo("Orquestração desabilitada")
 	}
 }
 
@@ -117,11 +127,17 @@ func (s *Service) GetOrchestration() bool {
 
 // StartOrchestrator inicia o orquestrador
 func (s *Service) StartOrchestrator(ctx context.Context) error {
-	return s.orchestrator.Start(ctx)
+	logger.ChatInfo("Iniciando orquestrador")
+	err := s.orchestrator.Start(ctx)
+	if err != nil {
+		logger.ChatError("Erro ao iniciar orquestrador: " + err.Error())
+	}
+	return err
 }
 
 // StopOrchestrator para o orquestrador
 func (s *Service) StopOrchestrator() {
+	logger.ChatInfo("Parando orquestrador")
 	s.orchestrator.Stop()
 }
 

@@ -2,10 +2,10 @@ package app
 
 import (
 	"context"
-	"fmt"
 
 	chatService "excel-ai/internal/services/chat"
 	excelService "excel-ai/internal/services/excel"
+	"excel-ai/pkg/logger"
 	"excel-ai/pkg/storage"
 )
 
@@ -31,38 +31,24 @@ func NewApp() *App {
 	chatSvc := chatService.NewService(stor)
 	chatSvc.SetExcelService(excelSvc)
 
-	// Configurações padrão (Groq)
-	defaultAPIKey := "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"
-	defaultModel := "openai/gpt-oss-120b"
-	defaultBaseURL := "https://api.groq.com/openai/v1"
-
-	// Carregar configurações salvas ou usar padrão
-	configLoaded := false
+	// Carregar configurações salvas
 	if stor != nil {
 		if cfg, err := stor.LoadConfig(); err == nil && cfg != nil {
 			if cfg.APIKey != "" {
 				chatSvc.SetAPIKey(cfg.APIKey)
-				configLoaded = true
+				logger.AppInfo("API key configurada pelo usuário")
+			} else {
+				logger.AppWarn("API key não configurada - usuário deve configurar nas configurações")
 			}
 			if cfg.Model != "" {
 				chatSvc.SetModel(cfg.Model)
 			}
 			if cfg.BaseURL != "" {
 				chatSvc.SetBaseURL(cfg.BaseURL)
-			} else if cfg.Provider == "groq" {
-				chatSvc.SetBaseURL("https://api.groq.com/openai/v1")
 			}
+		} else {
+			logger.AppWarn("Nenhuma configuração encontrada - usuário deve configurar API key")
 		}
-	}
-
-	// Se não carregou configuração do usuário, usar padrão Groq
-	if !configLoaded {
-		fmt.Println("[DEBUG] Usando configuração padrão Groq")
-		chatSvc.SetAPIKey(defaultAPIKey)
-		chatSvc.SetModel(defaultModel)
-		chatSvc.SetBaseURL(defaultBaseURL)
-	} else {
-		fmt.Println("[DEBUG] Configuração do usuário carregada")
 	}
 
 	return &App{
@@ -84,9 +70,9 @@ func (a *App) Startup(ctx context.Context) {
 	a.licenseMessage = msg
 
 	if valid {
-		fmt.Println("[LICENSE] ✅ Licença válida:", msg)
+		logger.AppInfo("Licença válida: " + msg)
 	} else {
-		fmt.Println("[LICENSE] ❌ Licença inválida:", msg)
+		logger.AppError("Licença inválida: " + msg)
 	}
 }
 
