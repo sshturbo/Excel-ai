@@ -330,10 +330,6 @@ export function StopWorkbookWatcher() {
   return window['go']['app']['App']['StopWorkbookWatcher']();
 }
 
-export function SwitchProvider(arg1) {
-  return window['go']['app']['App']['SwitchProvider'](arg1);
-}
-
 export function TriggerOrchestratorRecovery() {
   return window['go']['app']['App']['TriggerOrchestratorRecovery']();
 }

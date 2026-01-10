@@ -1,5 +1,6 @@
 // Header component - Top navigation bar with theme toggle
 import { Button } from "@/components/ui/button"
+import { KeyboardShortcuts } from "@/components/KeyboardShortcuts"
 
 interface HeaderProps {
     connected: boolean
@@ -8,6 +9,13 @@ interface HeaderProps {
     onOpenSettings: () => void
     onConnect: () => void
     onToggleTheme: () => void
+    onRefreshWorkbooks?: () => void
+    onTogglePreview?: () => void
+    onToggleChart?: () => void
+    onUndo?: () => void
+    onOpenExportDialog?: () => void
+    onToggleFullscreen?: () => void
+    isFullscreen?: boolean
 }
 
 export function Header({
@@ -16,7 +24,14 @@ export function Header({
     onNewConversation,
     onOpenSettings,
     onConnect,
-    onToggleTheme
+    onToggleTheme,
+    onRefreshWorkbooks,
+    onTogglePreview,
+    onToggleChart,
+    onUndo,
+    onOpenExportDialog,
+    onToggleFullscreen,
+    isFullscreen = false
 }: HeaderProps) {
     return (
         <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/60 backdrop-blur supports-backdrop-filter:bg-card/40">
@@ -30,6 +45,40 @@ export function Header({
             </div>
 
             <div className="flex items-center gap-3">
+                {/* Export Button */}
+                <Button
+                    onClick={onOpenExportDialog}
+                    variant="outline"
+                    size="sm"
+                    className="text-xs"
+                >
+                    <span className="mr-1">📤</span>
+                    Exportar
+                </Button>
+
+                {/* Keyboard Shortcuts */}
+                <KeyboardShortcuts
+                    onNewConversation={onNewConversation}
+                    onOpenSettings={onOpenSettings}
+                    onConnectExcel={onConnect}
+                    onRefreshWorkbooks={onRefreshWorkbooks}
+                    onTogglePreview={onTogglePreview}
+                    onToggleChart={onToggleChart}
+                    onToggleTheme={onToggleTheme}
+                    onUndo={onUndo}
+                />
+
+                {/* Fullscreen toggle */}
+                {onToggleFullscreen && (
+                    <button
+                        onClick={onToggleFullscreen}
+                        className="p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                        title={isFullscreen ? 'Sair de tela cheia (F11)' : 'Tela cheia (F11)'}
+                    >
+                        {isFullscreen ? '⛶' : '⛶'}
+                    </button>
+                )}
+
                 {/* Theme toggle */}
                 <button
                     onClick={onToggleTheme}

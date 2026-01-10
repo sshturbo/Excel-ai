@@ -12,11 +12,7 @@ import (
 )
 
 type Service struct {
-	client        *ai.Client
-	geminiClient  *ai.GeminiClient
-	ollamaClient  *ai.OllamaClient // Cliente nativo Ollama para melhor suporte a tools
 	zaiClient     *ai.ZAIClient    // Cliente nativo Z.AI para GLM models
-	provider      string           // "openrouter", "groq", "google", "custom", "ollama", "zai"
 	storage       *storage.Storage
 	mu            sync.Mutex
 	cancelMu      sync.Mutex // Mutex separado para cancelFunc (evita deadlock)
@@ -36,14 +32,10 @@ type Service struct {
 }
 
 func NewService(storage *storage.Storage) *Service {
-	logger.ChatInfo("Inicializando chat service")
+	logger.ChatInfo("Inicializando chat service com Z.AI")
 	
 	svc := &Service{
-		client:           ai.NewClient("", "", ""), // API Key, Model, BaseURL set later
-		geminiClient:     ai.NewGeminiClient("", ""),
-		ollamaClient:     ai.NewOllamaClient("", ""), // Cliente nativo Ollama
 		zaiClient:        ai.NewZAIClient("", ""),    // Cliente nativo Z.AI
-		provider:         "openrouter",
 		storage:          storage,
 		chatHistory:      []domain.Message{},
 		useOrchestration: false, // Desabilitado por padrão
@@ -63,35 +55,24 @@ func NewService(storage *storage.Storage) *Service {
 }
 
 func (s *Service) SetAPIKey(apiKey string) {
-	logger.ChatInfo("Atualizando API key")
+	logger.ChatInfo("Atualizando API key Z.AI")
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.client.SetAPIKey(apiKey)
+	s.zaiClient.SetAPIKey(apiKey)
 }
 
 func (s *Service) SetModel(modelID string) {
-	logger.ChatInfo("Atualizando modelo: " + modelID)
+	logger.ChatInfo("Atualizando modelo Z.AI: " + modelID)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.client.SetModel(modelID)
+	s.zaiClient.SetModel(modelID)
 }
 
 func (s *Service) SetBaseURL(url string) {
-	logger.ChatInfo("Atualizando base URL: " + url)
+	logger.ChatInfo("Atualizando base URL Z.AI: " + url)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.client.SetBaseURL(url)
-	if s.ollamaClient != nil {
-		s.ollamaClient.SetBaseURL(url)
-	}
-}
-
-// SetProvider atualiza o provider e reconfigura os clientes
-func (s *Service) SetProvider(provider string) {
-	logger.ChatInfo("Atualizando provider: " + provider)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.provider = provider
+	s.zaiClient.SetBaseURL(url)
 }
 
 // RefreshConfig recarrega configurações do storage

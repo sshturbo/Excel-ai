@@ -5,6 +5,137 @@ import (
 	"fmt"
 )
 
+// executeToolCall executa uma tool call da Z.ai diretamente
+func (s *Service) executeToolCall(toolName string, args map[string]interface{}) (string, error) {
+	// Mapear ferramentas Z.ai para o sistema interno
+	// Consultas (queries) não precisam de confirmação
+	queryTools := map[string]bool{
+		"list_sheets":      true,
+		"query_batch":      true,
+		"get_range_values": true,
+		"get_cell_formula": true,
+		"get_active_cell":  true,
+	}
+
+	var cmd ToolCommand
+	if queryTools[toolName] {
+		cmd.Type = ToolTypeQuery
+	} else {
+		cmd.Type = ToolTypeAction
+	}
+
+	// Converter args para ToolCommand format
+	// Para query_batch: extrair queries array
+	if toolName == "query_batch" {
+		queries, ok := args["queries"].([]interface{})
+		if ok && len(queries) > 0 {
+			// Criar comandos individuais para cada query
+			results := make([]string, 0, len(queries))
+			sheet, _ := args["sheet"].(string)
+			
+			for _, q := range queries {
+				if queryStr, ok := q.(string); ok {
+					queryCmd := ToolCommand{
+						Type: ToolTypeQuery,
+						Payload: map[string]interface{}{
+							"type":  convertQueryType(queryStr),
+							"sheet": sheet,
+						},
+					}
+					result, err := s.ExecuteTool(queryCmd)
+					if err != nil {
+						results = append(results, fmt.Sprintf("ERROR: %v", err))
+					} else {
+						results = append(results, result)
+					}
+				}
+			}
+			return fmt.Sprintf("QUERY_BATCH (%d queries):\n%s", len(results), joinResults(results)), nil
+		}
+	}
+
+	// Para outras ferramentas, converter args para formato interno
+	cmd.Payload = convertToolArguments(toolName, args)
+
+	return s.ExecuteTool(cmd)
+}
+
+// convertQueryType converte query string para tipo interno
+func convertQueryType(query string) string {
+	switch query {
+	case "headers":
+		return "get-headers"
+	case "row_count":
+		return "get-row-count"
+	case "used_range":
+		return "get-used-range"
+	case "sample_data":
+		return "get-range-values"
+	case "column_count":
+		return "get-column-count"
+	case "has_filter":
+		return "has-filter"
+	case "charts":
+		return "list-charts"
+	case "tables":
+		return "list-tables"
+	default:
+		return "get-range-values"
+	}
+}
+
+// convertToolArguments converte args da Z.ai para formato interno
+func convertToolArguments(toolName string, args map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+	
+	// Para get_range_values
+	if toolName == "get_range_values" {
+		result["type"] = "get-range-values"
+		if sheet, ok := args["sheet"].(string); ok {
+			result["sheet"] = sheet
+		}
+		if rng, ok := args["range"].(string); ok {
+			result["range"] = rng
+		}
+		return result
+	}
+
+	// Para get_cell_formula
+	if toolName == "get_cell_formula" {
+		result["type"] = "get-cell-formula"
+		if sheet, ok := args["sheet"].(string); ok {
+			result["sheet"] = sheet
+		}
+		if cell, ok := args["cell"].(string); ok {
+			result["cell"] = cell
+		}
+		return result
+	}
+
+	// Para list_sheets
+	if toolName == "list_sheets" {
+		result["type"] = "list-sheets"
+		return result
+	}
+
+	// Para get_active_cell
+	if toolName == "get_active_cell" {
+		result["type"] = "get-active-cell"
+		return result
+	}
+
+	// Para execute_macro - converter para macro
+	if toolName == "execute_macro" {
+		result["op"] = "macro"
+		if actions, ok := args["actions"].([]interface{}); ok {
+			result["actions"] = actions
+		}
+		return result
+	}
+
+	return result
+}
+
 // ExecuteTool executa o comando extraído da IA
 func (s *Service) ExecuteTool(cmd ToolCommand) (string, error) {
 	if s.excelService == nil {

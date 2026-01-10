@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"excel-ai/internal/domain"
 	"excel-ai/pkg/logger"
 )
 
@@ -42,6 +43,11 @@ func NewZAIClient(apiKey, model string) *ZAIClient {
 // SetAPIKey define a API key
 func (c *ZAIClient) SetAPIKey(apiKey string) {
 	c.apiKey = apiKey
+}
+
+// GetAPIKey retorna a API key
+func (c *ZAIClient) GetAPIKey() string {
+	return c.apiKey
 }
 
 // SetModel define o modelo
@@ -456,13 +462,13 @@ func (c *ZAIClient) ChatStreamWithTools(ctx context.Context, messages []Message,
 }
 
 // GetAvailableModels retorna os modelos disponíveis (hardcoded para Z.AI)
-func (c *ZAIClient) GetAvailableModels() ([]ModelInfo, error) {
+func (c *ZAIClient) GetAvailableModels() ([]domain.ModelInfo, error) {
 	// Z.AI não tem endpoint /models funcional, retornar lista hardcoded
-	return []ModelInfo{
-		{ID: "glm-4.7", Name: "GLM-4.7", Description: "Latest flagship model - optimized for coding", ContextLength: 128000, Pricing: Pricing{Prompt: "¥2.5/1M", Completion: "¥10/1M"}},
-		{ID: "glm-4.6v", Name: "GLM-4.6V", Description: "Vision model with multimodal capabilities", ContextLength: 128000, Pricing: Pricing{Prompt: "¥2/1M", Completion: "¥8/1M"}},
-		{ID: "glm-4.6", Name: "GLM-4.6", Description: "Balanced model with native function calling", ContextLength: 128000, Pricing: Pricing{Prompt: "¥1.5/1M", Completion: "¥6/1M"}},
-		{ID: "glm-4.5", Name: "GLM-4.5", Description: "Cost-effective model with function calling", ContextLength: 128000, Pricing: Pricing{Prompt: "¥1/1M", Completion: "¥4/1M"}},
-		{ID: "glm-4.5-air", Name: "GLM-4.5 Air", Description: "Lightweight model for fast responses", ContextLength: 128000, Pricing: Pricing{Prompt: "¥0.5/1M", Completion: "¥2/1M"}},
+	return []domain.ModelInfo{
+		{ID: "glm-4.7", Name: "GLM-4.7", Description: "Latest flagship model - optimized for coding", ContextLength: 128000, Pricing: domain.ModelPricing{Prompt: "¥2.5/1M", Completion: "¥10/1M"}},
+		{ID: "glm-4.6v", Name: "GLM-4.6V", Description: "Vision model with multimodal capabilities", ContextLength: 128000, Pricing: domain.ModelPricing{Prompt: "¥2/1M", Completion: "¥8/1M"}},
+		{ID: "glm-4.6", Name: "GLM-4.6", Description: "Balanced model with native function calling", ContextLength: 128000, Pricing: domain.ModelPricing{Prompt: "¥1.5/1M", Completion: "¥6/1M"}},
+		{ID: "glm-4.5", Name: "GLM-4.5", Description: "Cost-effective model with function calling", ContextLength: 128000, Pricing: domain.ModelPricing{Prompt: "¥1/1M", Completion: "¥4/1M"}},
+		{ID: "glm-4.5-air", Name: "GLM-4.5 Air", Description: "Lightweight model for fast responses", ContextLength: 128000, Pricing: domain.ModelPricing{Prompt: "¥0.5/1M", Completion: "¥2/1M"}},
 	}, nil
 }

@@ -10,6 +10,7 @@ import { useChat } from '@/hooks/useChat'
 import { useConversations } from '@/hooks/useConversations'
 import { useStreamingMessage } from '@/hooks/useStreamingMessage'
 import { useTheme } from '@/hooks/useTheme'
+import { useFullscreen } from '@/hooks/useFullscreen'
 
 // Components
 import { Header } from '@/components/layout/Header'
@@ -23,6 +24,7 @@ import { DataPreview } from '@/components/excel/DataPreview'
 import { ChartViewer } from '@/components/excel/ChartViewer'
 import { PendingActions, type ActionState } from '@/components/excel/PendingActions'
 import { Toolbar } from '@/components/excel/Toolbar'
+import { ExportDialog } from '@/components/ExportDialog'
 
 // Services
 import { executeExcelAction } from '@/services/excelActions'
@@ -46,11 +48,13 @@ import {
 } from "../wailsjs/go/app/App"
 
 export default function App() {
-    // Theme
+    // Theme & Fullscreen
     const { theme, toggleTheme } = useTheme()
+    const { isFullscreen, toggleFullscreen } = useFullscreen()
 
     // Settings state
     const [showSettings, setShowSettings] = useState(false)
+    const [showExportDialog, setShowExportDialog] = useState(false)
     const [askBeforeApply, setAskBeforeApply] = useState(true)
     const [apiKey, setApiKey] = useState('')
     const [model, setModel] = useState('openai/gpt-4o-mini')
@@ -517,6 +521,13 @@ export default function App() {
                 onOpenSettings={() => setShowSettings(true)}
                 onConnect={excel.handleConnect}
                 onToggleTheme={toggleTheme}
+                onRefreshWorkbooks={excel.refreshWorkbooks}
+                onTogglePreview={() => { setShowPreview(!showPreview); setShowChart(false); }}
+                onToggleChart={() => { setShowChart(!showChart); setShowPreview(false); }}
+                onUndo={handleUndo}
+                onOpenExportDialog={() => setShowExportDialog(true)}
+                onToggleFullscreen={toggleFullscreen}
+                isFullscreen={isFullscreen}
             />
 
             {/* Main */}
@@ -532,6 +543,7 @@ export default function App() {
                     onExpandWorkbook={excel.setExpandedWorkbook}
                     onSelectSheet={excel.handleSelectSheet}
                     conversations={conversations.conversations}
+                    isLoadingConversations={conversations.isLoading}
                     onLoadConversations={conversations.loadConversations}
                     onLoadConversation={handleLoadConversation}
                     onDeleteConversation={conversations.handleDeleteConversation}
@@ -625,6 +637,14 @@ export default function App() {
                     />
                 </section>
             </main>
+
+            {/* Export Dialog */}
+            <ExportDialog
+                open={showExportDialog}
+                onOpenChange={setShowExportDialog}
+                messages={chat.messages}
+                conversationTitle="Conversa"
+            />
         </div>
     )
 }

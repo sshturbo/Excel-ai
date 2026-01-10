@@ -171,8 +171,6 @@ export function StopOrchestrator():Promise<void>;
 
 export function StopWorkbookWatcher():Promise<void>;
 
-export function SwitchProvider(arg1:string):Promise<storage.Config>;
-
 export function TriggerOrchestratorRecovery():Promise<void>;
 
 export function UndoByConversation(arg1:string):Promise<number>;

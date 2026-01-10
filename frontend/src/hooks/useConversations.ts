@@ -13,6 +13,7 @@ import {
 
 interface UseConversationsReturn {
     conversations: ConversationItem[]
+    isLoading: boolean
     loadConversations: () => Promise<void>
     handleLoadConversation: (convId: string) => Promise<Message[]>
     handleDeleteConversation: (convId: string, e: React.MouseEvent) => Promise<void>
@@ -21,8 +22,10 @@ interface UseConversationsReturn {
 
 export function useConversations(): UseConversationsReturn {
     const [conversations, setConversations] = useState<ConversationItem[]>([])
+    const [isLoading, setIsLoading] = useState(false)
 
     const loadConversations = useCallback(async () => {
+        setIsLoading(true)
         try {
             const list = await ListConversations()
             console.log('[DEBUG] Conversas carregadas:', list)
@@ -33,6 +36,8 @@ export function useConversations(): UseConversationsReturn {
             }
         } catch (err) {
             console.error('Erro ao carregar conversas:', err)
+        } finally {
+            setIsLoading(false)
         }
     }, [])
 
@@ -117,6 +122,7 @@ export function useConversations(): UseConversationsReturn {
 
     return {
         conversations,
+        isLoading,
         loadConversations,
         handleLoadConversation,
         handleDeleteConversation,

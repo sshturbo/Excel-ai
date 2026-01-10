@@ -1,4 +1,4 @@
-// Hook for managing settings state and operations
+// Hook for managing settings state and operations - Z.AI Only
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { toast } from 'sonner'
 import { dto } from "../../wailsjs/go/models"
@@ -6,22 +6,19 @@ import { dto } from "../../wailsjs/go/models"
 import {
     SetAPIKey,
     SetModel,
+    SetToolModel,
     GetSavedConfig,
     UpdateConfig,
-    GetAvailableModels,
-    SwitchProvider
+    GetAvailableModels
 } from "../../wailsjs/go/app/App"
 
-// Popular models fallback
-export const popularModels = [
-    { value: 'openai/gpt-4o-mini', label: 'GPT-4o Mini', desc: 'Rápido e econômico' },
-    { value: 'openai/gpt-4o', label: 'GPT-4o', desc: 'Avançado' },
-    { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet', desc: 'Análise excelente' },
-    { value: 'anthropic/claude-3-haiku', label: 'Claude 3 Haiku', desc: 'Ultra rápido' },
-    { value: 'google/gemini-pro-1.5', label: 'Gemini Pro 1.5', desc: 'Contexto longo' },
-    { value: 'deepseek/deepseek-chat', label: 'DeepSeek Chat', desc: 'Ótimo custo' },
-    { value: 'glm-4.7', label: 'GLM-4.7', desc: 'Z.AI - Coding otimizado' },
-    { value: 'glm-4.6', label: 'GLM-4.6', desc: 'Z.AI - Versátil' },
+// Z.AI Models
+export const zaiModels = [
+    { value: 'glm-4.7', label: 'GLM-4.7', desc: 'Flagship - melhor para coding', context: 128000 },
+    { value: 'glm-4.6v', label: 'GLM-4.6V', desc: 'Multimodal com visão', context: 128000 },
+    { value: 'glm-4.6', label: 'GLM-4.6', desc: 'Versátil e equilibrado', context: 128000 },
+    { value: 'glm-4.5', label: 'GLM-4.5', desc: 'Econômico', context: 128000 },
+    { value: 'glm-4.5-air', label: 'GLM-4.5 Air', desc: 'Ultraleve', context: 128000 },
 ]
 
 interface UseSettingsProps {
@@ -32,10 +29,9 @@ interface UseSettingsProps {
 export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSettingsProps) {
     // API settings
     const [apiKey, setApiKey] = useState('')
-    const [model, setModel] = useState('openai/gpt-4o-mini')
-    const [toolModel, setToolModel] = useState('') // New secondary model state
-    const [provider, setProvider] = useState('openrouter')
-    const [baseUrl, setBaseUrl] = useState('')
+    const [model, setModel] = useState('glm-4.7')
+    const [toolModel, setToolModel] = useState('')
+    const [baseUrl, setBaseUrl] = useState('https://api.z.ai/api/coding/paas/v4/')
     const [customModel, setCustomModel] = useState('')
     const [useCustomModel, setUseCustomModel] = useState(false)
 
@@ -60,12 +56,6 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
         }
     }, [])
 
-    // Clear models when changing provider
-    useEffect(() => {
-        setAvailableModels([])
-        setModelFilter('')
-    }, [provider])
-
     const loadConfig = useCallback(async () => {
         try {
             const cfg = await GetSavedConfig()
@@ -74,12 +64,11 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
                     setApiKey(cfg.apiKey)
                     loadModels()
                 }
-                if (cfg.provider) setProvider(cfg.provider)
                 if (cfg.baseUrl) setBaseUrl(cfg.baseUrl)
                 if (cfg.model) {
                     setModel(cfg.model)
-                    const isPopular = popularModels.some(m => m.value === cfg.model)
-                    if (!isPopular) {
+                    const isZaiModel = zaiModels.some(m => m.value === cfg.model)
+                    if (!isZaiModel) {
                         setCustomModel(cfg.model)
                         setUseCustomModel(true)
                     }
@@ -107,24 +96,11 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
         }
 
         setIsLoadingModels(true)
-        setAvailableModels([]) // Limpar modelos anteriores
+        setAvailableModels([])
 
         try {
-            // Determinar URL baseado no provider atual
-            let url = ''
-            if (provider === 'groq') {
-                url = 'https://api.groq.com/openai/v1'
-            } else if (provider === 'google') {
-                url = 'https://generativelanguage.googleapis.com/v1beta'
-            } else if (provider === 'zai') {
-                url = 'https://api.z.ai/api/paas/v4'
-            } else if (provider === 'openrouter') {
-                url = 'https://openrouter.ai/api/v1'
-            } else {
-                url = baseUrl || ''
-            }
-
-            console.log('[DEBUG] Carregando modelos para provider:', provider, 'URL:', url)
+            const url = baseUrl || 'https://api.z.ai/api/coding/paas/v4/'
+            console.log('[DEBUG] Carregando modelos Z.AI, URL:', url)
             const models = await GetAvailableModels(apiKey, url)
             if (models && models.length > 0) {
                 setAvailableModels(models)
@@ -134,13 +110,12 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
             }
         } catch (err) {
             console.error('Erro ao carregar modelos:', err)
-            toast.error('Erro ao carregar modelos. Usando lista padrão.')
+            toast.error('Erro ao carregar modelos')
         } finally {
             setIsLoadingModels(false)
         }
-    }, [apiKey, provider, baseUrl])
+    }, [apiKey, baseUrl])
 
-    // Filter models
     const filteredModels = useMemo(() => {
         if (!modelFilter.trim()) return availableModels.slice(0, 50)
         const search = modelFilter.toLowerCase()
@@ -161,23 +136,25 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
             const selectedModel = useCustomModel ? customModel : model
             await SetModel(selectedModel)
 
-            // Determinar URL correta baseado no provider
-            let correctBaseUrl = ''
-            if (provider === 'groq') {
-                correctBaseUrl = 'https://api.groq.com/openai/v1'
-            } else if (provider === 'google') {
-                correctBaseUrl = 'https://generativelanguage.googleapis.com/v1beta'
-            } else if (provider === 'zai') {
-                correctBaseUrl = 'https://api.z.ai/api/paas/v4'
-            } else if (provider === 'openrouter') {
-                correctBaseUrl = 'https://openrouter.ai/api/v1'
-            } else {
-                correctBaseUrl = baseUrl
+            const effectiveToolModel = toolModel === 'same-as-chat' ? '' : toolModel
+            if (effectiveToolModel) {
+                await SetToolModel(effectiveToolModel)
             }
 
-            // Parâmetros: maxRowsContext, maxContextChars, maxRowsPreview, includeHeaders, detailLevel, customPrompt, language, provider, toolModel, baseUrl
-            const effectiveToolModel = toolModel === 'same-as-chat' ? '' : toolModel
-            await UpdateConfig(maxRowsContext, maxContextChars, maxRowsPreview, includeHeaders, 'normal', '', 'pt-BR', provider, effectiveToolModel, correctBaseUrl)
+            const finalBaseUrl = baseUrl || 'https://api.z.ai/api/coding/paas/v4/'
+            
+            await UpdateConfig(
+                maxRowsContext,
+                maxContextChars,
+                maxRowsPreview,
+                includeHeaders,
+                'normal',
+                '',
+                'pt-BR',
+                'zai',
+                effectiveToolModel,
+                finalBaseUrl
+            )
             toast.success('✅ Configurações salvas!')
             await loadModels()
         } catch (err) {
@@ -186,65 +163,11 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
         } finally {
             setIsSaving(false)
         }
-    }, [apiKey, customModel, model, useCustomModel, toolModel, maxRowsContext, maxContextChars, maxRowsPreview, includeHeaders, provider, baseUrl, loadModels])
+    }, [apiKey, customModel, model, useCustomModel, toolModel, maxRowsContext, maxContextChars, maxRowsPreview, includeHeaders, baseUrl, loadModels])
 
-    const handleProviderChange = useCallback(async (val: string) => {
-        setProvider(val)
-        setAvailableModels([])
-
-        try {
-            const cfg = await SwitchProvider(val)
-            if (cfg) {
-                if (cfg.apiKey) {
-                    setApiKey(cfg.apiKey)
-                } else {
-                    setApiKey('')
-                }
-                if (cfg.model) {
-                    setModel(cfg.model)
-                } else {
-                    setModel('')
-                }
-                if (cfg.toolModel) {
-                    setToolModel(cfg.toolModel)
-                } else {
-                    setToolModel('')
-                }
-                if (cfg.baseUrl) {
-                    setBaseUrl(cfg.baseUrl)
-                } else {
-                    if (val === 'groq') {
-                        setBaseUrl('https://api.groq.com/openai/v1')
-                    } else if (val === 'zai') {
-                        setBaseUrl('https://api.z.ai/api/paas/v4')
-                    } else if (val === 'openrouter') {
-                        setBaseUrl('https://openrouter.ai/api/v1')
-                    } else if (val === 'google') {
-                        setBaseUrl('https://generativelanguage.googleapis.com/v1beta')
-                    } else {
-                        setBaseUrl('')
-                    }
-                }
-
-                if (cfg.apiKey) {
-                    toast.success(`Configurações do ${val} carregadas!`)
-                } else {
-                    toast.info(`Configure a API Key para ${val}`)
-                }
-            }
-        } catch (err) {
-            console.error('Erro ao trocar provider:', err)
-            if (val === 'groq') {
-                setBaseUrl('https://api.groq.com/openai/v1')
-            } else if (val === 'zai') {
-                setBaseUrl('https://api.z.ai/api/paas/v4')
-            } else if (val === 'openrouter') {
-                setBaseUrl('https://openrouter.ai/api/v1')
-            } else if (val === 'google') {
-                setBaseUrl('https://generativelanguage.googleapis.com/v1beta')
-            }
-            setApiKey('')
-        }
+    const handleProviderChange = useCallback(() => {
+        // Não usado mais - Z.AI é o único provider
+        toast.info('Z.AI é o único provider suportado')
     }, [])
 
     return {
@@ -255,7 +178,7 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
         setModel,
         toolModel,
         setToolModel,
-        provider,
+        provider: 'zai',
         baseUrl,
         setBaseUrl,
         customModel,

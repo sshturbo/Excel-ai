@@ -427,7 +427,7 @@ RETORNE APENAS O JSON ARRAY, sem explicações adicionais.
 	}
 
 	var responseBuilder strings.Builder
-	response, err := o.service.client.ChatStream(ctx, messages, func(chunk string) error {
+	response, err := o.service.zaiClient.ChatStream(ctx, messages, func(chunk string) error {
 		responseBuilder.WriteString(chunk)
 		return nil
 	})
@@ -716,7 +716,7 @@ REGRAS:
 	}
 
 	var responseBuilder strings.Builder
-	response, err := o.service.client.ChatStream(ctx, messages, func(chunk string) error {
+	response, err := o.service.zaiClient.ChatStream(ctx, messages, func(chunk string) error {
 		responseBuilder.WriteString(chunk)
 		return onChunk(chunk)
 	})
@@ -1742,16 +1742,11 @@ func (o *Orchestrator) ReplayDecision(snapshotID int64) (string, error) {
 }
 
 // executeDecision executa uma decisão (usado no replay)
-func (o *Orchestrator) executeDecision(decision string) (string, error) {
+func (o *Orchestrator) executeDecision(_ string) (string, error) {
 	// Parsear a decisão para extrair tool e args
 	// Formo esperado: tool_name(args)
 	
-	// Implementação simplificada
-	_, _, err := o.parseDecision(decision)
-	if err != nil {
-		return "", err
-	}
-
+	// Implementação simplificada - placeholder
 	// Placeholder - em produção executaria a decisão real
 	return "", nil
 }

@@ -17,6 +17,7 @@ export interface ConversationItem {
     id: string
     title: string
     updatedAt: string
+    preview?: string  // Preview do conteúdo para busca
 }
 
 export interface PreviewDataType {

@@ -28,19 +28,8 @@ func (a *App) SetAPIKey(apiKey string) error {
 		if cfg == nil {
 			cfg = &storage.Config{}
 		}
-		if cfg.ProviderConfigs == nil {
-			cfg.ProviderConfigs = make(map[string]storage.ProviderConfig)
-		}
 		cfg.APIKey = apiKey
-
-		// Também salvar no mapa do provedor atual
-		provider := cfg.Provider
-		if provider == "" {
-			provider = "openrouter"
-		}
-		providerCfg := cfg.ProviderConfigs[provider]
-		providerCfg.APIKey = apiKey
-		cfg.ProviderConfigs[provider] = providerCfg
+		cfg.Provider = "zai" // Sempre Z.ai
 
 		if err := a.storage.SaveConfig(cfg); err != nil {
 			logger.AppError("Erro ao salvar API key: " + err.Error())
@@ -70,19 +59,7 @@ func (a *App) SetModel(model string) error {
 		if cfg == nil {
 			cfg = &storage.Config{}
 		}
-		if cfg.ProviderConfigs == nil {
-			cfg.ProviderConfigs = make(map[string]storage.ProviderConfig)
-		}
 		cfg.Model = model
-
-		// Também salvar no mapa do provedor atual
-		provider := cfg.Provider
-		if provider == "" {
-			provider = "openrouter"
-		}
-		providerCfg := cfg.ProviderConfigs[provider]
-		providerCfg.Model = model
-		cfg.ProviderConfigs[provider] = providerCfg
 
 		if err := a.storage.SaveConfig(cfg); err != nil {
 			logger.AppError("Erro ao salvar modelo: " + err.Error())
@@ -104,26 +81,13 @@ func (a *App) SetToolModel(toolModel string) error {
 		return apperrors.InvalidInput(v.Error().Error())
 	}
 
-	// a.chatService.SetToolModel(toolModel) // Implementar se necessário no service
 	// Save to storage
 	if a.storage != nil {
 		cfg, _ := a.storage.LoadConfig()
 		if cfg == nil {
 			cfg = &storage.Config{}
 		}
-		if cfg.ProviderConfigs == nil {
-			cfg.ProviderConfigs = make(map[string]storage.ProviderConfig)
-		}
 		cfg.ToolModel = toolModel
-
-		// Também salvar no mapa do provedor atual
-		provider := cfg.Provider
-		if provider == "" {
-			provider = "openrouter"
-		}
-		providerCfg := cfg.ProviderConfigs[provider]
-		providerCfg.ToolModel = toolModel
-		cfg.ProviderConfigs[provider] = providerCfg
 
 		if err := a.storage.SaveConfig(cfg); err != nil {
 			logger.AppError("Erro ao salvar tool model: " + err.Error())
@@ -134,6 +98,7 @@ func (a *App) SetToolModel(toolModel string) error {
 	}
 	return nil
 }
+
 func (a *App) GetAvailableModels(apiKey, baseURL string) ([]dto.ModelInfo, error) {
 	// Validar URL se fornecida
 	if baseURL != "" {
@@ -172,7 +137,6 @@ func (a *App) UpdateConfig(maxRowsContext, maxContextChars, maxRowsPreview int, 
 	v.ValidateInteger("maxRowsContext", fmt.Sprintf("%d", maxRowsContext), 1, 100000)
 	v.ValidateInteger("maxContextChars", fmt.Sprintf("%d", maxContextChars), 100, 1000000)
 	v.ValidateInteger("maxRowsPreview", fmt.Sprintf("%d", maxRowsPreview), 1, 1000)
-	v.ValidateEnum("provider", provider, []string{"openrouter", "groq", "zai"}, false)
 	
 	if baseUrl != "" {
 		v.ValidateURL("baseUrl", baseUrl)
@@ -199,9 +163,6 @@ func (a *App) UpdateConfig(maxRowsContext, maxContextChars, maxRowsPreview int, 
 	if cfg == nil {
 		cfg = &storage.Config{}
 	}
-	if cfg.ProviderConfigs == nil {
-		cfg.ProviderConfigs = make(map[string]storage.ProviderConfig)
-	}
 
 	// Atualizar configurações gerais
 	cfg.MaxRowsContext = maxRowsContext
@@ -211,27 +172,16 @@ func (a *App) UpdateConfig(maxRowsContext, maxContextChars, maxRowsPreview int, 
 	cfg.DetailLevel = detailLevel
 	cfg.CustomPrompt = customPrompt
 	cfg.Language = language
-	cfg.Provider = provider
+	cfg.Provider = "zai" // Sempre Z.ai
 	cfg.BaseURL = baseUrl
 	cfg.ToolModel = toolModel
-
-	// Salvar configurações do provedor atual no mapa de providers
-	cfg.ProviderConfigs[provider] = storage.ProviderConfig{
-		APIKey:    cfg.APIKey,
-		Model:     cfg.Model,
-		ToolModel: toolModel,
-		BaseURL:   baseUrl,
-	}
 
 	// Atualizar serviço
 	if baseUrl != "" {
 		a.chatService.SetBaseURL(baseUrl)
-	} else if provider == "groq" {
-		a.chatService.SetBaseURL("https://api.groq.com/openai/v1")
-	} else if provider == "zai" {
-		a.chatService.SetBaseURL("https://api.z.ai/api/paas/v4")
 	} else {
-		a.chatService.SetBaseURL("https://openrouter.ai/api/v1")
+		// Usar Coding API por padrão
+		a.chatService.SetBaseURL("https://api.z.ai/api/coding/paas/v4/")
 	}
 
 	if err := a.storage.SaveConfig(cfg); err != nil {
@@ -275,50 +225,4 @@ func (a *App) GetAskBeforeApply() (bool, error) {
 		return true, nil
 	}
 	return cfg.AskBeforeApply, nil
-}
-
-// SwitchProvider troca para outro provedor, carregando suas configurações salvas
-func (a *App) SwitchProvider(providerName string) (*storage.Config, error) {
-	// Validar nome do provedor
-	v := validator.NewValidator()
-	v.ValidateEnum("providerName", providerName, []string{"openrouter", "groq", "zai"}, true)
-	if v.HasErrors() {
-		logger.AppWarn("Validação de provider falhou: " + v.Error().Error())
-		return nil, apperrors.InvalidInput(v.Error().Error())
-	}
-	
-	if a.storage == nil {
-		logger.AppError("Storage não disponível ao trocar provider")
-		return nil, apperrors.StorageError("storage não disponível")
-	}
-
-	logger.AppInfo("Trocando para provider: " + providerName)
-	
-	cfg, err := a.storage.SwitchProvider(providerName)
-	if err != nil {
-		logger.AppError("Erro ao trocar provider: " + err.Error())
-		return nil, apperrors.Wrap(err, apperrors.ErrCodeStorageError, "erro ao trocar provider")
-	}
-
-	// IMPORTANTE: Atualizar o provider no serviço de chat PRIMEIRO
-	a.chatService.SetProvider(providerName)
-
-	// Atualizar serviço de chat com as novas configurações
-	if cfg.APIKey != "" {
-		a.chatService.SetAPIKey(cfg.APIKey)
-	}
-	if cfg.Model != "" {
-		a.chatService.SetModel(cfg.Model)
-	}
-	// ToolModel é usado apenas internamente na execução de tools, mas podemos setar se houver método
-	// a.chatService.SetToolModel(cfg.ToolModel)
-	if cfg.BaseURL != "" {
-		a.chatService.SetBaseURL(cfg.BaseURL)
-	}
-
-	// Recarregar configurações completas
-	a.chatService.RefreshConfig()
-
-	logger.AppInfo("Provider alterado com sucesso: " + providerName)
-	return cfg, nil
 }
