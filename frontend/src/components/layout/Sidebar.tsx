@@ -14,6 +14,7 @@ interface SidebarProps {
     contextLoaded: string
     onExpandWorkbook: (name: string | null) => void
     onSelectSheet: (wbName: string, sheetName: string) => void
+    onCloseSession?: () => void
     // Conversations
     conversations: ConversationItem[]
     isLoadingConversations?: boolean
@@ -31,6 +32,7 @@ export function Sidebar({
     contextLoaded,
     onExpandWorkbook,
     onSelectSheet,
+    onCloseSession,
     conversations,
     isLoadingConversations = false,
     onLoadConversations,
@@ -78,15 +80,15 @@ export function Sidebar({
                                             <button
                                                 key={sheet}
                                                 onClick={() => onSelectSheet(wb.name, sheet)}
-                                                className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-muted/60 transition-colors border-l-2 ${isSelected
-                                                    ? 'border-l-primary bg-muted/60'
-                                                    : 'border-transparent'
+                                                className={`w-full flex items-center gap-2 px-4 py-2.5 text-sm transition-all border-l-3 ${isSelected
+                                                    ? 'border-l-primary bg-primary/15 text-primary font-medium'
+                                                    : 'border-transparent hover:bg-muted/60 text-muted-foreground hover:text-foreground'
                                                     }`}
                                             >
-                                                <span className="opacity-70">{isSelected ? '☑️' : '📄'}</span>
-                                                <span className="flex-1 text-left">{sheet}</span>
+                                                <span className={isSelected ? '' : 'opacity-60'}>{isSelected ? '📊' : '📄'}</span>
+                                                <span className="flex-1 text-left truncate">{sheet}</span>
                                                 {isSelected && (
-                                                    <span className="text-emerald-500">✓</span>
+                                                    <span className="bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 rounded font-medium">Ativa</span>
                                                 )}
                                             </button>
                                         )
@@ -101,8 +103,17 @@ export function Sidebar({
                     )}
                 </div>
                 {contextLoaded && (
-                    <div className="mt-3 p-2 bg-primary/10 border border-primary/30 rounded text-xs text-primary">
-                        ✅ {contextLoaded}
+                    <div className="mt-3 p-2 bg-primary/10 border border-primary/30 rounded text-xs text-primary flex items-center justify-between gap-2">
+                        <span className="truncate">✅ {contextLoaded}</span>
+                        {onCloseSession && (
+                            <button
+                                onClick={onCloseSession}
+                                className="shrink-0 p-1 hover:bg-destructive/20 rounded transition-colors text-destructive"
+                                title="Fechar arquivo"
+                            >
+                                ✕
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
@@ -208,8 +219,8 @@ function highlightText(text: string, query: string): React.ReactNode {
     if (!query || !text) return text
 
     const parts = text.split(new RegExp(`(${query})`, 'gi'))
-    
-    return parts.map((part, i) => 
+
+    return parts.map((part, i) =>
         part.toLowerCase() === query.toLowerCase() ? (
             <mark key={i} className="bg-yellow-300/50 text-foreground rounded px-0.5">
                 {part}

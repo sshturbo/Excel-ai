@@ -10,24 +10,44 @@ import (
 	"sync"
 )
 
+// Service gerencia operações de Excel usando apenas Excelize (sem COM)
+// Suporta Linux, macOS e Windows sem necessidade de Excel instalado
 type Service struct {
-	client              *excel.Client
+	fileManager         *excel.FileManager // Gerenciador de arquivos Excelize
+	currentSessionID    string             // SessionID do arquivo atual
+	currentFileName     string             // Nome do arquivo carregado
 	mu                  sync.Mutex
-	currentWorkbook     string
 	currentSheet        string
 	previewData         *excel.SheetData
-	undoStack           []dto.UndoAction // Mantido para fallback
+	undoStack           []dto.UndoAction
 	currentBatchID      int64
 	lastExecutedBatchID int64
 	contextStr          string
-	storage             *storage.Storage // Banco de dados para undo
-	currentConvID       string           // ID da conversa atual
+	storage             *storage.Storage
+	currentConvID       string
 }
 
 func NewService() *Service {
 	return &Service{
-		undoStack: []dto.UndoAction{},
+		fileManager: excel.NewFileManager(),
+		undoStack:   []dto.UndoAction{},
 	}
+}
+
+// getClient retorna o cliente Excelize atual (helper interno)
+func (s *Service) getClient() (*excel.ExcelizeClient, error) {
+	if s.fileManager == nil || s.currentSessionID == "" {
+		return nil, fmt.Errorf("nenhum arquivo carregado")
+	}
+	return s.fileManager.GetClient(s.currentSessionID)
+}
+
+// getClientLocked retorna o cliente sem lock (para uso interno quando já está locked)
+func (s *Service) getClientLocked() (*excel.ExcelizeClient, error) {
+	if s.fileManager == nil || s.currentSessionID == "" {
+		return nil, fmt.Errorf("nenhum arquivo carregado")
+	}
+	return s.fileManager.GetClient(s.currentSessionID)
 }
 
 // SetStorage configura o storage para persistência de undo
@@ -61,75 +81,64 @@ func (s *Service) getFirstSheet() string {
 	return s.currentSheet
 }
 
+// Connect retorna status da conexão (para compatibilidade)
+// No modo Excelize, retorna status baseado em arquivo carregado
 func (s *Service) Connect() (*dto.ExcelStatus, error) {
-	logger.ExcelInfo("Tentando conectar ao Excel")
+	logger.ExcelInfo("Verificando status do serviço Excel")
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.client != nil {
-		s.client.Close()
+	if s.currentSessionID != "" {
+		// Já tem arquivo carregado
+		client, err := s.fileManager.GetClient(s.currentSessionID)
+		if err == nil {
+			sheets := client.ListSheets()
+			workbook := excel.Workbook{
+				Name:   s.currentFileName,
+				Sheets: sheets,
+			}
+			return &dto.ExcelStatus{
+				Connected: true,
+				Workbooks: []excel.Workbook{workbook},
+			}, nil
+		}
 	}
 
-	client, err := excel.NewClient()
-	if err != nil {
-		logger.ExcelError("Erro ao criar cliente Excel: " + err.Error())
-		return &dto.ExcelStatus{Connected: false, Error: err.Error()}, nil
-	}
-
-	s.client = client
-	workbooks, err := s.client.GetOpenWorkbooks()
-	if err != nil {
-		// Se falhar ao listar, consideramos que a conexão não foi totalmente bem sucedida
-		// para permitir que o usuário tente novamente
-		s.client.Close()
-		s.client = nil
-		logger.ExcelError("Erro ao listar planilhas: " + err.Error())
-		return &dto.ExcelStatus{Connected: false, Error: "Conectado ao Excel, mas falha ao listar planilhas: " + err.Error()}, nil
-	}
-
-	logger.ExcelInfo("Conectado ao Excel com sucesso")
-	return &dto.ExcelStatus{Connected: true, Workbooks: workbooks}, nil
+	// Sem arquivo carregado - retorna pronto para receber upload
+	return &dto.ExcelStatus{
+		Connected: false,
+		Error:     "Faça upload de um arquivo .xlsx para começar",
+	}, nil
 }
 
+// RefreshWorkbooks atualiza lista de workbooks (retorna arquivo atual)
 func (s *Service) RefreshWorkbooks() (*dto.ExcelStatus, error) {
-	logger.ExcelDebug("Atualizando lista de workbooks")
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.client == nil {
-		logger.ExcelWarn("Excel não conectado")
-		return &dto.ExcelStatus{Connected: false, Error: "Não conectado"}, nil
-	}
-
-	workbooks, err := s.client.GetOpenWorkbooks()
-	if err != nil {
-		logger.ExcelError("Erro ao atualizar workbooks: " + err.Error())
-		return &dto.ExcelStatus{Connected: true, Error: err.Error()}, nil
-	}
-
-	logger.ExcelInfo("Workbooks atualizados com sucesso")
-	return &dto.ExcelStatus{Connected: true, Workbooks: workbooks}, nil
+	return s.Connect()
 }
 
-// GetActiveWorkbookName retorna o nome da pasta de trabalho ativa
+// GetActiveWorkbookName retorna o nome do arquivo atual
 func (s *Service) GetActiveWorkbookName() (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.client == nil {
-		return "", fmt.Errorf("não conectado")
+	if s.currentFileName == "" {
+		return "", fmt.Errorf("nenhum arquivo carregado")
 	}
-	return s.client.GetActiveWorkbookName()
+	return s.currentFileName, nil
 }
 
+// Close fecha o serviço e libera recursos
 func (s *Service) Close() {
-	logger.ExcelInfo("Fechando conexão com Excel")
+	logger.ExcelInfo("Fechando serviço Excel")
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.client != nil {
-		s.client.Close()
-		logger.ExcelInfo("Conexão fechada")
+
+	if s.fileManager != nil {
+		s.fileManager.CloseAll()
 	}
+	s.currentSessionID = ""
+	s.currentFileName = ""
+	s.currentSheet = ""
 }
 
 // SaveUndoAction salva uma ação de undo no banco de dados
@@ -148,4 +157,117 @@ func (s *Service) SaveUndoAction(opType, workbook, sheet, cell, oldValue, undoDa
 		return err
 	}
 	return nil
+}
+
+// ===== Métodos para gerenciamento de arquivos =====
+
+// ConnectFile carrega um arquivo Excel via Excelize
+func (s *Service) ConnectFile(sessionID string, data []byte) error {
+	logger.ExcelInfo("Carregando arquivo Excel (sessionID: " + sessionID + ")")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Carregar arquivo
+	if err := s.fileManager.LoadFile(sessionID, data); err != nil {
+		logger.ExcelError("Erro ao carregar arquivo: " + err.Error())
+		return fmt.Errorf("erro ao carregar arquivo: %w", err)
+	}
+
+	s.currentSessionID = sessionID
+
+	// Obter primeira planilha como padrão
+	client, err := s.fileManager.GetClient(sessionID)
+	if err == nil {
+		sheets := client.ListSheets()
+		if len(sheets) > 0 {
+			s.currentSheet = sheets[0]
+		}
+	}
+
+	logger.ExcelInfo("Arquivo carregado com sucesso")
+	return nil
+}
+
+// ConnectFileWithName carrega um arquivo e guarda o nome
+func (s *Service) ConnectFileWithName(sessionID, fileName string, data []byte) error {
+	err := s.ConnectFile(sessionID, data)
+	if err == nil {
+		s.mu.Lock()
+		s.currentFileName = fileName
+		s.mu.Unlock()
+	}
+	return err
+}
+
+// ExportFile exporta o arquivo atual como bytes
+func (s *Service) ExportFile() ([]byte, error) {
+	logger.ExcelInfo("Exportando arquivo")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.fileManager == nil || s.currentSessionID == "" {
+		return nil, fmt.Errorf("nenhum arquivo carregado")
+	}
+
+	data, err := s.fileManager.Export(s.currentSessionID)
+	if err != nil {
+		logger.ExcelError("Erro ao exportar arquivo: " + err.Error())
+		return nil, fmt.Errorf("erro ao exportar arquivo: %w", err)
+	}
+
+	logger.ExcelInfo("Arquivo exportado com sucesso")
+	return data, nil
+}
+
+// IsFileMode sempre retorna true (para compatibilidade)
+func (s *Service) IsFileMode() bool {
+	return true
+}
+
+// IsConnected retorna true se há um arquivo carregado
+func (s *Service) IsConnected() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.currentSessionID != ""
+}
+
+// GetExcelClient retorna o cliente Excelize atual
+func (s *Service) GetExcelClient() (*excel.ExcelizeClient, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.getClientLocked()
+}
+
+// GetCurrentFileName retorna o nome do arquivo atual
+func (s *Service) GetCurrentFileName() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.currentFileName
+}
+
+// GetCurrentSheet retorna a planilha atual
+func (s *Service) GetCurrentSheet() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.currentSheet
+}
+
+// SetCurrentSheet define a planilha atual
+func (s *Service) SetCurrentSheet(sheet string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.currentSheet = sheet
+}
+
+// CloseFile fecha o arquivo atual
+func (s *Service) CloseFile() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.fileManager != nil && s.currentSessionID != "" {
+		s.fileManager.Close(s.currentSessionID)
+	}
+	s.currentSessionID = ""
+	s.currentFileName = ""
+	s.currentSheet = ""
 }

@@ -9,6 +9,7 @@ interface ChatInputProps {
     onInputChange: (value: string) => void
     onSend: () => void
     onCancel: () => void
+    onFileUpload?: (file: File) => void
 }
 
 export function ChatInput({
@@ -17,7 +18,8 @@ export function ChatInput({
     inputRef,
     onInputChange,
     onSend,
-    onCancel
+    onCancel,
+    onFileUpload
 }: ChatInputProps) {
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -35,19 +37,37 @@ export function ChatInput({
 
     const hasText = inputMessage.trim().length > 0
 
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (file && onFileUpload) {
+            onFileUpload(file)
+        }
+        // Reset input
+        e.target.value = ''
+    }
+
     return (
         <div className="p-4 bg-transparent">
             <div className="max-w-4xl mx-auto">
                 <div className="relative flex items-center bg-background border border-border rounded-full shadow-sm hover:shadow-md transition-shadow">
                     {/* Plus button (left) */}
-                    <button
-                        className="shrink-0 p-3 pl-4 text-muted-foreground hover:text-foreground transition-colors"
-                        title="Anexar arquivo"
-                    >
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                        </svg>
-                    </button>
+                    <div className="relative shrink-0">
+                        <input
+                            type="file"
+                            accept=".xlsx,.xls"
+                            onChange={handleFileUpload}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            disabled={isLoading}
+                        />
+                        <button
+                            className="p-3 pl-4 text-muted-foreground hover:text-foreground transition-colors pointer-events-none"
+                            title="Anexar arquivo"
+                        >
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                            </svg>
+                        </button>
+                    </div>
 
                     {/* Input textarea */}
                     <textarea

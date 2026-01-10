@@ -2,132 +2,153 @@ package excel
 
 import "fmt"
 
+// CreateNewWorkbook cria um novo arquivo Excel em memória
 func (s *Service) CreateNewWorkbook() (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.client == nil {
-		return "", fmt.Errorf("excel não conectado")
-	}
-	wbName, err := s.client.CreateNewWorkbook()
-	if err == nil {
-		s.currentWorkbook = wbName
-		s.currentSheet = "Planilha1"
-	}
-	return wbName, err
+	// No modo Excelize, criar um arquivo novo é feito via upload
+	// Retornar erro informativo
+	return "", fmt.Errorf("use upload de arquivo para criar uma nova planilha")
 }
 
+// CreateNewSheet cria uma nova planilha no arquivo atual
 func (s *Service) CreateNewSheet(name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.client == nil {
-		return fmt.Errorf("excel não conectado")
+	client, err := s.getClientLocked()
+	if err != nil {
+		return err
 	}
-	if s.currentWorkbook == "" {
-		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
-	}
-	return s.client.InsertNewSheet(s.currentWorkbook, name)
+
+	return client.CreateSheet(name)
 }
 
+// DeleteSheet deleta uma planilha
 func (s *Service) DeleteSheet(sheetName string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.client == nil {
-		return fmt.Errorf("excel não conectado")
+	client, err := s.getClientLocked()
+	if err != nil {
+		return err
 	}
-	if s.currentWorkbook == "" {
-		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
-	}
-	return s.client.DeleteSheet(s.currentWorkbook, sheetName)
+
+	return client.DeleteSheet(sheetName)
 }
 
+// RenameSheet renomeia uma planilha
 func (s *Service) RenameSheet(oldName, newName string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.client == nil {
-		return fmt.Errorf("excel não conectado")
+	client, err := s.getClientLocked()
+	if err != nil {
+		return err
 	}
-	if s.currentWorkbook == "" {
-		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
-	}
-	return s.client.RenameSheet(s.currentWorkbook, oldName, newName)
+
+	return client.RenameSheet(oldName, newName)
 }
 
+// ClearRange limpa um range de células
 func (s *Service) ClearRange(sheet, rangeAddr string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.client == nil {
-		return fmt.Errorf("excel não conectado")
+	client, err := s.getClientLocked()
+	if err != nil {
+		return err
 	}
-	if s.currentWorkbook == "" {
-		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+
+	if sheet == "" {
+		sheet = s.getFirstSheet()
 	}
-	return s.client.ClearRange(s.currentWorkbook, sheet, rangeAddr)
+
+	return client.ClearRange(sheet, rangeAddr)
 }
 
+// AutoFitColumns ajusta automaticamente a largura das colunas
 func (s *Service) AutoFitColumns(sheet, rangeAddr string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.client == nil {
-		return fmt.Errorf("excel não conectado")
+	client, err := s.getClientLocked()
+	if err != nil {
+		return err
 	}
-	if s.currentWorkbook == "" {
-		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+
+	if sheet == "" {
+		sheet = s.getFirstSheet()
 	}
-	return s.client.AutoFitColumns(s.currentWorkbook, sheet, rangeAddr)
+
+	return client.AutoFitColumns(sheet, rangeAddr)
 }
 
+// InsertRows insere linhas
 func (s *Service) InsertRows(sheet string, rowNumber, count int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.client == nil {
-		return fmt.Errorf("excel não conectado")
+	client, err := s.getClientLocked()
+	if err != nil {
+		return err
 	}
-	if s.currentWorkbook == "" {
-		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+
+	if sheet == "" {
+		sheet = s.getFirstSheet()
 	}
-	return s.client.InsertRows(s.currentWorkbook, sheet, rowNumber, count)
+
+	return client.InsertRows(sheet, rowNumber, count)
 }
 
+// DeleteRows deleta linhas
 func (s *Service) DeleteRows(sheet string, rowNumber, count int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.client == nil {
-		return fmt.Errorf("excel não conectado")
+	client, err := s.getClientLocked()
+	if err != nil {
+		return err
 	}
-	if s.currentWorkbook == "" {
-		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+
+	if sheet == "" {
+		sheet = s.getFirstSheet()
 	}
-	return s.client.DeleteRows(s.currentWorkbook, sheet, rowNumber, count)
+
+	return client.DeleteRows(sheet, rowNumber, count)
 }
 
+// MergeCells mescla células
 func (s *Service) MergeCells(sheet, rangeAddr string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.client == nil {
-		return fmt.Errorf("excel não conectado")
+
+	client, err := s.getClientLocked()
+	if err != nil {
+		return err
 	}
-	if s.currentWorkbook == "" {
-		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+
+	if sheet == "" {
+		sheet = s.getFirstSheet()
 	}
-	return s.client.MergeCells(s.currentWorkbook, sheet, rangeAddr)
+
+	return client.MergeCells(sheet, rangeAddr)
 }
 
+// UnmergeCells desmescla células
 func (s *Service) UnmergeCells(sheet, rangeAddr string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.client == nil {
-		return fmt.Errorf("excel não conectado")
+
+	client, err := s.getClientLocked()
+	if err != nil {
+		return err
 	}
-	if s.currentWorkbook == "" {
-		return fmt.Errorf("nenhuma pasta de trabalho selecionada")
+
+	if sheet == "" {
+		sheet = s.getFirstSheet()
 	}
-	return s.client.UnmergeCells(s.currentWorkbook, sheet, rangeAddr)
+
+	return client.UnmergeCells(sheet, rangeAddr)
 }

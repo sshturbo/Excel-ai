@@ -4,14 +4,13 @@ package excel
 import (
 	"sync"
 
-	"github.com/go-ole/go-ole"
+	"github.com/xuri/excelize/v2"
 )
 
-// Client gerencia a conexão COM com o Excel usando uma thread dedicada
-type Client struct {
-	excelApp *ole.IDispatch
-	cmdChan  chan func()
-	doneChan chan struct{}
+// ExcelizeClient representa um cliente usando a biblioteca Excelize
+type ExcelizeClient struct {
+	file     *excelize.File
+	filePath string
 	mu       sync.Mutex
 }
 

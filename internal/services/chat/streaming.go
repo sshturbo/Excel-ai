@@ -103,7 +103,7 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 			if len(extractedCalls) > 0 {
 				toolCalls = extractedCalls
 				fmt.Printf("[DEBUG] Extracted %d tool call(s) from text response\n", len(extractedCalls))
-				
+
 				// Enviar resposta limpa para UI (já que o JSON não foi enviado durante streaming)
 				if cleanedResponse != "" && cleanedResponse != currentResponse {
 					trimmedClean := strings.TrimSpace(cleanedResponse)
@@ -158,6 +158,9 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 					Content: tc.Function.Arguments,
 					Payload: args,
 				}
+				if s.pendingAction.Payload == nil {
+					s.pendingAction.Payload = make(map[string]interface{})
+				}
 				s.pendingAction.Payload.(map[string]interface{})["_tool_name"] = tc.Function.Name
 				s.pendingContextStr = contextStr
 				s.pendingOnChunk = onChunk
@@ -171,7 +174,7 @@ func (s *Service) SendMessage(message string, contextStr string, askBeforeApply 
 			}
 
 			// Executar ferramenta
-			result, execErr := s.executeToolCall(tc.Function.Name, args)
+			result, execErr := s.executeToolCall(tc.Function.Name, args, onChunk)
 			if execErr != nil {
 				executionResults = append(executionResults, fmt.Sprintf("ERROR %s: %v", tc.Function.Name, execErr))
 				onChunk(fmt.Sprintf("\n❌ Erro em %s: %v\n", tc.Function.Name, execErr))
@@ -221,7 +224,7 @@ func (s *Service) SendErrorFeedback(errorMessage string, onChunk func(string) er
 
 	var response string
 	var err error
-	
+
 	response, err = s.zaiClient.ChatStream(ctx, aiHistory, func(c string) error {
 		response += c
 		return onChunk(c)
@@ -298,14 +301,14 @@ func (s *Service) ConfirmPendingAction(onChunk func(string) error) (string, erro
 		if toolName != "" {
 			// Usar novo sistema executeToolCall
 			delete(payload, "_tool_name") // Remover campo especial antes de executar
-			result, err = s.executeToolCall(toolName, payload)
+			result, err = s.executeToolCall(toolName, payload, onChunk)
 		} else {
 			// Fallback para sistema antigo (para compatibilidade)
-			result, err = s.ExecuteTool(*cmd)
+			result, err = s.ExecuteTool(*cmd, onChunk)
 		}
 	} else {
 		// Fallback para sistema antigo
-		result, err = s.ExecuteTool(*cmd)
+		result, err = s.ExecuteTool(*cmd, onChunk)
 	}
 
 	var executionResults string
@@ -390,6 +393,9 @@ func (s *Service) ConfirmPendingAction(onChunk func(string) error) (string, erro
 					Content: tc.Function.Arguments,
 					Payload: args,
 				}
+				if s.pendingAction.Payload == nil {
+					s.pendingAction.Payload = make(map[string]interface{})
+				}
 				s.pendingAction.Payload.(map[string]interface{})["_tool_name"] = tc.Function.Name
 				s.pendingContextStr = contextStr
 				s.pendingOnChunk = onChunk
@@ -400,7 +406,7 @@ func (s *Service) ConfirmPendingAction(onChunk func(string) error) (string, erro
 				break
 			} else {
 				// Execute queries automatically
-				queryResult, queryErr := s.executeToolCall(tc.Function.Name, args)
+				queryResult, queryErr := s.executeToolCall(tc.Function.Name, args, onChunk)
 				if queryErr == nil {
 					onChunk(fmt.Sprintf("\n📊 %s: %s\n", tc.Function.Name, queryResult))
 				}

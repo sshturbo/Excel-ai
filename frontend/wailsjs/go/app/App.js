@@ -50,6 +50,10 @@ export function ClearRange(arg1, arg2) {
   return window['go']['app']['App']['ClearRange'](arg1, arg2);
 }
 
+export function CloseSession(arg1) {
+  return window['go']['app']['App']['CloseSession'](arg1);
+}
+
 export function ConfigurePivotFields(arg1, arg2, arg3, arg4) {
   return window['go']['app']['App']['ConfigurePivotFields'](arg1, arg2, arg3, arg4);
 }
@@ -114,6 +118,10 @@ export function DeleteTable(arg1, arg2) {
   return window['go']['app']['App']['DeleteTable'](arg1, arg2);
 }
 
+export function DownloadExcel(arg1) {
+  return window['go']['app']['App']['DownloadExcel'](arg1);
+}
+
 export function EditMessage(arg1, arg2) {
   return window['go']['app']['App']['EditMessage'](arg1, arg2);
 }
@@ -146,6 +154,10 @@ export function GetCurrentConversationID() {
   return window['go']['app']['App']['GetCurrentConversationID']();
 }
 
+export function GetExcelPreview(arg1) {
+  return window['go']['app']['App']['GetExcelPreview'](arg1);
+}
+
 export function GetHeaders(arg1, arg2) {
   return window['go']['app']['App']['GetHeaders'](arg1, arg2);
 }
@@ -176,6 +188,10 @@ export function GetPreviewData(arg1, arg2) {
 
 export function GetSavedConfig() {
   return window['go']['app']['App']['GetSavedConfig']();
+}
+
+export function GetSheetData(arg1, arg2) {
+  return window['go']['app']['App']['GetSheetData'](arg1, arg2);
 }
 
 export function GetUsedRange(arg1) {
@@ -352,6 +368,10 @@ export function UpdateConfig(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg
 
 export function UpdateExcelCell(arg1, arg2, arg3, arg4) {
   return window['go']['app']['App']['UpdateExcelCell'](arg1, arg2, arg3, arg4);
+}
+
+export function UploadExcel(arg1, arg2) {
+  return window['go']['app']['App']['UploadExcel'](arg1, arg2);
 }
 
 export function WriteToExcel(arg1, arg2, arg3) {

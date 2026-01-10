@@ -3,12 +3,12 @@ package chat
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // executeToolCall executa uma tool call da Z.ai diretamente
-func (s *Service) executeToolCall(toolName string, args map[string]interface{}) (string, error) {
-	// Mapear ferramentas Z.ai para o sistema interno
-	// Consultas (queries) não precisam de confirmação
+func (s *Service) executeToolCall(toolName string, args map[string]interface{}, onChunk func(string) error) (string, error) {
+	// 1. Mapear ferramentas Z.ai para o sistema interno (Consultas)
 	queryTools := map[string]bool{
 		"list_sheets":      true,
 		"query_batch":      true,
@@ -17,32 +17,30 @@ func (s *Service) executeToolCall(toolName string, args map[string]interface{}) 
 		"get_active_cell":  true,
 	}
 
-	var cmd ToolCommand
-	if queryTools[toolName] {
-		cmd.Type = ToolTypeQuery
-	} else {
-		cmd.Type = ToolTypeAction
-	}
-
-	// Converter args para ToolCommand format
-	// Para query_batch: extrair queries array
+	// 2. Tratar query_batch especialmente (múltiplas queries)
 	if toolName == "query_batch" {
 		queries, ok := args["queries"].([]interface{})
 		if ok && len(queries) > 0 {
-			// Criar comandos individuais para cada query
 			results := make([]string, 0, len(queries))
 			sheet, _ := args["sheet"].(string)
-			
+			sampleRows := args["sample_rows"]
+
 			for _, q := range queries {
 				if queryStr, ok := q.(string); ok {
-					queryCmd := ToolCommand{
-						Type: ToolTypeQuery,
-						Payload: map[string]interface{}{
-							"type":  convertQueryType(queryStr),
-							"sheet": sheet,
-						},
+					payload := map[string]interface{}{
+						"type":  convertQueryType(queryStr),
+						"sheet": sheet,
 					}
-					result, err := s.ExecuteTool(queryCmd)
+					// Repassar sample_rows se disponível
+					if sampleRows != nil {
+						payload["sample_rows"] = sampleRows
+					}
+
+					queryCmd := ToolCommand{
+						Type:    ToolTypeQuery,
+						Payload: payload,
+					}
+					result, err := s.ExecuteTool(queryCmd, onChunk)
 					if err != nil {
 						results = append(results, fmt.Sprintf("ERROR: %v", err))
 					} else {
@@ -54,10 +52,18 @@ func (s *Service) executeToolCall(toolName string, args map[string]interface{}) 
 		}
 	}
 
-	// Para outras ferramentas, converter args para formato interno
+	// 3. Para todas as outras ferramentas, converter para formato interno (Command)
+	var cmd ToolCommand
+	if queryTools[toolName] {
+		cmd.Type = ToolTypeQuery
+	} else {
+		cmd.Type = ToolTypeAction
+	}
+
+	// Converter args vindo do LLM para payload interno
 	cmd.Payload = convertToolArguments(toolName, args)
 
-	return s.ExecuteTool(cmd)
+	return s.ExecuteTool(cmd, onChunk)
 }
 
 // convertQueryType converte query string para tipo interno
@@ -86,60 +92,81 @@ func convertQueryType(query string) string {
 
 // convertToolArguments converte args da Z.ai para formato interno
 func convertToolArguments(toolName string, args map[string]interface{}) map[string]interface{} {
-	result := make(map[string]interface{})
-	
-	// Para get_range_values
-	if toolName == "get_range_values" {
-		result["type"] = "get-range-values"
-		if sheet, ok := args["sheet"].(string); ok {
-			result["sheet"] = sheet
+
+	// 1. Consultas Fixas
+	if toolName == "get_range_values" || toolName == "get_range" {
+		res := map[string]interface{}{"type": "get-range-values"}
+		for k, v := range args {
+			res[k] = v
 		}
-		if rng, ok := args["range"].(string); ok {
-			result["range"] = rng
-		}
-		return result
+		return res
 	}
 
-	// Para get_cell_formula
 	if toolName == "get_cell_formula" {
-		result["type"] = "get-cell-formula"
-		if sheet, ok := args["sheet"].(string); ok {
-			result["sheet"] = sheet
-		}
-		if cell, ok := args["cell"].(string); ok {
-			result["cell"] = cell
-		}
-		return result
+		return map[string]interface{}{"type": "get-cell-formula", "sheet": args["sheet"], "cell": args["cell"]}
 	}
-
-	// Para list_sheets
 	if toolName == "list_sheets" {
-		result["type"] = "list-sheets"
-		return result
+		return map[string]interface{}{"type": "list-sheets"}
 	}
-
-	// Para get_active_cell
 	if toolName == "get_active_cell" {
-		result["type"] = "get-active-cell"
-		return result
+		return map[string]interface{}{"type": "get-active-cell"}
 	}
 
 	// Para execute_macro - converter para macro
 	if toolName == "execute_macro" {
-		result["op"] = "macro"
-		if actions, ok := args["actions"].([]interface{}); ok {
-			result["actions"] = actions
+		res := map[string]interface{}{"op": "macro"}
+		if rawActions, ok := args["actions"].([]interface{}); ok {
+			normalizedActions := make([]interface{}, 0, len(rawActions))
+			for _, act := range rawActions {
+				if actionMap, ok := act.(map[string]interface{}); ok {
+					// 1. Normalizar "tool" -> "op" se necessário
+					opName, _ := actionMap["op"].(string)
+					if opName == "" {
+						if toolField, ok := actionMap["tool"].(string); ok {
+							opName = toolField
+						}
+					}
+
+					if opName != "" {
+						// 2. Normalizar underscores -> dashes (ex: write_cell -> write-cell)
+						opName = strings.ReplaceAll(opName, "_", "-")
+
+						// 3. Mapeamentos específicos
+						if opName == "write-cell" || opName == "write-range" {
+							opName = "write"
+						}
+
+						actionMap["op"] = opName
+						delete(actionMap, "tool")
+					}
+
+					// 4. Se a IA aninhou os argumentos em "args", traz para o nível superior
+					if innerArgs, ok := actionMap["args"].(map[string]interface{}); ok {
+						for k, v := range innerArgs {
+							actionMap[k] = v
+						}
+						delete(actionMap, "args")
+					}
+
+					normalizedActions = append(normalizedActions, actionMap)
+				}
+			}
+			res["actions"] = normalizedActions
 		}
-		return result
+		return res
 	}
 
-	return result
+	return normalizeAction(toolName, args)
 }
 
 // ExecuteTool executa o comando extraído da IA
-func (s *Service) ExecuteTool(cmd ToolCommand) (string, error) {
+func (s *Service) ExecuteTool(cmd ToolCommand, onChunk func(string) error) (string, error) {
 	if s.excelService == nil {
 		return "", fmt.Errorf("excel service not connected")
+	}
+
+	if onChunk == nil {
+		onChunk = func(string) error { return nil }
 	}
 
 	payloadMap, ok := cmd.Payload.(map[string]interface{})
@@ -155,15 +182,15 @@ func (s *Service) ExecuteTool(cmd ToolCommand) (string, error) {
 
 	switch cmd.Type {
 	case ToolTypeQuery:
-		return s.executeQuery(payloadMap)
+		return s.executeQuery(payloadMap, onChunk)
 	case ToolTypeAction:
-		return s.executeAction(payloadMap)
+		return s.executeAction(payloadMap, onChunk)
 	default:
 		return "", fmt.Errorf("unknown tool type: %s", cmd.Type)
 	}
 }
 
-func (s *Service) executeQuery(params map[string]interface{}) (string, error) {
+func (s *Service) executeQuery(params map[string]interface{}, onChunk func(string) error) (string, error) {
 	queryType, _ := params["type"].(string)
 
 	switch queryType {
@@ -193,6 +220,15 @@ func (s *Service) executeQuery(params map[string]interface{}) (string, error) {
 	case "get-headers":
 		sheet, _ := params["sheet"].(string)
 		rng, _ := params["range"].(string)
+
+		// Fallback para range padrão se vazio
+		if rng == "" {
+			used, err := s.excelService.GetUsedRange(sheet)
+			if err == nil && used != "" {
+				rng = used
+			}
+		}
+
 		headers, err := s.excelService.GetHeaders(sheet, rng)
 		if err != nil {
 			return "", err
@@ -242,11 +278,32 @@ func (s *Service) executeQuery(params map[string]interface{}) (string, error) {
 	case "get-range-values":
 		sheet, _ := params["sheet"].(string)
 		rng, _ := params["range"].(string)
+
+		// Fallback para range padrão se vazio
+		if rng == "" {
+			used, err := s.excelService.GetUsedRange(sheet)
+			if err == nil && used != "" {
+				rng = used
+			}
+		}
+
+		maxRows := getInt(params["max_rows"])
+		if maxRows == 0 {
+			maxRows = getInt(params["sample_rows"])
+		}
+		if maxRows == 0 {
+			maxRows = 20 // Default razoável
+		}
+
 		values, err := s.excelService.GetRangeValues(sheet, rng)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("RANGE VALUES (%s!%s): %v", sheet, rng, values), nil
+
+		if len(values) > maxRows {
+			values = values[:maxRows]
+		}
+		return fmt.Sprintf("DATA (%s!%s, max %d rows): %v", sheet, rng, maxRows, values), nil
 
 	case "has-filter":
 		sheet, _ := params["sheet"].(string)
@@ -307,7 +364,7 @@ func joinResults(results []string) string {
 	return result
 }
 
-func (s *Service) executeAction(params map[string]interface{}) (string, error) {
+func (s *Service) executeAction(params map[string]interface{}, onChunk func(string) error) (string, error) {
 	op, _ := params["op"].(string)
 
 	switch op {
@@ -338,7 +395,10 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 				continue
 			}
 
-			result, err := s.executeAction(actionMap)
+			// Feedback de progresso
+			onChunk(fmt.Sprintf("⏳ *[Ação %d/%d]:* %s...\n", i+1, len(actions), actionMap["op"]))
+
+			result, err := s.executeAction(actionMap, onChunk)
 			if err != nil {
 				results = append(results, fmt.Sprintf("Action %d (%s): ERROR - %v", i+1, actionMap["op"], err))
 				// Stop execution on error to prevent cascading failures
@@ -737,7 +797,223 @@ func (s *Service) executeAction(params map[string]interface{}) (string, error) {
 			return "", err
 		}
 		return "DELETE TABLE OK", nil
+
+	// ==================== NEW ADVANCED ACTIONS ====================
+
+	case "add-dropdown", "add_dropdown":
+		sheet, _ := params["sheet"].(string)
+		rng, _ := params["range"].(string)
+		optionsRaw, _ := params["options"].([]interface{})
+		options := make([]string, len(optionsRaw))
+		for i, opt := range optionsRaw {
+			options[i] = fmt.Sprintf("%v", opt)
+		}
+		err := s.excelService.AddDropdownList(sheet, rng, options)
+		if err != nil {
+			return "", err
+		}
+		return "DROPDOWN OK", nil
+
+	case "add-comment", "add_comment":
+		sheet, _ := params["sheet"].(string)
+		cell, _ := params["cell"].(string)
+		author, _ := params["author"].(string)
+		text, _ := params["text"].(string)
+		if author == "" {
+			author = "AI Assistant"
+		}
+		err := s.excelService.AddCellComment(sheet, cell, author, text)
+		if err != nil {
+			return "", err
+		}
+		return "COMMENT ADDED OK", nil
+
+	case "delete-comment", "delete_comment":
+		sheet, _ := params["sheet"].(string)
+		cell, _ := params["cell"].(string)
+		err := s.excelService.DeleteCellComment(sheet, cell)
+		if err != nil {
+			return "", err
+		}
+		return "COMMENT DELETED OK", nil
+
+	case "add-hyperlink", "add_hyperlink":
+		sheet, _ := params["sheet"].(string)
+		cell, _ := params["cell"].(string)
+		url, _ := params["url"].(string)
+		display, _ := params["display"].(string)
+		if display == "" {
+			display = url
+		}
+		err := s.excelService.AddHyperlink(sheet, cell, url, display)
+		if err != nil {
+			return "", err
+		}
+		return "HYPERLINK ADDED OK", nil
+
+	case "freeze-pane", "freeze_pane":
+		sheet, _ := params["sheet"].(string)
+		cell, _ := params["cell"].(string)
+		rows := getInt(params["rows"])
+		cols := getInt(params["cols"])
+		if cell == "" {
+			cell = "A1"
+		}
+		err := s.excelService.FreezePane(sheet, cell, rows, cols)
+		if err != nil {
+			return "", err
+		}
+		return "FREEZE PANE OK", nil
+
+	case "unfreeze-pane", "unfreeze_pane":
+		sheet, _ := params["sheet"].(string)
+		err := s.excelService.UnfreezePane(sheet)
+		if err != nil {
+			return "", err
+		}
+		return "UNFREEZE PANE OK", nil
+
+	case "hide-sheet", "hide_sheet":
+		sheet, _ := params["sheet"].(string)
+		err := s.excelService.HideSheet(sheet)
+		if err != nil {
+			return "", err
+		}
+		return "HIDE SHEET OK", nil
+
+	case "show-sheet", "show_sheet":
+		sheet, _ := params["sheet"].(string)
+		err := s.excelService.ShowSheet(sheet)
+		if err != nil {
+			return "", err
+		}
+		return "SHOW SHEET OK", nil
+
+	case "protect-sheet", "protect_sheet":
+		sheet, _ := params["sheet"].(string)
+		password, _ := params["password"].(string)
+		err := s.excelService.ProtectSheet(sheet, password)
+		if err != nil {
+			return "", err
+		}
+		return "PROTECT SHEET OK", nil
+
+	case "unprotect-sheet", "unprotect_sheet":
+		sheet, _ := params["sheet"].(string)
+		password, _ := params["password"].(string)
+		err := s.excelService.UnprotectSheet(sheet, password)
+		if err != nil {
+			return "", err
+		}
+		return "UNPROTECT SHEET OK", nil
+
+	case "lock-cell", "lock_cell":
+		sheet, _ := params["sheet"].(string)
+		cell, _ := params["cell"].(string)
+		locked := true
+		if l, ok := params["locked"].(bool); ok {
+			locked = l
+		}
+		err := s.excelService.SetCellLocked(sheet, cell, locked)
+		if err != nil {
+			return "", err
+		}
+		return "CELL LOCKED OK", nil
+
+	case "set-formula", "set_formula":
+		sheet, _ := params["sheet"].(string)
+		cell, _ := params["cell"].(string)
+		formula, _ := params["formula"].(string)
+		err := s.excelService.SetCellFormula(sheet, cell, formula)
+		if err != nil {
+			return "", err
+		}
+		return "FORMULA SET OK", nil
+
+	case "conditional-format", "conditional_format":
+		sheet, _ := params["sheet"].(string)
+		rng, _ := params["range"].(string)
+		criteria, _ := params["criteria"].(string)
+		value, _ := params["value"].(string)
+		bgColor, _ := params["bgColor"].(string)
+		if bgColor == "" {
+			bgColor = "#FFFF00" // Yellow default
+		}
+		err := s.excelService.AddSimpleConditionalFormat(sheet, rng, criteria, value, bgColor)
+		if err != nil {
+			return "", err
+		}
+		return "CONDITIONAL FORMAT OK", nil
+
+	case "delete-pivot", "delete_pivot":
+		sheet, _ := params["sheet"].(string)
+		name, _ := params["name"].(string)
+		err := s.excelService.DeletePivotTable(sheet, name)
+		if err != nil {
+			return "", err
+		}
+		return "DELETE PIVOT OK", nil
+
+	case "clear-filter", "clear_filter":
+		sheet, _ := params["sheet"].(string)
+		err := s.excelService.ClearFilters(sheet)
+		if err != nil {
+			return "", err
+		}
+		return "FILTER CLEARED OK", nil
 	}
 
 	return "", fmt.Errorf("unknown action op: %s", op)
+}
+
+// normalizeAction converte uma ferramenta individual para o formato interno de operação (op)
+func normalizeAction(toolName string, args map[string]interface{}) map[string]interface{} {
+	if toolName == "" {
+		if args == nil {
+			return make(map[string]interface{})
+		}
+		return args
+	}
+
+	// 1. Normalizar nome (underscores -> dashes)
+	op := strings.ReplaceAll(toolName, "_", "-")
+
+	// 2. Mapeamentos específicos para o switch do executor
+	switch op {
+	case "write-cell", "write-range", "write_cell", "write_range":
+		op = "write"
+	case "autofit-columns":
+		op = "autofit"
+	case "create-pivot-table":
+		op = "create-pivot"
+	case "apply-filter":
+		op = "apply-filter"
+	case "clear-filter":
+		op = "clear-filters"
+	}
+
+	// 3. Construir payload
+	result := make(map[string]interface{})
+	result["op"] = op
+
+	// Se args for nil, não há nada para copiar ou aplanar
+	if args == nil {
+		return result
+	}
+
+	// 4. Se a IA mandou argumentos dentro de "args", aplanar
+	if innerArgs, ok := args["args"].(map[string]interface{}); ok {
+		for k, v := range innerArgs {
+			result[k] = v
+		}
+	} else {
+		// Senão copiar argumentos diretos
+		for k, v := range args {
+			if k != "op" && k != "tool" && k != "args" {
+				result[k] = v
+			}
+		}
+	}
+
+	return result
 }

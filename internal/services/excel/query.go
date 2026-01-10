@@ -2,136 +2,170 @@ package excel
 
 import "fmt"
 
+// ListSheets retorna lista de planilhas do arquivo atual
 func (s *Service) ListSheets() ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.client == nil {
-		return nil, fmt.Errorf("excel não conectado")
+	client, err := s.getClientLocked()
+	if err != nil {
+		return nil, err
 	}
-	if s.currentWorkbook == "" {
-		return nil, fmt.Errorf("nenhuma pasta de trabalho selecionada")
-	}
-	return s.client.ListSheets(s.currentWorkbook)
+	return client.ListSheets(), nil
 }
 
+// SheetExists verifica se uma planilha existe
 func (s *Service) SheetExists(sheetName string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.client == nil {
-		return false, fmt.Errorf("excel não conectado")
+	client, err := s.getClientLocked()
+	if err != nil {
+		return false, err
 	}
-	if s.currentWorkbook == "" {
-		return false, fmt.Errorf("nenhuma pasta de trabalho selecionada")
-	}
-	return s.client.SheetExists(s.currentWorkbook, sheetName)
+	return client.SheetExists(sheetName)
 }
 
+// ListPivotTables lista tabelas dinâmicas (limitação do Excelize)
 func (s *Service) ListPivotTables(sheetName string) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.client == nil {
-		return nil, fmt.Errorf("excel não conectado")
+	client, err := s.getClientLocked()
+	if err != nil {
+		return nil, err
 	}
-	if s.currentWorkbook == "" {
-		return nil, fmt.Errorf("nenhuma pasta de trabalho selecionada")
-	}
-	return s.client.ListPivotTables(s.currentWorkbook, sheetName)
+	return client.ListPivotTables(sheetName)
 }
 
+// GetHeaders retorna os cabeçalhos de um range
 func (s *Service) GetHeaders(sheetName, rangeAddr string) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.client == nil {
-		return nil, fmt.Errorf("excel não conectado")
+	client, err := s.getClientLocked()
+	if err != nil {
+		return nil, err
 	}
-	if s.currentWorkbook == "" {
-		return nil, fmt.Errorf("nenhuma pasta de trabalho selecionada")
+
+	if sheetName == "" {
+		sheetName = s.getFirstSheet()
 	}
-	return s.client.GetHeaders(s.currentWorkbook, sheetName, rangeAddr)
+
+	return client.GetHeaders(sheetName, rangeAddr)
 }
 
+// GetUsedRange retorna o range utilizado na planilha
 func (s *Service) GetUsedRange(sheetName string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.client == nil {
-		return "", fmt.Errorf("excel não conectado")
+	client, err := s.getClientLocked()
+	if err != nil {
+		return "", err
 	}
-	if s.currentWorkbook == "" {
-		return "", fmt.Errorf("nenhuma pasta de trabalho selecionada")
+
+	if sheetName == "" {
+		sheetName = s.getFirstSheet()
 	}
-	return s.client.GetUsedRange(s.currentWorkbook, sheetName)
+
+	return client.GetUsedRange(sheetName)
 }
 
+// GetRowCount retorna número de linhas usadas
 func (s *Service) GetRowCount(sheetName string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.client == nil {
-		return 0, fmt.Errorf("excel não conectado")
+
+	client, err := s.getClientLocked()
+	if err != nil {
+		return 0, err
 	}
-	if s.currentWorkbook == "" {
-		return 0, fmt.Errorf("nenhuma pasta de trabalho selecionada")
+
+	if sheetName == "" {
+		sheetName = s.getFirstSheet()
 	}
-	return s.client.GetRowCount(s.currentWorkbook, sheetName)
+
+	return client.GetRowCount(sheetName)
 }
 
+// GetColumnCount retorna número de colunas usadas
 func (s *Service) GetColumnCount(sheetName string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.client == nil {
-		return 0, fmt.Errorf("excel não conectado")
+
+	client, err := s.getClientLocked()
+	if err != nil {
+		return 0, err
 	}
-	if s.currentWorkbook == "" {
-		return 0, fmt.Errorf("nenhuma pasta de trabalho selecionada")
+
+	if sheetName == "" {
+		sheetName = s.getFirstSheet()
 	}
-	return s.client.GetColumnCount(s.currentWorkbook, sheetName)
+
+	return client.GetColumnCount(sheetName)
 }
 
+// GetCellFormula retorna a fórmula de uma célula
 func (s *Service) GetCellFormula(sheetName, cellAddress string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.client == nil {
-		return "", fmt.Errorf("excel não conectado")
+
+	client, err := s.getClientLocked()
+	if err != nil {
+		return "", err
 	}
-	if s.currentWorkbook == "" {
-		return "", fmt.Errorf("nenhuma pasta de trabalho selecionada")
+
+	if sheetName == "" {
+		sheetName = s.getFirstSheet()
 	}
-	return s.client.GetCellFormula(s.currentWorkbook, sheetName, cellAddress)
+
+	return client.GetCellFormula(sheetName, cellAddress)
 }
 
+// HasFilter verifica se a planilha tem filtro aplicado
 func (s *Service) HasFilter(sheetName string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.client == nil {
-		return false, fmt.Errorf("excel não conectado")
+
+	client, err := s.getClientLocked()
+	if err != nil {
+		return false, err
 	}
-	if s.currentWorkbook == "" {
-		return false, fmt.Errorf("nenhuma pasta de trabalho selecionada")
+
+	if sheetName == "" {
+		sheetName = s.getFirstSheet()
 	}
-	return s.client.HasFilter(s.currentWorkbook, sheetName)
+
+	return client.HasFilter(sheetName)
 }
 
+// GetActiveCell retorna célula ativa (sempre A1 no modo Excelize)
 func (s *Service) GetActiveCell() (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.client == nil {
-		return "", fmt.Errorf("excel não conectado")
+
+	if s.currentSessionID == "" {
+		return "", fmt.Errorf("nenhum arquivo carregado")
 	}
-	return s.client.GetActiveCell()
+
+	// Excelize não tem conceito de célula ativa - retornar A1
+	return "A1", nil
 }
 
+// GetRangeValues retorna valores de um range
 func (s *Service) GetRangeValues(sheetName, rangeAddr string) ([][]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.client == nil {
-		return nil, fmt.Errorf("excel não conectado")
+
+	client, err := s.getClientLocked()
+	if err != nil {
+		return nil, err
 	}
-	if s.currentWorkbook == "" {
-		return nil, fmt.Errorf("nenhuma pasta de trabalho selecionada")
+
+	if sheetName == "" {
+		sheetName = s.getFirstSheet()
 	}
-	return s.client.GetRangeValues(s.currentWorkbook, sheetName, rangeAddr)
+
+	return client.GetRangeValues(sheetName, rangeAddr)
 }

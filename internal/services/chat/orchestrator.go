@@ -58,14 +58,14 @@ type DecisionSnapshot struct {
 type VersionedSnapshot struct {
 	ID          int64
 	Timestamp   time.Time
-	Message     string      // Mensagem original do usuário
-	Decision    string      // Decisão tomada pelo LLM
-	Result      string      // Resultado da execução
-	Success     bool        // Se a decisão foi bem-sucedida
+	Message     string // Mensagem original do usuário
+	Decision    string // Decisão tomada pelo LLM
+	Result      string // Resultado da execução
+	Success     bool   // Se a decisão foi bem-sucedida
 	Mode        OperationMode
 	Stats       OrchestratorStats
-	TaskKey     string      // Chave para identificar tipo de tarefa
-	ReplayCount int         // Quantas vezes foi replayado
+	TaskKey     string // Chave para identificar tipo de tarefa
+	ReplayCount int    // Quantas vezes foi replayado
 }
 
 // CacheStatus status do cache
@@ -101,9 +101,9 @@ type Orchestrator struct {
 	muStats       sync.RWMutex
 
 	// Cache de resultados (persistente em SQLite)
-	cache              *cache.PersistentCache
-	muCache            sync.RWMutex
-	cacheTTL           time.Duration
+	cache    *cache.PersistentCache
+	muCache  sync.RWMutex
+	cacheTTL time.Duration
 
 	// Recovery automático
 	workerTimeouts  map[int]time.Time // Worker ID -> Timeout time
@@ -125,14 +125,14 @@ type Orchestrator struct {
 	// Versionamento de snapshots (Fase 2.3)
 	versionedSnapshots map[int64]*VersionedSnapshot
 	nextSnapshotID     int64
-	muSnapshots       sync.RWMutex
+	muSnapshots        sync.RWMutex
 
 	// Priorização inteligente
 	priorityQueue []*Task
 	muPriority    sync.Mutex
 
 	// Classificador rápido (Fase 2.1)
-	decisionCache    map[string]*DecisionCache
+	decisionCache   map[string]*DecisionCache
 	muDecisionCache sync.RWMutex
 }
 
@@ -160,25 +160,25 @@ type DecisionType int
 
 const (
 	DecisionTypeHeuristic DecisionType = iota // Regra determinística
-	DecisionTypeCache                      // Do cache/histórico
-	DecisionTypeLLM                        // Precisa de LLM
+	DecisionTypeCache                         // Do cache/histórico
+	DecisionTypeLLM                           // Precisa de LLM
 )
 
 // DecisionCache entrada de cache de decisões
 type DecisionCache struct {
-	Message      string
-	Decision     string
-	Timestamp    time.Time
-	HitCount     int
-	SuccessRate  float64
+	Message     string
+	Decision    string
+	Timestamp   time.Time
+	HitCount    int
+	SuccessRate float64
 }
 
 // QuickClassifierResult resultado da classificação rápida
 type QuickClassifierResult struct {
 	Type        DecisionType
-	Reason       string
-	Heuristic   string  // Aplicável se Type=Heuristic
-	ShouldCache  bool    // Se deve ser cacheado
+	Reason      string
+	Heuristic   string // Aplicável se Type=Heuristic
+	ShouldCache bool   // Se deve ser cacheado
 }
 
 // CognitiveBudget define o orçamento cognitivo atual
@@ -190,9 +190,9 @@ type CognitiveBudget struct {
 
 // PromptBuilder construtor de prompts adaptativos
 type PromptBuilder struct {
-	mode        OperationMode
-	budget      CognitiveBudget
-	contextStr  string
+	mode       OperationMode
+	budget     CognitiveBudget
+	contextStr string
 }
 
 // TaskResult representa o resultado de uma tarefa
@@ -226,20 +226,20 @@ func NewOrchestrator(service *Service) (*Orchestrator, error) {
 	}
 
 	return &Orchestrator{
-		service:         service,
-		taskChan:        make(chan *Task, 100),
-		resultChan:      make(chan *TaskResult, 100),
-		messageChan:     make(chan string, 100),
-		pendingTasks:    make(map[string]*Task),
-		cache:           persistentCache,
-		cacheTTL:        5 * time.Minute, // TTL padrão: 5 minutos
-		workerTimeouts: make(map[int]time.Time),
-		failureMemo:     make(map[string]*FailureRecord),
-		operationMode:   ModeNormal,
-		priorityQueue:   make([]*Task, 0),
-		decisionCache:   make(map[string]*DecisionCache), // Classificador rápido
+		service:            service,
+		taskChan:           make(chan *Task, 100),
+		resultChan:         make(chan *TaskResult, 100),
+		messageChan:        make(chan string, 100),
+		pendingTasks:       make(map[string]*Task),
+		cache:              persistentCache,
+		cacheTTL:           5 * time.Minute, // TTL padrão: 5 minutos
+		workerTimeouts:     make(map[int]time.Time),
+		failureMemo:        make(map[string]*FailureRecord),
+		operationMode:      ModeNormal,
+		priorityQueue:      make([]*Task, 0),
+		decisionCache:      make(map[string]*DecisionCache),    // Classificador rápido
 		versionedSnapshots: make(map[int64]*VersionedSnapshot), // Fase 2.3
-		nextSnapshotID: 1, // Fase 2.3
+		nextSnapshotID:     1,                                  // Fase 2.3
 	}, nil
 }
 
@@ -494,7 +494,7 @@ func (o *Orchestrator) executeTask(task *Task, reportProgress func(string) error
 
 	reportProgress(fmt.Sprintf("⚙️ [Worker] Executando %s: %s\n", task.ToolName, task.ID))
 
-	result, err := o.service.executeToolCall(task.ToolName, task.Arguments)
+	result, err := o.service.executeToolCall(task.ToolName, task.Arguments, reportProgress)
 
 	duration := time.Since(start)
 
@@ -850,11 +850,10 @@ func (o *Orchestrator) invalidateCacheForAction(toolName string, args map[string
 	}
 }
 
-
 // GetCacheStatus retorna status do cache
 func (o *Orchestrator) GetCacheStatus() CacheStatus {
 	cacheStatus := o.cache.GetStatus()
-	
+
 	return CacheStatus{
 		TotalEntries:  cacheStatus.TotalEntries,
 		HitRate:       cacheStatus.HitRate,
@@ -1272,9 +1271,9 @@ func (o *Orchestrator) ClassifyRequest(message string) QuickClassifierResult {
 	// Camada 1: Timeout rápido (50ms) - operações muito simples
 	if o.quickTimeoutCheck(messageLower) {
 		return QuickClassifierResult{
-			Type:       DecisionTypeHeuristic,
+			Type:        DecisionTypeHeuristic,
 			Reason:      "Timeout rápido - operação simples",
-			Heuristic:  o.applySimpleHeuristic(messageLower),
+			Heuristic:   o.applySimpleHeuristic(messageLower),
 			ShouldCache: true,
 		}
 	}
@@ -1282,9 +1281,9 @@ func (o *Orchestrator) ClassifyRequest(message string) QuickClassifierResult {
 	// Camada 2: Permissão rápida (100ms) - verificações de segurança
 	if !o.quickPermissionCheck(messageLower) {
 		return QuickClassifierResult{
-			Type:       DecisionTypeHeuristic,
+			Type:        DecisionTypeHeuristic,
 			Reason:      "Operação perigosa - requer confirmação",
-			Heuristic:  "BLOCKED: Operação requer confirmação do usuário",
+			Heuristic:   "BLOCKED: Operação requer confirmação do usuário",
 			ShouldCache: false,
 		}
 	}
@@ -1293,9 +1292,9 @@ func (o *Orchestrator) ClassifyRequest(message string) QuickClassifierResult {
 	if cached, found := o.getDecisionCache(message); found {
 		fmt.Printf("[CLASSIFIER] Cache hit: %s\n", cached.Decision)
 		return QuickClassifierResult{
-			Type:       DecisionTypeCache,
+			Type:        DecisionTypeCache,
 			Reason:      "Decisão cacheada",
-			Heuristic:  cached.Decision,
+			Heuristic:   cached.Decision,
 			ShouldCache: true,
 		}
 	}
@@ -1304,18 +1303,18 @@ func (o *Orchestrator) ClassifyRequest(message string) QuickClassifierResult {
 	if o.simpleLogicCheck(messageLower) {
 		decision := o.applySimpleHeuristic(messageLower)
 		return QuickClassifierResult{
-			Type:       DecisionTypeHeuristic,
+			Type:        DecisionTypeHeuristic,
 			Reason:      "Lógica simples aplicada",
-			Heuristic:  decision,
+			Heuristic:   decision,
 			ShouldCache: true,
 		}
 	}
 
 	// Camada 5: LLM completo
 	return QuickClassifierResult{
-		Type:       DecisionTypeLLM,
+		Type:        DecisionTypeLLM,
 		Reason:      "Requer análise completa do LLM",
-		Heuristic:  "",
+		Heuristic:   "",
 		ShouldCache: true,
 	}
 }
@@ -1455,8 +1454,8 @@ func (o *Orchestrator) GetClassifierStats() map[string]interface{} {
 
 	return map[string]interface{}{
 		"total_cached_decisions": totalCached,
-		"total_cache_hits":      totalHits,
-		"hit_rate":            float64(totalHits) / float64(totalCached),
+		"total_cache_hits":       totalHits,
+		"hit_rate":               float64(totalHits) / float64(totalCached),
 	}
 }
 
@@ -1620,7 +1619,7 @@ func (o *Orchestrator) getLeanContext(contextStr string) string {
 func (o *Orchestrator) getAvailableTools(complexity int) string {
 	// Filtrar ferramentas baseadas no nível de complexidade
 	tools := map[int][]string{
-		1: {"list_sheets", "get_range_values"},                // Simples
+		1: {"list_sheets", "get_range_values"},                              // Simples
 		2: {"list_sheets", "get_range_values", "write_cell", "write_range"}, // Médio
 		3: { // Complexo - todas as ferramentas
 			"list_sheets", "get_range_values", "query_batch",
@@ -1650,10 +1649,10 @@ func (o *Orchestrator) GetCognitiveBudgetStats() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"mode":              modeName[mode],
-		"max_tokens":        budget.MaxTokens,
-		"allow_reasoning":   budget.AllowReasoning,
-		"tool_complexity":   budget.ToolComplexity,
+		"mode":                        modeName[mode],
+		"max_tokens":                  budget.MaxTokens,
+		"allow_reasoning":             budget.AllowReasoning,
+		"tool_complexity":             budget.ToolComplexity,
 		"estimated_tokens_per_prompt": estimatePromptTokens(budget.MaxTokens),
 	}
 }
@@ -1745,17 +1744,17 @@ func (o *Orchestrator) ReplayDecision(snapshotID int64) (string, error) {
 func (o *Orchestrator) executeDecision(_ string) (string, error) {
 	// Parsear a decisão para extrair tool e args
 	// Formo esperado: tool_name(args)
-	
+
 	// Implementação simplificada - placeholder
 	// Placeholder - em produção executaria a decisão real
 	return "", nil
 }
 
 // parseDecision parse uma decisão string em tool e args
-func (o *Orchestrator) parseDecision(decision string) (string, map[string]interface{}, error) {
+func (o *Orchestrator) parseDecision(_ string) (string, map[string]interface{}, error) {
 	// Implementação simplificada - extrair tool e args
 	// Ex: "create_chart(range=A1:C10,type=bar)"
-	
+
 	// Por enquanto retorna placeholder
 	return "", nil, nil
 }
@@ -1794,7 +1793,7 @@ func (o *Orchestrator) validateSnapshotContext(snapshot *VersionedSnapshot) bool
 	if snapshot.Mode != currentMode {
 		// Apenas permitir replay se estiver em modo normal
 		if currentMode != ModeNormal {
-			fmt.Printf("[SNAPSHOT] Snapshot ID %d: modo incompatível (%v vs %v)\n", 
+			fmt.Printf("[SNAPSHOT] Snapshot ID %d: modo incompatível (%v vs %v)\n",
 				snapshot.ID, snapshot.Mode, currentMode)
 			return false
 		}
@@ -1802,7 +1801,7 @@ func (o *Orchestrator) validateSnapshotContext(snapshot *VersionedSnapshot) bool
 
 	// Verificar tempo decorrido (snapshots muito antigos podem não ser válidos)
 	if time.Since(snapshot.Timestamp) > 24*time.Hour {
-		fmt.Printf("[SNAPSHOT] Snapshot ID %d: muito antigo (%v)\n", 
+		fmt.Printf("[SNAPSHOT] Snapshot ID %d: muito antigo (%v)\n",
 			snapshot.ID, time.Since(snapshot.Timestamp))
 		return false
 	}
@@ -1810,7 +1809,7 @@ func (o *Orchestrator) validateSnapshotContext(snapshot *VersionedSnapshot) bool
 	// Verificar se taxa de sucesso atual é razoável
 	stats := o.GetStats()
 	if stats.TotalTasks > 10 && stats.SuccessRate < 50 {
-		fmt.Printf("[SNAPSHOT] Snapshot ID %d: sistema instável (%.1f%% sucesso)\n", 
+		fmt.Printf("[SNAPSHOT] Snapshot ID %d: sistema instável (%.1f%% sucesso)\n",
 			snapshot.ID, stats.SuccessRate)
 		return false
 	}
@@ -1832,7 +1831,7 @@ func (o *Orchestrator) rollbackToSnapshot(snapshotID int64) error {
 
 	// Restaurar estado do snapshot
 	// Implementação simplificada - em produção restauraria estado completo
-	
+
 	// Restaurar modo de operação
 	o.muMode.Lock()
 	o.operationMode = snapshot.Mode
@@ -1918,10 +1917,10 @@ func (o *Orchestrator) GetSnapshotStats() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"total_snapshots":     totalSnapshots,
+		"total_snapshots":      totalSnapshots,
 		"successful_snapshots": successfulSnapshots,
-		"success_rate":        successRate,
-		"total_replays":       totalReplays,
-		"next_snapshot_id":    o.nextSnapshotID,
+		"success_rate":         successRate,
+		"total_replays":        totalReplays,
+		"next_snapshot_id":     o.nextSnapshotID,
 	}
 }

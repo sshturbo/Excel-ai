@@ -187,8 +187,18 @@ func GetExcelTools() []Tool {
 		{
 			Type: "function",
 			Function: FunctionDeclaration{
-				Name:        "execute_macro",
-				Description: "Executa ações no Excel. Operações: create_sheet, write_cell, write_range, delete_sheet, rename_sheet, format_range, autofit_columns, clear_range, insert_rows, delete_rows, merge_cells, set_borders, sort_range, apply_filter, create_chart.",
+				Name: "execute_macro",
+				Description: `Executa ações no Excel. Operações disponíveis:
+BÁSICO: create_sheet, delete_sheet, rename_sheet, write_cell, write_range, clear_range
+FORMATAÇÃO: format_range, autofit_columns, set_borders, merge_cells, conditional_format
+ESTRUTURA: insert_rows, delete_rows, freeze_pane, unfreeze_pane, hide_sheet, show_sheet
+OBJETOS: create_chart, delete_chart, create_table, delete_table, create_pivot, delete_pivot
+FILTROS: apply_filter, clear_filter, sort_range
+VALIDAÇÃO: add_dropdown (cria lista dropdown), add_validation
+COMENTÁRIOS: add_comment, delete_comment
+HYPERLINKS: add_hyperlink
+PROTEÇÃO: protect_sheet, unprotect_sheet, lock_cell
+FÓRMULAS: set_formula`,
 				Parameters: FunctionParameters{
 					Type: "object",
 					Properties: map[string]FunctionProperty{

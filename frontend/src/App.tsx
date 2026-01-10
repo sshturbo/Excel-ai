@@ -11,6 +11,7 @@ import { useConversations } from '@/hooks/useConversations'
 import { useStreamingMessage } from '@/hooks/useStreamingMessage'
 import { useTheme } from '@/hooks/useTheme'
 import { useFullscreen } from '@/hooks/useFullscreen'
+import { useExcelUpload } from '@/hooks/useExcelUpload'
 
 // Components
 import { Header } from '@/components/layout/Header'
@@ -18,7 +19,6 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { ChatInput } from '@/components/chat/ChatInput'
 import { MessageBubble } from '@/components/chat/MessageBubble'
 import { EmptyState } from '@/components/chat/EmptyState'
-import { ThinkingIndicator } from '@/components/chat/ThinkingIndicator'
 import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer'
 import { DataPreview } from '@/components/excel/DataPreview'
 import { ChartViewer } from '@/components/excel/ChartViewer'
@@ -75,6 +75,7 @@ export default function App() {
     // Custom hooks
     const excel = useExcelConnection()
     const conversations = useConversations()
+    const excelUpload = useExcelUpload()
 
     const chat = useChat({
         askBeforeApply,
@@ -145,7 +146,6 @@ export default function App() {
     useEffect(() => {
         const hasWailsRuntime = typeof (window as any)?.go !== 'undefined'
         if (hasWailsRuntime) {
-            excel.handleConnect()
             loadConfig()
             conversations.loadConversations()
             checkLicense()
@@ -219,8 +219,6 @@ export default function App() {
         }
     }
 
-
-
     // Handle applying pending actions - now calls backend to execute and resume AI
     const handleApplyActions = async () => {
         console.log('[DEBUG] handleApplyActions called - calling backend ConfirmPendingAction')
@@ -281,7 +279,7 @@ export default function App() {
             // Import dynamically to avoid circular dependency
             const { ConfirmPendingAction } = await import("../wailsjs/go/app/App")
 
-            // Call backend - this will execute the action and resume AI
+            // Call backend - this will execute the action
             const response = await ConfirmPendingAction()
 
             // Clean up listener
@@ -326,7 +324,6 @@ export default function App() {
 
                 // Add AI continuation response to chat if there is one
                 if (response && response.trim()) {
-                    // Process the response to clean up formatting
                     const { processAIResponse } = await import("@/services/aiProcessor")
                     const { displayContent, actionsExecuted } = await processAIResponse(response, {
                         askBeforeApply: true,
@@ -351,9 +348,6 @@ export default function App() {
                         return // Don't show completed, there's another action pending
                     }
                 }
-
-                // Refresh workbooks to show any new sheets/data
-                await excel.refreshWorkbooks()
 
                 // Set to completed state - will show Keep/Undo buttons
                 setActionState('completed')
@@ -422,13 +416,13 @@ export default function App() {
             } else {
                 toast.error('Nenhuma conversa ativa')
             }
-            // Clear the completed state
+            // Clear completed state
             setActionState('pending')
             setHasPendingAction(false)
             chat.setPendingActions([])
             // Refresh preview
-            if (excel.selectedWorkbook && excel.selectedSheets.length > 0) {
-                await excel.refreshWorkbooks()
+            if (excelUpload.sessionId) {
+                await excelUpload.refreshPreview()
             }
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)
@@ -456,6 +450,29 @@ export default function App() {
         const messages = await conversations.handleLoadConversation(convId)
         if (messages.length > 0) {
             chat.setMessages(messages)
+        }
+    }
+
+    // Handle file upload via chat input (+ button)
+    const handleFileUpload = async (file: File) => {
+        // Validar arquivo
+        if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+            toast.error('Por favor, selecione um arquivo Excel (.xlsx ou .xls)')
+            return
+        }
+
+        // Converter para Uint8Array
+        const arrayBuffer = await file.arrayBuffer()
+        const data = new Uint8Array(arrayBuffer)
+
+        try {
+            // Fazer upload usando useExcelUpload
+            await excelUpload.handleUpload(file.name, data)
+
+            toast.success(`Arquivo "${file.name}" carregado com sucesso!`)
+        } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : String(err)
+            toast.error('Erro ao carregar arquivo: ' + errorMsg)
         }
     }
 
@@ -511,68 +528,93 @@ export default function App() {
         )
     }
 
+    // Preview data from upload mode (Excelize only)
+    // Criar previewData assim que arquivo é carregado, mesmo antes de clicar na aba
+    console.log('[DEBUG App.tsx] Calculando previewData:')
+    console.log('[DEBUG App.tsx] - excelUpload.previewData:', excelUpload.previewData)
+    console.log('[DEBUG App.tsx] - excelUpload.sheetData:', excelUpload.sheetData)
+
+    const previewData = excelUpload.previewData ? {
+        fileName: excelUpload.previewData.fileName,
+        sheets: excelUpload.previewData.sheets,
+        activeSheet: excelUpload.activeSheet || excelUpload.previewData.activeSheet,
+        headers: excelUpload.sheetData ? excelUpload.sheetData[0] || [] : [],
+        rows: excelUpload.sheetData ? excelUpload.sheetData.slice(1) || [] : [],
+        totalRows: excelUpload.sheetData ? excelUpload.sheetData.length || 0 : 0
+    } : null
+
+    console.log('[DEBUG App.tsx] - previewData calculado:', previewData)
+
+    const activeSheet = excelUpload.activeSheet || excelUpload.previewData?.activeSheet || ''
+    const selectedSheets = excelUpload.previewData?.sheets.map(s => s.name) || []
+
+    // Workbooks to show in sidebar
+    const workbooks = excelUpload.previewData
+        ? [{ name: excelUpload.previewData.fileName, sheets: excelUpload.previewData.sheets.map(s => s.name) }]
+        : []
+
     return (
         <div className="flex flex-col h-screen bg-background text-foreground">
             {/* Header */}
             <Header
-                connected={excel.connected}
+                connected={!!excelUpload.sessionId}
                 theme={theme}
                 onNewConversation={handleNewConversation}
                 onOpenSettings={() => setShowSettings(true)}
-                onConnect={excel.handleConnect}
                 onToggleTheme={toggleTheme}
-                onRefreshWorkbooks={excel.refreshWorkbooks}
                 onTogglePreview={() => { setShowPreview(!showPreview); setShowChart(false); }}
                 onToggleChart={() => { setShowChart(!showChart); setShowPreview(false); }}
                 onUndo={handleUndo}
                 onOpenExportDialog={() => setShowExportDialog(true)}
-                onToggleFullscreen={toggleFullscreen}
-                isFullscreen={isFullscreen}
             />
 
-            {/* Main */}
+            {/* Main - Unified interface for both COM and Upload modes */}
             <main className="flex flex-1 overflow-hidden">
                 {/* Sidebar */}
                 <Sidebar
-                    workbooks={excel.workbooks}
-                    connected={excel.connected}
-                    selectedWorkbook={excel.selectedWorkbook}
-                    selectedSheets={excel.selectedSheets}
-                    expandedWorkbook={excel.expandedWorkbook}
-                    contextLoaded={excel.contextLoaded}
-                    onExpandWorkbook={excel.setExpandedWorkbook}
-                    onSelectSheet={excel.handleSelectSheet}
+                    workbooks={workbooks}
+                    connected={!!excelUpload.sessionId}
+                    selectedWorkbook={excelUpload.previewData?.fileName || ''}
+                    selectedSheets={activeSheet ? [activeSheet] : []}
+                    expandedWorkbook={excelUpload.previewData?.fileName || null}
+                    contextLoaded={excelUpload.sessionId ? `Arquivo: ${excelUpload.previewData?.fileName || 'carregado'}` : ''}
+                    onExpandWorkbook={() => { }}
+                    onSelectSheet={async (_wbName, sheetName) => {
+                        console.log('[DEBUG App.tsx] onSelectSheet chamado com sheet:', sheetName)
+                        await excelUpload.loadSheetData(sheetName)
+                    }}
                     conversations={conversations.conversations}
                     isLoadingConversations={conversations.isLoading}
                     onLoadConversations={conversations.loadConversations}
                     onLoadConversation={handleLoadConversation}
                     onDeleteConversation={conversations.handleDeleteConversation}
+                    onCloseSession={excelUpload.closeSession}
                 />
 
-                {/* Chat Area */}
+                {/* Chat Area - same for both modes */}
                 <section className="flex-1 flex flex-col bg-linear-to-b from-background to-muted/20">
-                    {/* Toolbar */}
-                    {excel.previewData && (
+                    {/* Toolbar - show if there's preview data */}
+                    {previewData && (
                         <Toolbar
                             showPreview={showPreview}
                             showChart={showChart}
                             onTogglePreview={() => { setShowPreview(!showPreview); setShowChart(false); }}
                             onToggleChart={() => { setShowChart(!showChart); setShowPreview(false); }}
-                            selectedSheets={excel.selectedSheets}
-                            activeSheet={excel.activeSheet}
-                            onSwitchSheet={excel.switchActiveSheet}
-                            onRefresh={excel.refreshWorkbooks}
+                            selectedSheets={selectedSheets}
+                            activeSheet={activeSheet}
+                            onSwitchSheet={async (sheet) => { await excelUpload.loadSheetData(sheet); }}
+                            onRefresh={excelUpload.refreshPreview}
                         />
                     )}
 
-                    {/* Data Preview */}
-                    {showPreview && excel.previewData && (
-                        <DataPreview previewData={excel.previewData} />
+                    {/* Data Preview - shows COM preview or Excelize sheet data */}
+                    {showPreview && previewData && (
+                        <DataPreview previewData={previewData} />
                     )}
 
                     {/* Chart View */}
-                    {showChart && excel.previewData && (
-                        <ChartViewer previewData={excel.previewData} />
+                    {showChart && previewData && previewData.headers && previewData.headers.length > 0 && (
+                        <ChartViewer previewData={previewData} />
                     )}
 
                     {/* Pending Actions Banner */}
@@ -591,12 +633,12 @@ export default function App() {
                     {!showPreview && !showChart && (
                         <div className="flex-1 overflow-y-auto p-6 space-y-6">
                             {chat.messages.length === 0 ? (
-                                <EmptyState selectedSheets={excel.selectedSheets} />
+                                <EmptyState selectedSheets={selectedSheets} />
                             ) : (
                                 <>
                                     {chat.messages
                                         .filter(msg => !msg.hidden && msg.role !== 'system' && !msg.content.startsWith('Resultados das ferramentas'))
-                                        .filter(msg => msg.role !== 'assistant' || msg.content.trim().length > 0) // Hide empty assistant messages
+                                        .filter(msg => msg.role !== 'assistant' || msg.content.trim().length > 0)
                                         .map((msg, idx) => (
                                             <MessageBubble
                                                 key={idx}
@@ -617,9 +659,6 @@ export default function App() {
                                                 renderContent={renderMessageContent}
                                             />
                                         ))}
-
-                                    {/* Thinking Indicator */}
-
                                 </>
                             )}
                             <div ref={chat.messagesEndRef} />
@@ -634,6 +673,7 @@ export default function App() {
                         onInputChange={chat.setInputMessage}
                         onSend={chat.handleSendMessage}
                         onCancel={chat.handleCancelChat}
+                        onFileUpload={handleFileUpload}
                     />
                 </section>
             </main>

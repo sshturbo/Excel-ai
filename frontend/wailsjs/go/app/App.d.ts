@@ -3,9 +3,9 @@
 import {dto} from '../models';
 import {context} from '../models';
 import {excel} from '../models';
+import {app} from '../models';
 import {license} from '../models';
 import {storage} from '../models';
-import {app} from '../models';
 
 export function ActivateLicense():Promise<boolean|string>;
 
@@ -30,6 +30,8 @@ export function ClearLastBatchID():Promise<void>;
 export function ClearOrchestratorCache():Promise<void>;
 
 export function ClearRange(arg1:string,arg2:string):Promise<void>;
+
+export function CloseSession(arg1:string):Promise<void>;
 
 export function ConfigurePivotFields(arg1:string,arg2:string,arg3:Array<string>,arg4:Array<Record<string, string>>):Promise<void>;
 
@@ -63,6 +65,8 @@ export function DeleteSheet(arg1:string):Promise<void>;
 
 export function DeleteTable(arg1:string,arg2:string):Promise<void>;
 
+export function DownloadExcel(arg1:string):Promise<Array<number>>;
+
 export function EditMessage(arg1:number,arg2:string):Promise<void>;
 
 export function EndUndoBatch():Promise<void>;
@@ -79,6 +83,8 @@ export function GetChatHistory():Promise<Array<dto.ChatMessage>>;
 
 export function GetCurrentConversationID():Promise<string>;
 
+export function GetExcelPreview(arg1:string):Promise<app.PreviewData>;
+
 export function GetHeaders(arg1:string,arg2:string):Promise<Array<string>>;
 
 export function GetLastBatchID():Promise<number>;
@@ -94,6 +100,8 @@ export function GetOrchestratorStats():Promise<Record<string, any>>;
 export function GetPreviewData(arg1:string,arg2:string):Promise<dto.PreviewData>;
 
 export function GetSavedConfig():Promise<storage.Config>;
+
+export function GetSheetData(arg1:string,arg2:string):Promise<Array<any>>;
 
 export function GetUsedRange(arg1:string):Promise<string>;
 
@@ -182,5 +190,7 @@ export function UnmergeCells(arg1:string,arg2:string):Promise<void>;
 export function UpdateConfig(arg1:number,arg2:number,arg3:number,arg4:boolean,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string):Promise<void>;
 
 export function UpdateExcelCell(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function UploadExcel(arg1:string,arg2:Array<number>):Promise<string>;
 
 export function WriteToExcel(arg1:number,arg2:number,arg3:string):Promise<void>;
