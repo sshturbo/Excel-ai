@@ -54,6 +54,20 @@ type DecisionSnapshot struct {
 	AvailableTasks []string // Tarefas disponíveis baseadas no modo
 }
 
+// VersionedSnapshot representa um snapshot versionado com capacidade de replay (Fase 2.3)
+type VersionedSnapshot struct {
+	ID          int64
+	Timestamp   time.Time
+	Message     string      // Mensagem original do usuário
+	Decision    string      // Decisão tomada pelo LLM
+	Result      string      // Resultado da execução
+	Success     bool        // Se a decisão foi bem-sucedida
+	Mode        OperationMode
+	Stats       OrchestratorStats
+	TaskKey     string      // Chave para identificar tipo de tarefa
+	ReplayCount int         // Quantas vezes foi replayado
+}
+
 // CacheStatus status do cache
 type CacheStatus struct {
 	TotalEntries  int
@@ -107,6 +121,11 @@ type Orchestrator struct {
 	// Snapshot de decisão
 	decisionSnapshot *DecisionSnapshot
 	muSnapshot       sync.RWMutex
+
+	// Versionamento de snapshots (Fase 2.3)
+	versionedSnapshots map[int64]*VersionedSnapshot
+	nextSnapshotID     int64
+	muSnapshots       sync.RWMutex
 
 	// Priorização inteligente
 	priorityQueue []*Task
@@ -219,6 +238,8 @@ func NewOrchestrator(service *Service) (*Orchestrator, error) {
 		operationMode:   ModeNormal,
 		priorityQueue:   make([]*Task, 0),
 		decisionCache:   make(map[string]*DecisionCache), // Classificador rápido
+		versionedSnapshots: make(map[int64]*VersionedSnapshot), // Fase 2.3
+		nextSnapshotID: 1, // Fase 2.3
 	}, nil
 }
 
@@ -1641,4 +1662,271 @@ func (o *Orchestrator) GetCognitiveBudgetStats() map[string]interface{} {
 func estimatePromptTokens(budget int) int {
 	// Estimativa simples: orçamento é o limite máximo
 	return budget
+}
+
+// ============================================
+// VERSIONAMENTO DE SNAPSHOTS COM REPLAY (FASE 2.3)
+// ============================================
+
+// captureVersionedSnapshot captura um snapshot versionado com capacidade de replay
+func (o *Orchestrator) captureVersionedSnapshot(message string, decision string, result string, success bool) *VersionedSnapshot {
+	o.muSnapshots.Lock()
+	defer o.muSnapshots.Unlock()
+
+	// Gerar task key baseado na mensagem
+	taskKey := o.generateTaskKeyFromMessage(message)
+
+	// Criar snapshot
+	snapshot := &VersionedSnapshot{
+		ID:          o.nextSnapshotID,
+		Timestamp:   time.Now(),
+		Message:     message,
+		Decision:    decision,
+		Result:      result,
+		Success:     success,
+		Mode:        o.GetOperationMode(),
+		Stats:       o.GetStats(),
+		TaskKey:     taskKey,
+		ReplayCount: 0,
+	}
+
+	// Armazenar snapshot
+	o.versionedSnapshots[snapshot.ID] = snapshot
+	o.nextSnapshotID++
+
+	fmt.Printf("[SNAPSHOT] Capturado ID %d: %s (Success: %v)\n", snapshot.ID, taskKey, success)
+
+	// Limpar snapshots antigos (manter últimos 1000)
+	o.cleanupOldSnapshots(1000)
+
+	return snapshot
+}
+
+// ReplayDecision replay uma decisão específica
+func (o *Orchestrator) ReplayDecision(snapshotID int64) (string, error) {
+	o.muSnapshots.RLock()
+	snapshot, exists := o.versionedSnapshots[snapshotID]
+	o.muSnapshots.RUnlock()
+
+	if !exists {
+		return "", fmt.Errorf("snapshot %d não encontrado", snapshotID)
+	}
+
+	// Validar se contexto ainda é válido
+	if !o.validateSnapshotContext(snapshot) {
+		return "", fmt.Errorf("contexto inválido para replay do snapshot %d", snapshotID)
+	}
+
+	fmt.Printf("[SNAPSHOT] Replay do snapshot %d: %s\n", snapshotID, snapshot.TaskKey)
+
+	// Atualizar contador de replay
+	o.muSnapshots.Lock()
+	snapshot.ReplayCount++
+	o.muSnapshots.Unlock()
+
+	// Executar mesma decisão
+	result, err := o.executeDecision(snapshot.Decision)
+	if err != nil {
+		return "", fmt.Errorf("erro ao replay snapshot %d: %w", snapshotID, err)
+	}
+
+	// Atualizar resultado do snapshot se bem-sucedido
+	if result != "" {
+		o.muSnapshots.Lock()
+		snapshot.Result = result
+		snapshot.Success = true
+		o.muSnapshots.Unlock()
+	}
+
+	return result, nil
+}
+
+// executeDecision executa uma decisão (usado no replay)
+func (o *Orchestrator) executeDecision(decision string) (string, error) {
+	// Parsear a decisão para extrair tool e args
+	// Formo esperado: tool_name(args)
+	
+	// Implementação simplificada
+	_, _, err := o.parseDecision(decision)
+	if err != nil {
+		return "", err
+	}
+
+	// Placeholder - em produção executaria a decisão real
+	return "", nil
+}
+
+// parseDecision parse uma decisão string em tool e args
+func (o *Orchestrator) parseDecision(decision string) (string, map[string]interface{}, error) {
+	// Implementação simplificada - extrair tool e args
+	// Ex: "create_chart(range=A1:C10,type=bar)"
+	
+	// Por enquanto retorna placeholder
+	return "", nil, nil
+}
+
+// getLastSuccessfulSnapshot retorna o último snapshot bem-sucedido para um taskKey
+func (o *Orchestrator) getLastSuccessfulSnapshot(taskKey string) *VersionedSnapshot {
+	o.muSnapshots.RLock()
+	defer o.muSnapshots.RUnlock()
+
+	var lastSuccessful *VersionedSnapshot
+	var lastTime time.Time
+
+	// Buscar snapshot mais recente e bem-sucedido
+	for _, snapshot := range o.versionedSnapshots {
+		if snapshot.TaskKey == taskKey && snapshot.Success {
+			if snapshot.Timestamp.After(lastTime) {
+				lastSuccessful = snapshot
+				lastTime = snapshot.Timestamp
+			}
+		}
+	}
+
+	if lastSuccessful != nil {
+		fmt.Printf("[SNAPSHOT] Encontrado snapshot bem-sucedido: ID %d\n", lastSuccessful.ID)
+	}
+
+	return lastSuccessful
+}
+
+// validateSnapshotContext valida se o contexto de um snapshot ainda é válido
+func (o *Orchestrator) validateSnapshotContext(snapshot *VersionedSnapshot) bool {
+	// Verificar se o modo atual é compatível
+	currentMode := o.GetOperationMode()
+
+	// Se snapshot foi criado em modo diferente, validar
+	if snapshot.Mode != currentMode {
+		// Apenas permitir replay se estiver em modo normal
+		if currentMode != ModeNormal {
+			fmt.Printf("[SNAPSHOT] Snapshot ID %d: modo incompatível (%v vs %v)\n", 
+				snapshot.ID, snapshot.Mode, currentMode)
+			return false
+		}
+	}
+
+	// Verificar tempo decorrido (snapshots muito antigos podem não ser válidos)
+	if time.Since(snapshot.Timestamp) > 24*time.Hour {
+		fmt.Printf("[SNAPSHOT] Snapshot ID %d: muito antigo (%v)\n", 
+			snapshot.ID, time.Since(snapshot.Timestamp))
+		return false
+	}
+
+	// Verificar se taxa de sucesso atual é razoável
+	stats := o.GetStats()
+	if stats.TotalTasks > 10 && stats.SuccessRate < 50 {
+		fmt.Printf("[SNAPSHOT] Snapshot ID %d: sistema instável (%.1f%% sucesso)\n", 
+			snapshot.ID, stats.SuccessRate)
+		return false
+	}
+
+	return true
+}
+
+// rollbackToSnapshot volta para um snapshot anterior
+func (o *Orchestrator) rollbackToSnapshot(snapshotID int64) error {
+	o.muSnapshots.RLock()
+	snapshot, exists := o.versionedSnapshots[snapshotID]
+	o.muSnapshots.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("snapshot %d não encontrado", snapshotID)
+	}
+
+	fmt.Printf("[SNAPSHOT] Rollback para snapshot %d: %s\n", snapshotID, snapshot.TaskKey)
+
+	// Restaurar estado do snapshot
+	// Implementação simplificada - em produção restauraria estado completo
+	
+	// Restaurar modo de operação
+	o.muMode.Lock()
+	o.operationMode = snapshot.Mode
+	o.muMode.Unlock()
+
+	// Aplicar configurações do modo
+	o.applyOperationMode(snapshot.Mode)
+
+	fmt.Printf("[SNAPSHOT] Rollback concluído: modo restaurado para %v\n", snapshot.Mode)
+
+	return nil
+}
+
+// cleanupOldSnapshots remove snapshots antigos para liberar memória
+func (o *Orchestrator) cleanupOldSnapshots(maxSnapshots int) {
+	if len(o.versionedSnapshots) <= maxSnapshots {
+		return
+	}
+
+	// Converter para slice e ordenar por ID
+	type snapshotEntry struct {
+		id   int64
+		snap *VersionedSnapshot
+	}
+
+	entries := make([]snapshotEntry, 0, len(o.versionedSnapshots))
+	for id, snap := range o.versionedSnapshots {
+		entries = append(entries, snapshotEntry{id: id, snap: snap})
+	}
+
+	// Ordenar por ID (mais antigos primeiro)
+	for i := 0; i < len(entries)-1; i++ {
+		for j := i + 1; j < len(entries); j++ {
+			if entries[i].id > entries[j].id {
+				entries[i], entries[j] = entries[j], entries[i]
+			}
+		}
+	}
+
+	// Remover os mais antigos
+	toRemove := len(entries) - maxSnapshots
+	for i := 0; i < toRemove; i++ {
+		delete(o.versionedSnapshots, entries[i].id)
+	}
+
+	fmt.Printf("[SNAPSHOT] Removidos %d snapshots antigos\n", toRemove)
+}
+
+// getSnapshot retorna um snapshot específico
+func (o *Orchestrator) getSnapshot(snapshotID int64) *VersionedSnapshot {
+	o.muSnapshots.RLock()
+	defer o.muSnapshots.RUnlock()
+	return o.versionedSnapshots[snapshotID]
+}
+
+// generateTaskKeyFromMessage gera uma task key a partir da mensagem
+func (o *Orchestrator) generateTaskKeyFromMessage(message string) string {
+	// Criar hash da mensagem para identificar tipo de tarefa
+	hash := sha256.New()
+	hash.Write([]byte(strings.ToLower(message)))
+	return hex.EncodeToString(hash.Sum(nil))[:16] // Primeiros 16 caracteres
+}
+
+// GetSnapshotStats retorna estatísticas dos snapshots
+func (o *Orchestrator) GetSnapshotStats() map[string]interface{} {
+	o.muSnapshots.RLock()
+	defer o.muSnapshots.RUnlock()
+
+	totalSnapshots := len(o.versionedSnapshots)
+	successfulSnapshots := 0
+	totalReplays := 0
+
+	for _, snapshot := range o.versionedSnapshots {
+		if snapshot.Success {
+			successfulSnapshots++
+		}
+		totalReplays += snapshot.ReplayCount
+	}
+
+	successRate := 0.0
+	if totalSnapshots > 0 {
+		successRate = float64(successfulSnapshots) / float64(totalSnapshots) * 100
+	}
+
+	return map[string]interface{}{
+		"total_snapshots":     totalSnapshots,
+		"successful_snapshots": successfulSnapshots,
+		"success_rate":        successRate,
+		"total_replays":       totalReplays,
+		"next_snapshot_id":    o.nextSnapshotID,
+	}
 }

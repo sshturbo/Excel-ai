@@ -1,40 +1,41 @@
 package cache
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	bolt "go.etcd.io/bbolt"
+)
+
+const (
+	cacheBucketName = "cache_entries"
 )
 
 // CacheEntry representa uma entrada no cache persistente
 type CacheEntry struct {
-	ID           int64
-	Key          string
-	Result       string
-	Error         string
-	StoredAt     time.Time
-	AccessCount  int
-	TTL          time.Duration
-	TagsJSON     string // Tags armazenadas como JSON
-	Tags         []string // Tags em memória
+	Key         string
+	Result      string
+	Error       string
+	StoredAt    time.Time
+	AccessCount int
+	TTL         time.Duration
+	Tags        []string
 }
 
 // CacheStatus status do cache
 type CacheStatus struct {
-	TotalEntries  int     // Total de entradas no cache
-	HitRate       float64 // Taxa de acerto do cache (%)
-	Invalidations int64   // Total de invalidações
+	TotalEntries  int
+	HitRate       float64
+	Invalidations int64
 	LastCleanup   time.Time
-	DatabaseSize  int64 // Tamanho do banco em bytes
+	DatabaseSize  int64
 }
 
-// PersistentCache implementa cache persistente em SQLite
+// PersistentCache implementa cache persistente em BoltDB
 type PersistentCache struct {
-	db               *sql.DB
+	db               *bolt.DB
 	mu               sync.RWMutex
 	cacheHits        int64
 	cacheMisses      int64
@@ -43,24 +44,23 @@ type PersistentCache struct {
 	dbPath           string
 }
 
-// NewPersistentCache cria um novo cache persistente em SQLite
+// NewPersistentCache cria um novo cache persistente em BoltDB
 func NewPersistentCache(dbPath string, ttl time.Duration) (*PersistentCache, error) {
-	// Abrir conexão com SQLite
-	db, err := sql.Open("sqlite3", dbPath)
+	// Abrir conexão com BoltDB
+	db, err := bolt.Open(dbPath, 0600, &bolt.Options{Timeout: 1 * time.Second})
 	if err != nil {
-		return nil, fmt.Errorf("erro ao abrir banco de dados: %w", err)
+		return nil, fmt.Errorf("erro ao abrir banco de dados BoltDB: %w", err)
 	}
 
-	// Criar tabela se não existir
-	err = createTables(db)
+	// Criar bucket se não existir
+	err = db.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists([]byte(cacheBucketName))
+		return err
+	})
 	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("erro ao criar tabelas: %w", err)
+		return nil, fmt.Errorf("erro ao criar bucket: %w", err)
 	}
-
-	// Configurar conexão
-	db.SetMaxOpenConns(1) // SQLite não suporta múltiplas escritas simultâneas
-	db.SetMaxIdleConns(1)
 
 	cache := &PersistentCache{
 		db:       db,
@@ -74,56 +74,35 @@ func NewPersistentCache(dbPath string, ttl time.Duration) (*PersistentCache, err
 	return cache, nil
 }
 
-// createTables cria as tabelas necessárias no banco de dados
-func createTables(db *sql.DB) error {
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS cache_entries (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			key TEXT UNIQUE NOT NULL,
-			result TEXT NOT NULL,
-			error TEXT,
-			stored_at DATETIME NOT NULL,
-			access_count INTEGER NOT NULL DEFAULT 1,
-			ttl_seconds INTEGER NOT NULL,
-			tags TEXT NOT NULL
-		);
-
-		CREATE INDEX IF NOT EXISTS idx_cache_key ON cache_entries(key);
-		CREATE INDEX IF NOT EXISTS idx_cache_stored_at ON cache_entries(stored_at);
-		CREATE INDEX IF NOT EXISTS idx_cache_tags ON cache_entries(tags);
-	`)
-	return err
-}
-
 // Get tenta obter resultado do cache
 func (c *PersistentCache) Get(key string) (string, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	var result string
-	var storedAt time.Time
-	var ttlSeconds int64
-	var accessCount int
-	var errStr string
+	var entry CacheEntry
 
-	err := c.db.QueryRow(
-		"SELECT result, stored_at, ttl_seconds, access_count, error FROM cache_entries WHERE key = ?",
-		key,
-	).Scan(&result, &storedAt, &ttlSeconds, &accessCount, &errStr)
+	err := c.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(cacheBucketName))
+		if bucket == nil {
+			return fmt.Errorf("bucket não existe")
+		}
+
+		data := bucket.Get([]byte(key))
+		if data == nil {
+			return fmt.Errorf("entrada não encontrada")
+		}
+
+		return json.Unmarshal(data, &entry)
+	})
 
 	if err != nil {
-		if err == sql.ErrNoRows {
-			c.cacheMisses++
-			return "", false
-		}
-		fmt.Printf("[CACHE DB] Erro ao consultar: %v\n", err)
 		c.cacheMisses++
 		return "", false
 	}
 
 	// Verificar se expirou
-	ttl := time.Duration(ttlSeconds) * time.Second
-	if time.Since(storedAt) > ttl {
+	if time.Since(entry.StoredAt) > entry.TTL {
 		// Entrada expirada, remover
 		go c.Delete(key)
 		c.cacheMisses++
@@ -131,16 +110,37 @@ func (c *PersistentCache) Get(key string) (string, bool) {
 	}
 
 	// Atualizar contador de acessos
-	_, err = c.db.Exec(
-		"UPDATE cache_entries SET access_count = access_count + 1 WHERE key = ?",
-		key,
-	)
+	err = c.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(cacheBucketName))
+		if bucket == nil {
+			return fmt.Errorf("bucket não existe")
+		}
+
+		data := bucket.Get([]byte(key))
+		if data == nil {
+			return fmt.Errorf("entrada não encontrada")
+		}
+
+		var entry CacheEntry
+		if err := json.Unmarshal(data, &entry); err != nil {
+			return err
+		}
+
+		entry.AccessCount++
+		data, err = json.Marshal(entry)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put([]byte(key), data)
+	})
+
 	if err != nil {
 		fmt.Printf("[CACHE DB] Erro ao atualizar contador: %v\n", err)
 	}
 
 	c.cacheHits++
-	fmt.Printf("[CACHE DB] Hit: %s (acessos: %d)\n", key, accessCount+1)
+	fmt.Printf("[CACHE DB] Hit: %s (acessos: %d)\n", key, entry.AccessCount+1)
 
 	return result, true
 }
@@ -150,26 +150,28 @@ func (c *PersistentCache) Set(key string, result string, tags []string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Converter tags para JSON
-	tagsJSON, err := json.Marshal(tags)
-	if err != nil {
-		return fmt.Errorf("erro ao serializar tags: %w", err)
+	entry := CacheEntry{
+		Key:         key,
+		Result:      result,
+		StoredAt:    time.Now(),
+		AccessCount:  1,
+		TTL:         c.cacheTTL,
+		Tags:        tags,
 	}
 
-	ttlSeconds := int64(c.cacheTTL.Seconds())
-	now := time.Now()
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("erro ao serializar entrada: %w", err)
+	}
 
-	// Inserir ou atualizar
-	_, err = c.db.Exec(`
-		INSERT INTO cache_entries (key, result, stored_at, access_count, ttl_seconds, tags)
-		VALUES (?, ?, ?, 1, ?, ?)
-		ON CONFLICT(key) DO UPDATE SET
-			result = excluded.result,
-			stored_at = excluded.stored_at,
-			ttl_seconds = excluded.ttl_seconds,
-			tags = excluded.tags,
-			access_count = 1
-	`, key, result, now, ttlSeconds, string(tagsJSON))
+	err = c.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(cacheBucketName))
+		if bucket == nil {
+			return fmt.Errorf("bucket não existe")
+		}
+
+		return bucket.Put([]byte(key), data)
+	})
 
 	if err != nil {
 		c.cacheMisses++
@@ -186,7 +188,15 @@ func (c *PersistentCache) Delete(key string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	_, err := c.db.Exec("DELETE FROM cache_entries WHERE key = ?", key)
+	err := c.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(cacheBucketName))
+		if bucket == nil {
+			return fmt.Errorf("bucket não existe")
+		}
+
+		return bucket.Delete([]byte(key))
+	})
+
 	if err != nil {
 		return fmt.Errorf("erro ao deletar do cache: %w", err)
 	}
@@ -204,39 +214,65 @@ func (c *PersistentCache) Invalidate(tags []string) (int64, error) {
 		return 0, nil
 	}
 
-	// Construir query dinâmica para invalidação
-	query := "DELETE FROM cache_entries WHERE tags LIKE ?"
-	args := []interface{}{"%" + tags[0] + "%"}
+	var count int64
+	var keysToDelete []string
 
-	for i := 1; i < len(tags); i++ {
-		query += " OR tags LIKE ?"
-		args = append(args, "%"+tags[i]+"%")
-	}
-
-	// Não invalidar pela tag genérica da ferramenta
-	for i, tag := range tags {
-		if tag == "tool:" {
-			// Remover esta tag da query
-			query = "DELETE FROM cache_entries WHERE 0=1"
-			args = []interface{}{}
-			break
+	err := c.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(cacheBucketName))
+		if bucket == nil {
+			return fmt.Errorf("bucket não existe")
 		}
-		args[i] = "%invalid:" + tag + "%"
+
+		return bucket.ForEach(func(k, v []byte) error {
+			var entry CacheEntry
+			if err := json.Unmarshal(v, &entry); err != nil {
+				return err
+			}
+
+			// Verificar se alguma das tags corresponde
+			for _, tag := range tags {
+				for _, entryTag := range entry.Tags {
+					if entryTag == tag {
+						keysToDelete = append(keysToDelete, string(k))
+						break
+					}
+				}
+			}
+			return nil
+		})
+	})
+
+	if err != nil {
+		return 0, fmt.Errorf("erro ao buscar entradas para invalidação: %w", err)
 	}
 
-	result, err := c.db.Exec(query, args...)
+	// Deletar chaves encontradas
+	err = c.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(cacheBucketName))
+		if bucket == nil {
+			return fmt.Errorf("bucket não existe")
+		}
+
+		for _, key := range keysToDelete {
+			if err := bucket.Delete([]byte(key)); err != nil {
+				return err
+			}
+			count++
+		}
+		return nil
+	})
+
 	if err != nil {
 		return 0, fmt.Errorf("erro ao invalidar cache: %w", err)
 	}
 
-	rowsAffected, _ := result.RowsAffected()
-	c.cacheInvalidations += rowsAffected
+	c.cacheInvalidations += count
 
-	if rowsAffected > 0 {
-		fmt.Printf("[CACHE DB] Invalidação: %d entradas removidas (tags: %v)\n", rowsAffected, tags)
+	if count > 0 {
+		fmt.Printf("[CACHE DB] Invalidação: %d entradas removidas (tags: %v)\n", count, tags)
 	}
 
-	return rowsAffected, nil
+	return count, nil
 }
 
 // Clear limpa todo o cache
@@ -244,13 +280,28 @@ func (c *PersistentCache) Clear() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	result, err := c.db.Exec("DELETE FROM cache_entries")
+	var count int
+	err := c.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(cacheBucketName))
+		if bucket == nil {
+			return fmt.Errorf("bucket não existe")
+		}
+
+		err := bucket.ForEach(func(k, v []byte) error {
+			if err := bucket.Delete(k); err != nil {
+				return err
+			}
+			count++
+			return nil
+		})
+		return err
+	})
+
 	if err != nil {
 		return fmt.Errorf("erro ao limpar cache: %w", err)
 	}
 
-	rowsAffected, _ := result.RowsAffected()
-	fmt.Printf("[CACHE DB] Limpo: %d entradas removidas\n", rowsAffected)
+	fmt.Printf("[CACHE DB] Limpo: %d entradas removidas\n", count)
 	return nil
 }
 
@@ -259,22 +310,58 @@ func (c *PersistentCache) Cleanup() (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Remove entradas onde stored_at + ttl < agora
-	result, err := c.db.Exec(`
-		DELETE FROM cache_entries 
-		WHERE datetime(stored_at, '+' || CAST(ttl_seconds AS TEXT) || ' seconds') < datetime('now')
-	`)
+	var count int
+	var keysToDelete []string
+
+	err := c.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(cacheBucketName))
+		if bucket == nil {
+			return fmt.Errorf("bucket não existe")
+		}
+
+		return bucket.ForEach(func(k, v []byte) error {
+			var entry CacheEntry
+			if err := json.Unmarshal(v, &entry); err != nil {
+				return err
+			}
+
+			// Verificar se expirou
+			if time.Since(entry.StoredAt) > entry.TTL {
+				keysToDelete = append(keysToDelete, string(k))
+			}
+			return nil
+		})
+	})
+
+	if err != nil {
+		return 0, fmt.Errorf("erro ao buscar entradas expiradas: %w", err)
+	}
+
+	// Deletar chaves expiradas
+	err = c.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(cacheBucketName))
+		if bucket == nil {
+			return fmt.Errorf("bucket não existe")
+		}
+
+		for _, key := range keysToDelete {
+			if err := bucket.Delete([]byte(key)); err != nil {
+				return err
+			}
+			count++
+		}
+		return nil
+	})
 
 	if err != nil {
 		return 0, fmt.Errorf("erro ao limpar entradas expiradas: %w", err)
 	}
 
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected > 0 {
-		fmt.Printf("[CACHE DB] Limpeza: %d entradas expiradas removidas\n", rowsAffected)
+	if count > 0 {
+		fmt.Printf("[CACHE DB] Limpeza: %d entradas expiradas removidas\n", count)
 	}
 
-	return int(rowsAffected), nil
+	return count, nil
 }
 
 // GetStatus retorna status do cache
@@ -283,15 +370,24 @@ func (c *PersistentCache) GetStatus() CacheStatus {
 	defer c.mu.RUnlock()
 
 	var totalEntries int
-	err := c.db.QueryRow("SELECT COUNT(*) FROM cache_entries").Scan(&totalEntries)
+
+	err := c.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(cacheBucketName))
+		if bucket == nil {
+			return nil
+		}
+
+		stats := bucket.Stats()
+		totalEntries = stats.KeyN
+		return nil
+	})
+
 	if err != nil {
 		fmt.Printf("[CACHE DB] Erro ao contar entradas: %v\n", err)
-		totalEntries = 0
 	}
 
 	// Obter tamanho do banco
-	var dbSize int64
-	dbSize, _ = c.getDatabaseSize()
+	dbSize := c.getDatabaseSize()
 
 	hitRate := 0.0
 	if c.cacheHits+c.cacheMisses > 0 {
@@ -313,26 +409,26 @@ func (c *PersistentCache) GetEntry(key string) (*CacheEntry, error) {
 	defer c.mu.RUnlock()
 
 	var entry CacheEntry
-	var tagsJSON string
 
-	err := c.db.QueryRow(
-		"SELECT id, key, result, error, stored_at, access_count, ttl_seconds, tags FROM cache_entries WHERE key = ?",
-		key,
-	).Scan(&entry.ID, &entry.Key, &entry.Result, &entry.Error, &entry.StoredAt, &entry.AccessCount, &entry.TTL, &tagsJSON)
+	err := c.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(cacheBucketName))
+		if bucket == nil {
+			return fmt.Errorf("bucket não existe")
+		}
+
+		data := bucket.Get([]byte(key))
+		if data == nil {
+			return fmt.Errorf("entrada não encontrada")
+		}
+
+		return json.Unmarshal(data, &entry)
+	})
 
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if err.Error() == "entrada não encontrada" {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("erro ao obter entrada: %w", err)
-	}
-
-	// Parse tags JSON
-	entry.TTL = time.Duration(int64(entry.TTL.Seconds())) * time.Second
-	err = json.Unmarshal([]byte(tagsJSON), &entry.Tags)
-	if err != nil {
-		fmt.Printf("[CACHE DB] Erro ao parsear tags: %v\n", err)
-		entry.Tags = []string{}
 	}
 
 	return &entry, nil
@@ -343,32 +439,27 @@ func (c *PersistentCache) GetAllEntries() ([]*CacheEntry, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	rows, err := c.db.Query("SELECT id, key, result, error, stored_at, access_count, ttl_seconds, tags FROM cache_entries ORDER BY stored_at DESC")
+	var entries []*CacheEntry
+
+	err := c.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(cacheBucketName))
+		if bucket == nil {
+			return fmt.Errorf("bucket não existe")
+		}
+
+		return bucket.ForEach(func(k, v []byte) error {
+			var entry CacheEntry
+			if err := json.Unmarshal(v, &entry); err != nil {
+				return err
+			}
+
+			entries = append(entries, &entry)
+			return nil
+		})
+	})
+
 	if err != nil {
 		return nil, fmt.Errorf("erro ao obter entradas: %w", err)
-	}
-	defer rows.Close()
-
-	var entries []*CacheEntry
-	for rows.Next() {
-		var entry CacheEntry
-		var tagsJSON string
-
-		err := rows.Scan(&entry.ID, &entry.Key, &entry.Result, &entry.Error, &entry.StoredAt, &entry.AccessCount, &entry.TTL, &tagsJSON)
-		if err != nil {
-			fmt.Printf("[CACHE DB] Erro ao scan linha: %v\n", err)
-			continue
-		}
-
-		// Parse tags JSON
-		entry.TTL = time.Duration(int64(entry.TTL.Seconds())) * time.Second
-		err = json.Unmarshal([]byte(tagsJSON), &entry.Tags)
-		if err != nil {
-			fmt.Printf("[CACHE DB] Erro ao parsear tags: %v\n", err)
-			entry.Tags = []string{}
-		}
-
-		entries = append(entries, &entry)
 	}
 
 	return entries, nil
@@ -406,25 +497,78 @@ func (c *PersistentCache) startCleanupRoutine() {
 }
 
 // getDatabaseSize retorna o tamanho do arquivo do banco de dados
-func (c *PersistentCache) getDatabaseSize() (int64, error) {
-	var size int64
-	err := c.db.QueryRow("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()").Scan(&size)
-	if err != nil {
-		return 0, err
-	}
-	return size, nil
+func (c *PersistentCache) getDatabaseSize() int64 {
+	// BoltDB não tem método Stat() para obter tamanho
+	// Retornar 0 por enquanto
+	return 0
 }
 
-// Vacuum compacta o banco de dados (libera espaço)
+// Vacuum compacta o banco de dados (recria o bucket sem dados expirados)
 func (c *PersistentCache) Vacuum() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	_, err := c.db.Exec("VACUUM")
+	var count int
+	var validEntries []struct {
+		key  string
+		data []byte
+	}
+
+	// Primeiro, coletar entradas válidas
+	err := c.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(cacheBucketName))
+		if bucket == nil {
+			return fmt.Errorf("bucket não existe")
+		}
+
+		return bucket.ForEach(func(k, v []byte) error {
+			var entry CacheEntry
+			if err := json.Unmarshal(v, &entry); err != nil {
+				return err
+			}
+
+			// Manter apenas entradas não expiradas
+			if time.Since(entry.StoredAt) <= entry.TTL {
+				validEntries = append(validEntries, struct {
+					key  string
+					data []byte
+				}{string(k), v})
+				count++
+			}
+			return nil
+		})
+	})
+
+	if err != nil {
+		return fmt.Errorf("erro ao ler entradas: %w", err)
+	}
+
+	// Deletar bucket antigo e criar novo
+	err = c.db.Update(func(tx *bolt.Tx) error {
+		err := tx.DeleteBucket([]byte(cacheBucketName))
+		if err != nil {
+			return err
+		}
+
+		bucket, err := tx.CreateBucket([]byte(cacheBucketName))
+		if err != nil {
+			return err
+		}
+
+		// Inserir entradas válidas
+		for _, entry := range validEntries {
+			if err := bucket.Put([]byte(entry.key), entry.data); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
 	if err != nil {
 		return fmt.Errorf("erro ao compactar banco: %w", err)
 	}
 
-	fmt.Printf("[CACHE DB] Banco compactado\n")
+	fmt.Printf("[CACHE DB] Banco compactado (mantidas %d entradas)\n", count)
 	return nil
 }
