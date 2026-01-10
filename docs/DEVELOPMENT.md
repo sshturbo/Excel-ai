@@ -313,18 +313,90 @@ func (s *ExcelService) ReadRange(workbook, sheet, rangeAddr string) ([][]interfa
 
 ### Logging
 
+O Excel-AI utiliza um sistema de logging estruturado e centralizado através do pacote `pkg/logger`.
+
+**Características**:
+- 11 Componentes: APP, CHAT, EXCEL, AI, CACHE, STORAGE, LICENSE, HTTP, STREAM, TOOLS, UNDO
+- 5 Níveis de Log: DEBUG, INFO, WARN, ERROR, FATAL
+- Configuração via arquivo JSON (`logger-config.json`)
+- Saída para console e/ou arquivo
+- Thread-safe com singleton pattern
+
+**Uso Básico**:
 ```go
-import "fmt"
+import "excel-ai/pkg/logger"
 
-// Debug logs
-fmt.Printf("[ServiceName] Debug info: %v\n", data)
+// Log informativo por componente
+logger.AppInfo("Aplicação iniciada com sucesso")
+logger.ChatInfo("Nova mensagem recebida")
+logger.ExcelInfo("Workbook aberto: Vendas.xlsx")
+logger.AIInfo("Resposta recebida com sucesso")
 
-// Error logs
-fmt.Printf("[ServiceName] Error: %v\n", err)
+// Log de aviso
+logger.ExcelWarn("Excel ocupado, aguardando...")
 
-// Success logs
-fmt.Println("[ServiceName] ✅ Operation successful")
+// Log de erro
+logger.AIError("Falha ao conectar com API da IA")
+
+// Log de debug (detalhado)
+logger.CacheDebug("Cache hit: chave encontrada")
 ```
+
+**Formatação Avançada**:
+```go
+import (
+    "fmt"
+    "excel-ai/pkg/logger"
+)
+
+logger.ChatInfo(fmt.Sprintf("Usuário %s enviou mensagem", username))
+logger.ExcelDebug(fmt.Sprintf("Range %s contém %d células", range, count))
+```
+
+**Configuração** (arquivo `logger-config.json`):
+```json
+{
+  "level": "INFO",
+  "output": "console",
+  "file_path": "excel-ai.log",
+  "components": {
+    "APP": "INFO",
+    "CHAT": "INFO",
+    "EXCEL": "INFO",
+    "AI": "INFO",
+    "CACHE": "WARN",
+    "STORAGE": "WARN"
+  }
+}
+```
+
+**Componentes Disponíveis**:
+- `APP` - Aplicação geral
+- `CHAT` - Sistema de chat
+- `EXCEL` - Integração com Excel
+- `AI` - Inteligência artificial
+- `CACHE` - Sistema de cache
+- `STORAGE` - Persistência de dados
+- `LICENSE` - Sistema de licença
+- `HTTP` - Requisições HTTP
+- `STREAM` - Streaming de respostas
+- `TOOLS` - Ferramentas do sistema
+- `UNDO` - Sistema de desfazer
+
+**Níveis de Log**:
+- `DEBUG` - Informações detalhadas para desenvolvimento
+- `INFO` - Eventos normais e importantes
+- `WARN` - Situações anormais mas não críticas
+- `ERROR` - Erros que não param a aplicação
+- `FATAL` - Erros que requerem encerramento imediato
+
+**Boas Práticas**:
+1. Escolha o nível adequado para cada mensagem
+2. Use o componente correto para cada área do sistema
+3. Seja específico e forneça contexto
+4. Evite informações sensíveis (API keys, tokens, etc.)
+
+Para mais detalhes, consulte o código em `pkg/logger/logger.go`.
 
 ### Testes Backend
 
