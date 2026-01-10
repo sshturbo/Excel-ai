@@ -48,7 +48,12 @@ func NewService(storage *storage.Storage) *Service {
 	}
 
 	// Inicializar orquestrador
-	svc.orchestrator = NewOrchestrator(svc)
+	orchestrator, err := NewOrchestrator(svc)
+	if err != nil {
+		fmt.Printf("[SERVICE] Erro ao inicializar orquestrador: %v\n", err)
+		// Continuar mesmo sem orquestrador
+	}
+	svc.orchestrator = orchestrator
 
 	return svc
 }

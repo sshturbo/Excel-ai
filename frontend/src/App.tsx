@@ -62,8 +62,6 @@ export default function App() {
     // View state
     const [showPreview, setShowPreview] = useState(false)
     const [showChart, setShowChart] = useState(false)
-    const [chartType, setChartType] = useState<'bar' | 'line' | 'pie'>('bar')
-    const [chartData, setChartData] = useState<any>(null)
 
     // Action execution state
     const [actionState, setActionState] = useState<ActionState>('pending')
@@ -217,13 +215,7 @@ export default function App() {
         }
     }
 
-    // Prepare chart data when preview data changes
-    useEffect(() => {
-        if (excel.previewData) {
-            const data = excel.prepareChartData(excel.previewData)
-            setChartData(data)
-        }
-    }, [excel.previewData])
+
 
     // Handle applying pending actions - now calls backend to execute and resume AI
     const handleApplyActions = async () => {
@@ -552,10 +544,12 @@ export default function App() {
                         <Toolbar
                             showPreview={showPreview}
                             showChart={showChart}
-                            chartType={chartType}
                             onTogglePreview={() => { setShowPreview(!showPreview); setShowChart(false); }}
                             onToggleChart={() => { setShowChart(!showChart); setShowPreview(false); }}
-                            onChartTypeChange={setChartType}
+                            selectedSheets={excel.selectedSheets}
+                            activeSheet={excel.activeSheet}
+                            onSwitchSheet={excel.switchActiveSheet}
+                            onRefresh={excel.refreshWorkbooks}
                         />
                     )}
 
@@ -565,8 +559,8 @@ export default function App() {
                     )}
 
                     {/* Chart View */}
-                    {showChart && chartData && (
-                        <ChartViewer chartType={chartType} chartData={chartData} />
+                    {showChart && excel.previewData && (
+                        <ChartViewer previewData={excel.previewData} />
                     )}
 
                     {/* Pending Actions Banner */}

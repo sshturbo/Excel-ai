@@ -16,12 +16,14 @@ interface UseExcelConnectionReturn {
     workbooks: Workbook[]
     selectedWorkbook: string | null
     selectedSheets: string[]
+    activeSheet: string | null
     contextLoaded: string
     previewData: PreviewDataType | null
     expandedWorkbook: string | null
     setExpandedWorkbook: (name: string | null) => void
     handleConnect: () => Promise<void>
     handleSelectSheet: (wbName: string, sheetName: string) => Promise<void>
+    switchActiveSheet: (sheetName: string) => Promise<void>
     refreshWorkbooks: () => Promise<void>
     setWorkbooks: (workbooks: Workbook[]) => void
     prepareChartData: (data: PreviewDataType) => any
@@ -32,6 +34,7 @@ export function useExcelConnection(): UseExcelConnectionReturn {
     const [workbooks, setWorkbooks] = useState<Workbook[]>([])
     const [selectedWorkbook, setSelectedWorkbook] = useState<string | null>(null)
     const [selectedSheets, setSelectedSheets] = useState<string[]>([])
+    const [activeSheet, setActiveSheet] = useState<string | null>(null)
     const [contextLoaded, setContextLoaded] = useState('')
     const [previewData, setPreviewData] = useState<PreviewDataType | null>(null)
     const [expandedWorkbook, setExpandedWorkbook] = useState<string | null>(null)
@@ -120,6 +123,7 @@ export function useExcelConnection(): UseExcelConnectionReturn {
             const data = await GetPreviewData(newWorkbook, sheetsToLoad[0])
             if (data) {
                 setPreviewData(data)
+                setActiveSheet(sheetsToLoad[0]) // Set active sheet
                 const sheetNames = sheetsToLoad.join(', ')
                 setContextLoaded(`${sheetNames} (${sheetsToLoad.length} aba${sheetsToLoad.length > 1 ? 's' : ''})`)
                 toast.success(`Contexto carregado: ${sheetsToLoad.length} aba(s)`)
@@ -128,6 +132,22 @@ export function useExcelConnection(): UseExcelConnectionReturn {
             const errorMessage = err instanceof Error ? err.message : String(err)
             toast.error('Erro ao carregar: ' + errorMessage)
             console.error('Erro ao carregar planilha:', err)
+        }
+    }, [selectedWorkbook, selectedSheets])
+
+    // Switch active sheet for preview
+    const switchActiveSheet = useCallback(async (sheetName: string) => {
+        if (!selectedWorkbook || !selectedSheets.includes(sheetName)) return
+
+        try {
+            const data = await GetPreviewData(selectedWorkbook, sheetName)
+            if (data) {
+                setPreviewData(data)
+                setActiveSheet(sheetName)
+            }
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : String(err)
+            toast.error('Erro ao carregar aba: ' + errorMessage)
         }
     }, [selectedWorkbook, selectedSheets])
 
@@ -180,12 +200,14 @@ export function useExcelConnection(): UseExcelConnectionReturn {
         workbooks,
         selectedWorkbook,
         selectedSheets,
+        activeSheet,
         contextLoaded,
         previewData,
         expandedWorkbook,
         setExpandedWorkbook,
         handleConnect,
         handleSelectSheet,
+        switchActiveSheet,
         refreshWorkbooks,
         setWorkbooks,
         prepareChartData

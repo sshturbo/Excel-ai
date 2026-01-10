@@ -5,6 +5,7 @@ go 1.23
 require (
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/go-ole/go-ole v1.3.0
+	github.com/mattn/go-sqlite3 v1.14.33
 	github.com/wailsapp/wails/v2 v2.11.0
 )
 

@@ -175,7 +175,9 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
                 correctBaseUrl = baseUrl
             }
 
-            await UpdateConfig(maxRowsContext, maxContextChars, maxRowsPreview, includeHeaders, 'normal', '', 'pt-BR', provider, correctBaseUrl)
+            // Parâmetros: maxRowsContext, maxContextChars, maxRowsPreview, includeHeaders, detailLevel, customPrompt, language, provider, toolModel, baseUrl
+            const effectiveToolModel = toolModel === 'same-as-chat' ? '' : toolModel
+            await UpdateConfig(maxRowsContext, maxContextChars, maxRowsPreview, includeHeaders, 'normal', '', 'pt-BR', provider, effectiveToolModel, correctBaseUrl)
             toast.success('✅ Configurações salvas!')
             await loadModels()
         } catch (err) {
@@ -184,7 +186,7 @@ export function useSettings({ askBeforeApply, onAskBeforeApplyChange }: UseSetti
         } finally {
             setIsSaving(false)
         }
-    }, [apiKey, customModel, model, useCustomModel, maxRowsContext, maxRowsPreview, includeHeaders, provider, baseUrl, loadModels])
+    }, [apiKey, customModel, model, useCustomModel, toolModel, maxRowsContext, maxContextChars, maxRowsPreview, includeHeaders, provider, baseUrl, loadModels])
 
     const handleProviderChange = useCallback(async (val: string) => {
         setProvider(val)

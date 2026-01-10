@@ -1,4 +1,4 @@
-# Arquitetura de Orquestração Paralela - Excel-AI
+t# Arquitetura de Orquestração Paralela - Excel-AI
 
 ## Visão Geral
 
