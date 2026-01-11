@@ -3,6 +3,7 @@ package excel
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,10 +25,16 @@ func NewExcelizeClient(data []byte) (*ExcelizeClient, error) {
 }
 
 // NewExcelizeClientFromPath cria um novo cliente Excelize a partir de um arquivo
+// Lemos para a memória primeiro para permitir abrir arquivos já abertos em outros apps
 func NewExcelizeClientFromPath(path string) (*ExcelizeClient, error) {
-	file, err := excelize.OpenFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open Excel file: %w", err)
+		return nil, fmt.Errorf("não foi possível ler o arquivo (pode estar bloqueado exclusivamente): %w", err)
+	}
+
+	file, err := excelize.OpenReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("falha ao processar arquivo Excel: %w", err)
 	}
 
 	return &ExcelizeClient{
@@ -635,23 +642,22 @@ func (c *ExcelizeClient) GetUsedRange(sheet string) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	rows, err := c.file.GetRows(sheet)
+	dimension, err := c.file.GetSheetDimension(sheet)
 	if err != nil {
-		return "", err
-	}
-
-	if len(rows) == 0 {
 		return "A1:A1", nil
 	}
 
-	maxCols := 0
-	for _, row := range rows {
-		if len(row) > maxCols {
-			maxCols = len(row)
-		}
+	if dimension == "" {
+		return "A1:A1", nil
 	}
 
-	return fmt.Sprintf("A1:%s", indicesToCell(len(rows)-1, maxCols-1)), nil
+	// Às vezes o dimension retorna apenas uma célula (ex: "A1").
+	// Para GetRangeValues, é melhor sempre ter o formato "A1:B2"
+	if !strings.Contains(dimension, ":") {
+		return dimension + ":" + dimension, nil
+	}
+
+	return dimension, nil
 }
 
 // GetRowCount retorna o número de linhas
@@ -746,42 +752,19 @@ func parseRange(rng string) (string, string, error) {
 }
 
 func cellToIndices(cell string) (row, col int) {
-	// Ex: "A1" -> row=0, col=0
-	col = 0
-	row = 0
-
-	// Extrair letras (coluna)
-	for _, c := range cell {
-		if c >= 'A' && c <= 'Z' {
-			col = col*26 + int(c-'A'+1)
-		} else if c >= 'a' && c <= 'z' {
-			col = col*26 + int(c-'a'+1)
-		} else {
-			break
-		}
+	col, row, err := excelize.CellNameToCoordinates(cell)
+	if err != nil {
+		return 0, 0
 	}
-	col-- // Ajustar para 0-indexed
-
-	// Extrair números (linha)
-	for _, c := range cell {
-		if c >= '0' && c <= '9' {
-			row = row*10 + int(c-'0')
-		}
-	}
-	row-- // Ajustar para 0-indexed
-
-	return row, col
+	return row - 1, col - 1
 }
 
 func indicesToCell(row, col int) string {
-	// Ex: row=0, col=0 -> "A1"
-	letter := ""
-	for col > 0 {
-		col-- // Ajustar para 0-indexed
-		letter = string(rune('A'+(col%26))) + letter
-		col = col / 26
+	cell, err := excelize.CoordinatesToCellName(col+1, row+1)
+	if err != nil {
+		return ""
 	}
-	return fmt.Sprintf("%s%d", letter, row+1)
+	return cell
 }
 
 // ==================== ADVANCED FEATURES ====================
@@ -1145,4 +1128,12 @@ func (c *ExcelizeClient) GetHyperlink(sheet, cell string) (string, error) {
 		return "", err
 	}
 	return target, nil
+}
+
+// GetFilePath retorna o caminho do arquivo no disco
+func (c *ExcelizeClient) GetFilePath() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.filePath
 }

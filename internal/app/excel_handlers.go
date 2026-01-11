@@ -108,6 +108,27 @@ func (a *App) ConfigurePivotFields(sheetName, tableName string, rowFields []stri
 	return a.excelService.ConfigurePivotFields(sheetName, tableName, rowFields, dataFields)
 }
 
+// UpdateCellValue atualiza o valor de uma célula específica (para edição inline)
+func (a *App) UpdateCellValue(sheetName, cellRef, value string) error {
+	logger.ExcelInfo(fmt.Sprintf("Atualizando célula %s na planilha %s com valor: %s", cellRef, sheetName, value))
+
+	// Obter cliente Excelize
+	client, err := a.excelService.GetExcelClient()
+	if err != nil {
+		logger.ExcelError("Erro ao obter cliente Excelize: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "cliente Excel não encontrado")
+	}
+
+	// Atualizar célula
+	if err := client.SetCellValue(sheetName, cellRef, value); err != nil {
+		logger.ExcelError("Erro ao atualizar célula: " + err.Error())
+		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao atualizar célula")
+	}
+
+	logger.ExcelInfo("Célula atualizada com sucesso")
+	return nil
+}
+
 // UndoLastChange desfaz a última alteração
 func (a *App) UndoLastChange() error {
 	logger.AppInfo("Desfazendo última alteração")
@@ -269,13 +290,13 @@ func (a *App) MergeCells(sheet, rangeAddr string) error {
 // UnmergeCells desfaz mesclagem
 func (a *App) UnmergeCells(sheet, rangeAddr string) error {
 	logger.ExcelInfo(fmt.Sprintf("Desfazendo mesclagem: %s", rangeAddr))
-	
+
 	err := a.excelService.UnmergeCells(sheet, rangeAddr)
 	if err != nil {
 		logger.ExcelError("Erro ao desfazer mesclagem: " + err.Error())
 		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao desfazer mesclagem")
 	}
-	
+
 	return nil
 }
 
@@ -295,52 +316,52 @@ func (a *App) SetBorders(sheet, rangeAddr, style string) error {
 // SetColumnWidth define largura
 func (a *App) SetColumnWidth(sheet, rangeAddr string, width float64) error {
 	logger.ExcelInfo(fmt.Sprintf("Definindo largura de colunas: %s, width=%.2f", rangeAddr, width))
-	
+
 	err := a.excelService.SetColumnWidth(sheet, rangeAddr, width)
 	if err != nil {
 		logger.ExcelError("Erro ao definir largura de colunas: " + err.Error())
 		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao definir largura de colunas")
 	}
-	
+
 	return nil
 }
 
 // SetRowHeight define altura
 func (a *App) SetRowHeight(sheet, rangeAddr string, height float64) error {
 	logger.ExcelInfo(fmt.Sprintf("Definindo altura de linhas: %s, height=%.2f", rangeAddr, height))
-	
+
 	err := a.excelService.SetRowHeight(sheet, rangeAddr, height)
 	if err != nil {
 		logger.ExcelError("Erro ao definir altura de linhas: " + err.Error())
 		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao definir altura de linhas")
 	}
-	
+
 	return nil
 }
 
 // ApplyFilter aplica filtro
 func (a *App) ApplyFilter(sheet, rangeAddr string) error {
 	logger.ExcelInfo(fmt.Sprintf("Aplicando filtro: %s", rangeAddr))
-	
+
 	err := a.excelService.ApplyFilter(sheet, rangeAddr)
 	if err != nil {
 		logger.ExcelError("Erro ao aplicar filtro: " + err.Error())
 		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao aplicar filtro")
 	}
-	
+
 	return nil
 }
 
 // ClearFilters limpa filtros
 func (a *App) ClearFilters(sheet string) error {
 	logger.ExcelInfo("Limpando filtros da planilha: " + sheet)
-	
+
 	err := a.excelService.ClearFilters(sheet)
 	if err != nil {
 		logger.ExcelError("Erro ao limpar filtros: " + err.Error())
 		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao limpar filtros")
 	}
-	
+
 	return nil
 }
 
@@ -351,13 +372,13 @@ func (a *App) SortRange(sheet, rangeAddr string, column int, ascending bool) err
 		order = "decrescente"
 	}
 	logger.ExcelInfo(fmt.Sprintf("Ordenando range %s: col=%d, ordem=%s", rangeAddr, column, order))
-	
+
 	err := a.excelService.SortRange(sheet, rangeAddr, column, ascending)
 	if err != nil {
 		logger.ExcelError("Erro ao ordenar dados: " + err.Error())
 		return apperrors.Wrap(err, apperrors.ErrCodeExcelNotFound, "falha ao ordenar dados")
 	}
-	
+
 	return nil
 }
 

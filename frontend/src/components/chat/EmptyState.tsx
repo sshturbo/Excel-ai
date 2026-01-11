@@ -4,6 +4,7 @@ import { useMemo } from "react"
 
 interface EmptyStateProps {
     selectedSheets: string[]
+    onOpenNative?: () => void
 }
 
 // Get greeting based on time of day
@@ -14,7 +15,7 @@ function getGreeting(): string {
     return "Boa noite"
 }
 
-export function EmptyState({ selectedSheets }: EmptyStateProps) {
+export function EmptyState({ selectedSheets, onOpenNative }: EmptyStateProps) {
     const greeting = useMemo(() => getGreeting(), [])
 
     return (
@@ -29,7 +30,20 @@ export function EmptyState({ selectedSheets }: EmptyStateProps) {
                         ✨ Inteligência Artificial ao alcance da sua planilha
                     </p>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-6">
+                    {!selectedSheets.length && (
+                        <div className="flex justify-center pb-2">
+                            <button
+                                onClick={onOpenNative}
+                                className="w-full h-16 bg-primary hover:scale-[1.02] transition-transform text-primary-foreground font-bold rounded-xl shadow-lg shadow-primary/20 flex items-center justify-center gap-3 text-lg"
+                            >
+                                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                                </svg>
+                                Abrir Arquivo Excel
+                            </button>
+                        </div>
+                    )}
                     {selectedSheets.length > 0 ? (
                         <div className="space-y-3">
                             <p className="text-sm text-center text-muted-foreground">

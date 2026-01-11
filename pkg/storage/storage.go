@@ -25,6 +25,7 @@ type Conversation struct {
 	Title     string    `json:"title"`
 	Messages  []Message `json:"messages"`
 	Context   string    `json:"context,omitempty"`
+	ExcelPath string    `json:"excelPath,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
@@ -107,6 +108,7 @@ func initDB(db *sql.DB) error {
 			id TEXT PRIMARY KEY,
 			title TEXT,
 			context TEXT,
+			excel_path TEXT,
 			created_at DATETIME,
 			updated_at DATETIME
 		)`,
@@ -157,6 +159,7 @@ func initDB(db *sql.DB) error {
 	migrations := []string{
 		`ALTER TABLE undo_actions ADD COLUMN operation_type TEXT NOT NULL DEFAULT 'write'`,
 		`ALTER TABLE undo_actions ADD COLUMN undo_data TEXT`,
+		`ALTER TABLE conversations ADD COLUMN excel_path TEXT`,
 		`UPDATE messages SET role = 'system' WHERE content LIKE 'TOOL RESULTS:%' AND role = 'user'`,
 	}
 	for _, m := range migrations {
@@ -191,9 +194,9 @@ func (s *Storage) SaveConversation(conv *Conversation) error {
 
 	// Salvar conversa
 	_, err = tx.Exec(`
-		INSERT OR REPLACE INTO conversations (id, title, context, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, conv.ID, conv.Title, conv.Context, conv.CreatedAt, conv.UpdatedAt)
+		INSERT OR REPLACE INTO conversations (id, title, context, excel_path, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, conv.ID, conv.Title, conv.Context, conv.ExcelPath, conv.CreatedAt, conv.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -228,9 +231,9 @@ func (s *Storage) SaveConversation(conv *Conversation) error {
 func (s *Storage) LoadConversation(id string) (*Conversation, error) {
 	var conv Conversation
 	err := s.db.QueryRow(`
-		SELECT id, title, context, created_at, updated_at 
+		SELECT id, title, context, excel_path, created_at, updated_at 
 		FROM conversations WHERE id = ?
-	`, id).Scan(&conv.ID, &conv.Title, &conv.Context, &conv.CreatedAt, &conv.UpdatedAt)
+	`, id).Scan(&conv.ID, &conv.Title, &conv.Context, &conv.ExcelPath, &conv.CreatedAt, &conv.UpdatedAt)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -721,4 +724,20 @@ func (s *Storage) GetLastBatchID(convID string) (int64, error) {
 		return 0, err
 	}
 	return batchID, nil
+}
+
+// SetConversationExcelPath salva o caminho do Excel vinculado à conversa
+func (s *Storage) SetConversationExcelPath(convID, path string) error {
+	_, err := s.db.Exec(`UPDATE conversations SET excel_path = ?, updated_at = ? WHERE id = ?`, path, time.Now(), convID)
+	return err
+}
+
+// GetConversationExcelPath retorna o caminho do Excel vinculado à conversa
+func (s *Storage) GetConversationExcelPath(convID string) (string, error) {
+	var path sql.NullString
+	err := s.db.QueryRow(`SELECT excel_path FROM conversations WHERE id = ?`, convID).Scan(&path)
+	if err != nil {
+		return "", err
+	}
+	return path.String, nil
 }

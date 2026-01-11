@@ -1,0 +1,375 @@
+/* AG Grid Custom Theme - Modern & Clean Design */
+
+.ag-theme-custom {
+    /* Tailwind colors */
+    --ag-background-color: transparent;
+    --ag-data-background-color: transparent;
+    --ag-chrome-background-color: transparent;
+    --ag-foreground-color: rgb(31, 41, 55);
+    /* gray-800 */
+    --ag-border-color: rgb(229, 231, 235);
+    /* gray-200 */
+    --ag-secondary-border-color: rgb(243, 244, 246);
+    /* gray-100 */
+
+    /* Headers - Clean and modern */
+    --ag-header-background-color: transparent;
+    /* white */
+    --ag-header-foreground-color: rgb(17, 24, 39);
+    /* gray-900 */
+    --ag-header-cell-hover-background-color: rgb(249, 250, 251);
+    /* gray-50 */
+
+    /* Cells */
+    --ag-row-hover-color: rgb(249, 250, 251);
+    /* gray-50 */
+    --ag-selected-row-background-color: rgb(219, 234, 254);
+    /* blue-100 */
+    --ag-odd-row-background-color: transparent;
+
+    /* Fonts */
+    --ag-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    --ag-font-size: 14px;
+
+    /* Range selection - Tailwind blue */
+    --ag-range-selection-background-color: rgba(59, 130, 246, 0.1);
+    --ag-range-selection-border-color: rgb(59, 130, 246);
+
+    /* Input */
+    --ag-input-focus-border-color: rgb(59, 130, 246);
+
+    /* Spacing */
+    --ag-cell-horizontal-padding: 16px;
+    --ag-header-height: 44px;
+    --ag-row-height: 42px;
+}
+
+/* Grid container */
+.ag-theme-custom {
+    border: 1px solid rgb(229, 231, 235);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+    background: transparent;
+}
+
+/* Header styling - Modern & Clean */
+.ag-theme-custom .ag-header {
+    background: transparent;
+    border-bottom: 1px solid rgb(229, 231, 235);
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.ag-theme-custom .ag-header-row {
+    border-bottom: 1px solid rgb(229, 231, 235);
+}
+
+.ag-theme-custom .ag-header-cell {
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    border-right: 1px solid rgb(243, 244, 246);
+    transition: background-color 0.15s ease;
+}
+
+.ag-theme-custom .ag-header-cell:last-child {
+    border-right: none;
+}
+
+.ag-theme-custom .ag-header-cell-label {
+    justify-content: flex-start;
+    font-weight: 600;
+    color: rgb(17, 24, 39);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 14px;
+}
+
+.ag-theme-custom .ag-header-cell:hover {
+    background-color: rgb(249, 250, 251);
+}
+
+.ag-theme-custom .ag-header-cell-resize {
+    width: 3px;
+    background-color: transparent;
+    transition: background-color 0.2s ease;
+}
+
+.ag-theme-custom .ag-header-cell-resize:hover {
+    background-color: rgb(59, 130, 246);
+}
+
+/* Row styling */
+.ag-theme-custom .ag-row {
+    border-bottom: 1px solid rgb(243, 244, 246);
+    font-size: 14px;
+}
+
+.ag-theme-custom .ag-row-even {
+    background-color: transparent;
+}
+
+.ag-theme-custom .ag-row-odd {
+    background-color: transparent;
+}
+
+.ag-theme-custom .ag-row:hover {
+    background-color: rgb(249, 250, 251) !important;
+}
+
+/* Cell styling */
+.ag-theme-custom .ag-cell {
+    padding: 10px 16px;
+    line-height: 1.5;
+    display: flex;
+    align-items: center;
+    border-right: 1px solid rgb(243, 244, 246);
+    overflow: hidden !important;
+    color: rgb(31, 41, 55);
+}
+
+.ag-theme-custom .ag-cell:last-child {
+    border-right: none;
+}
+
+/* Text overflow fix */
+.ag-theme-custom .ag-cell-value {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    width: 100%;
+}
+
+.ag-theme-custom .ag-cell-wrapper {
+    overflow: hidden !important;
+    width: 100%;
+}
+
+/* Selected cells */
+.ag-theme-custom .ag-cell-range-selected:not(.ag-cell-focus) {
+    background-color: rgba(59, 130, 246, 0.08) !important;
+}
+
+.ag-theme-custom .ag-cell-focus {
+    border: 2px solid rgb(59, 130, 246) !important;
+    background-color: rgba(59, 130, 246, 0.03) !important;
+    outline: none !important;
+}
+
+/* Pinned columns */
+.ag-theme-custom .ag-pinned-left-header,
+.ag-theme-custom .ag-pinned-left-cols-container {
+    border-right: 1px solid rgb(229, 231, 235);
+}
+
+/* Scrollbar styling */
+.ag-theme-custom ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+.ag-theme-custom ::-webkit-scrollbar-track {
+    background: rgb(249, 250, 251);
+}
+
+.ag-theme-custom ::-webkit-scrollbar-thumb {
+    background: rgb(203, 213, 225);
+    border-radius: 6px;
+    border: 2px solid rgb(249, 250, 251);
+}
+
+.ag-theme-custom ::-webkit-scrollbar-thumb:hover {
+    background: rgb(148, 163, 184);
+}
+
+.ag-theme-custom ::-webkit-scrollbar-corner {
+    background: rgb(249, 250, 251);
+}
+
+/* Context menu */
+.ag-theme-custom .ag-menu {
+    background-color: rgb(255, 255, 255);
+    border: 1px solid rgb(229, 231, 235);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    border-radius: 8px;
+    padding: 6px;
+}
+
+.ag-theme-custom .ag-menu-option {
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.ag-theme-custom .ag-menu-option-active {
+    background-color: rgb(243, 244, 246);
+}
+
+/* Filter panel */
+.ag-theme-custom .ag-filter {
+    background-color: rgb(255, 255, 255);
+    border: 1px solid rgb(229, 231, 235);
+    border-radius: 8px;
+}
+
+/* Dark mode support */
+.dark .ag-theme-custom {
+    --ag-background-color: transparent;
+    --ag-data-background-color: transparent;
+    --ag-chrome-background-color: transparent;
+    --ag-foreground-color: rgb(249, 250, 251);
+    --ag-border-color: rgb(55, 65, 81);
+    --ag-secondary-border-color: rgb(75, 85, 99);
+
+    --ag-header-background-color: transparent;
+    --ag-header-foreground-color: rgb(249, 250, 251);
+    --ag-header-cell-hover-background-color: rgb(55, 65, 81);
+
+    --ag-row-hover-color: rgb(55, 65, 81);
+    --ag-selected-row-background-color: rgb(30, 64, 175);
+    --ag-odd-row-background-color: transparent;
+}
+
+.dark .ag-theme-custom {
+    border-color: rgb(55, 65, 81);
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+}
+
+.dark .ag-theme-custom .ag-header {
+    background: transparent;
+    border-bottom-color: rgb(55, 65, 81);
+}
+
+.dark .ag-theme-custom .ag-header-cell {
+    border-right-color: rgb(55, 65, 81);
+}
+
+.dark .ag-theme-custom .ag-header-cell-label {
+    color: rgb(249, 250, 251);
+}
+
+.dark .ag-theme-custom .ag-row {
+    border-bottom-color: rgb(55, 65, 81);
+}
+
+.dark .ag-theme-custom .ag-row-even,
+.dark .ag-theme-custom .ag-row-odd {
+    background-color: transparent;
+}
+
+.dark .ag-theme-custom .ag-row:hover {
+    background-color: rgb(55, 65, 81) !important;
+}
+
+.dark .ag-theme-custom .ag-cell {
+    border-right-color: rgb(55, 65, 81);
+    color: rgb(249, 250, 251);
+}
+
+.dark .ag-theme-custom ::-webkit-scrollbar-track {
+    background: rgb(31, 41, 55);
+}
+
+.dark .ag-theme-custom ::-webkit-scrollbar-thumb {
+    background: rgb(75, 85, 99);
+    border-color: rgb(31, 41, 55);
+}
+
+.dark .ag-theme-custom ::-webkit-scrollbar-thumb:hover {
+    background: rgb(107, 114, 128);
+}
+
+.dark .ag-theme-custom .ag-menu {
+    background-color: rgb(31, 41, 55);
+    border-color: rgb(55, 65, 81);
+}
+
+.dark .ag-theme-custom .ag-menu-option-active {
+    background-color: rgb(55, 65, 81);
+}
+
+/* Remove default borders */
+.ag-theme-custom .ag-root-wrapper {
+    border: none;
+}
+
+/* Cell editor positioning fix */
+.ag-theme-custom .ag-cell-inline-editing {
+    padding: 0 !important;
+    height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+.ag-theme-custom .ag-cell-editor {
+    position: relative !important;
+    width: 100% !important;
+    height: 100% !important;
+    padding: 0 !important;
+}
+
+.ag-theme-custom .ag-cell-editor input,
+.ag-theme-custom .ag-cell-editor textarea {
+    width: 100% !important;
+    height: 100% !important;
+    padding: 10px 16px !important;
+    border: 2px solid rgb(59, 130, 246) !important;
+    border-radius: 0 !important;
+    font-size: 14px !important;
+    font-family: inherit !important;
+    background: transparent !important;
+    color: inherit !important;
+    outline: none !important;
+    box-sizing: border-box !important;
+}
+
+.dark .ag-theme-custom .ag-cell-editor input,
+.dark .ag-theme-custom .ag-cell-editor textarea {
+    background: rgb(31, 41, 55) !important;
+    color: rgb(249, 250, 251) !important;
+    border-color: rgb(59, 130, 246) !important;
+}
+
+/* Remove transforms */
+.ag-theme-custom .ag-popup-editor {
+    transform: none !important;
+}
+
+/* Ensure columns don't overlap */
+.ag-theme-custom .ag-header-viewport,
+.ag-theme-custom .ag-body-viewport {
+    overflow: hidden !important;
+}
+
+.ag-theme-custom .ag-center-cols-viewport {
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+}
+
+/* Better focus outline */
+.ag-theme-custom .ag-cell-focus:focus-within {
+    outline: 2px solid rgb(59, 130, 246);
+    outline-offset: -2px;
+}
+
+/* Sort indicator */
+.ag-theme-custom .ag-header-icon {
+    color: rgb(107, 114, 128);
+}
+
+.ag-theme-custom .ag-sort-ascending-icon,
+.ag-theme-custom .ag-sort-descending-icon {
+    color: rgb(59, 130, 246);
+}
+
+/* Force transparent backgrounds everywhere */
+.ag-theme-custom .ag-root,
+.ag-theme-custom .ag-root-wrapper,
+.ag-theme-custom .ag-body-viewport,
+.ag-theme-custom .ag-center-cols-viewport,
+.ag-theme-custom .ag-center-cols-container,
+.ag-theme-custom .ag-body-horizontal-scroll-viewport,
+.ag-theme-custom .ag-body-vertical-scroll-viewport {
+    background: transparent !important;
+}

@@ -11,6 +11,10 @@ interface ToolbarProps {
     activeSheet: string | null
     onSwitchSheet: (sheetName: string) => void
     onRefresh?: () => void
+    onDownload?: () => void // Legacy download (byte array)
+    onOpenNative?: () => void
+    onSaveNative?: () => void
+    isSaving?: boolean
 }
 
 export function Toolbar({
@@ -21,7 +25,11 @@ export function Toolbar({
     selectedSheets,
     activeSheet,
     onSwitchSheet,
-    onRefresh
+    onRefresh,
+    onDownload,
+    onOpenNative,
+    onSaveNative,
+    isSaving
 }: ToolbarProps) {
     return (
         <div className="flex items-center gap-2 px-4 py-2 bg-card/80 backdrop-blur-sm border-b border-border">
@@ -89,6 +97,19 @@ export function Toolbar({
 
             {/* Right side - Actions */}
             <div className="flex items-center gap-2 ml-auto">
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={onOpenNative}
+                    className="h-8 gap-2"
+                    title="Abrir outro arquivo Excel"
+                >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                    Abrir
+                </Button>
+
                 {onRefresh && (
                     <Button
                         variant="ghost"
@@ -102,6 +123,42 @@ export function Toolbar({
                             <path d="M21 3v5h-5" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                         Atualizar
+                    </Button>
+                )}
+
+                {/* Legacy download button kept for compatibility but hidden if save is priority */}
+                {onDownload && !onSaveNative && (
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onDownload}
+                        className="h-8 gap-2"
+                    >
+                        Download
+                    </Button>
+                )}
+
+                {onSaveNative && (
+                    <Button
+                        variant="default"
+                        size="sm"
+                        onClick={onSaveNative}
+                        disabled={isSaving}
+                        className="h-8 gap-2 bg-green-600 hover:bg-green-700 text-white"
+                        title="Salvar alterações no arquivo original (Sobrescrever)"
+                    >
+                        {isSaving ? (
+                            <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 12a9 9 0 11-6.219-8.56" strokeLinecap="round" />
+                            </svg>
+                        ) : (
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
+                                <path d="M17 21v-8H7v8" />
+                                <path d="M7 3v5h8" />
+                            </svg>
+                        )}
+                        Salvar
                     </Button>
                 )}
 

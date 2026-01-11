@@ -24,6 +24,17 @@ interface ExcelViewerProps {
   onRefreshSheet?: (sheetName: string) => Promise<void>;
   onSheetChange?: (sheetName: string) => void;
   downloading?: boolean;
+};
+
+// Convert column index to Excel-style letter (0=A, 1=B, 26=AA, etc.)
+function getColumnLetter(index: number): string {
+  let letter = '';
+  let temp = index;
+  while (temp >= 0) {
+    letter = String.fromCharCode((temp % 26) + 65) + letter;
+    temp = Math.floor(temp / 26) - 1;
+  }
+  return letter;
 }
 
 export const ExcelViewer: React.FC<ExcelViewerProps> = ({
@@ -175,30 +186,56 @@ export const ExcelViewer: React.FC<ExcelViewerProps> = ({
               </div>
             </div>
           ) : sheetData && sheetData.length > 0 ? (
-            <div className="overflow-x-auto border border-gray-200 rounded-lg">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+            <div className="overflow-x-auto overflow-y-auto border border-gray-300 rounded-lg bg-white" style={{ maxHeight: '500px' }}>
+              <div className="inline-block min-w-full" style={{ minWidth: 'fit-content' }}>
+                <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed', minWidth: `${Math.max(sheetData[0].length, 5) * 120}px` }}>
+                <thead className="sticky top-0 z-20">
+                  {/* Column letters row */}
                   <tr>
+                    <th className="sticky left-0 z-30 w-12 min-w-12 bg-gray-200 border border-gray-400 font-bold text-gray-700 text-center py-2 select-none">
+                      <svg className="w-3 h-3 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 4l16 16M20 4l-16 16" strokeLinecap="round" />
+                      </svg>
+                    </th>
+                    {sheetData[0].map((_, index) => (
+                      <th
+                        key={index}
+                        className="bg-gray-200 border border-gray-400 font-bold text-gray-700 text-center py-2 select-none hover:bg-gray-300"
+                        style={{ width: '120px' }}
+                      >
+                        {getColumnLetter(index)}
+                      </th>
+                    ))}
+                  </tr>
+                  {/* Data headers row */}
+                  <tr>
+                    <th className="sticky left-0 z-30 w-12 min-w-12 bg-gray-200 border border-gray-400 font-bold text-gray-700 text-center py-2 select-none text-xs">
+                      1
+                    </th>
                     {sheetData[0].map((header, index) => (
                       <th
                         key={index}
-                        className="px-4 py-2 text-left font-semibold text-gray-700 border-b border-gray-200 whitespace-nowrap"
+                        className="bg-gray-50 border border-gray-300 text-left font-semibold py-2 px-3 truncate"
+                        style={{ width: '120px' }}
+                        title={header || ''}
                       >
-                        {header || `(Col ${index + 1})`}
+                        {header || `Col ${index + 1}`}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {sheetData.slice(1, 101).map((row, rowIndex) => (
-                    <tr
-                      key={rowIndex}
-                      className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
-                    >
+                    <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50/50 hover:bg-blue-50/30'}>
+                      <td className="sticky left-0 z-10 w-12 min-w-12 bg-gray-200 border border-gray-400 font-bold text-gray-700 text-center py-2 select-none text-xs">
+                        {rowIndex + 2}
+                      </td>
                       {row.map((cell, cellIndex) => (
                         <td
                           key={cellIndex}
-                          className="px-4 py-2 text-left border-b border-gray-200 whitespace-nowrap text-gray-700"
+                          className="border border-gray-300 py-2 px-3 overflow-hidden text-ellipsis whitespace-nowrap cursor-text"
+                          style={{ width: '120px' }}
+                          title={cell !== undefined && cell !== null ? String(cell) : ''}
                         >
                           {cell !== undefined && cell !== null ? cell : ''}
                         </td>
@@ -208,10 +245,11 @@ export const ExcelViewer: React.FC<ExcelViewerProps> = ({
                 </tbody>
               </table>
               {sheetData.length > 101 && (
-                <div className="p-3 text-center text-sm text-gray-500 bg-gray-50">
+                <div className="sticky bottom-0 left-0 right-0 bg-gray-100 border-t-2 border-gray-400 px-4 py-2 text-sm text-gray-600 font-medium">
                   Mostrando primeiras 100 linhas de {sheetData.length} linhas totais
                 </div>
               )}
+              </div>
             </div>
           ) : (
             <div className="flex items-center justify-center h-64 text-gray-500">

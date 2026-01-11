@@ -11,6 +11,7 @@ interface HeaderProps {
     onToggleChart?: () => void
     onUndo?: () => void
     onOpenExportDialog?: () => void
+    onToggleSidebar?: () => void
 }
 
 export function Header({
@@ -22,11 +23,16 @@ export function Header({
     onTogglePreview,
     onToggleChart,
     onUndo,
-    onOpenExportDialog
+    onOpenExportDialog,
+    onToggleSidebar
 }: HeaderProps) {
     return (
         <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/60 backdrop-blur supports-backdrop-filter:bg-card/40">
             <div className="flex items-center gap-3">
+                <Button variant="ghost" size="icon" onClick={onToggleSidebar} className="mr-2" title="Alternar Menu Lateral">
+                    <span className="text-xl">≡</span>
+                </Button>
+
                 <div className="w-10 h-10 rounded-lg bg-primary text-primary-foreground flex items-center justify-center text-xl">
                     📊
                 </div>

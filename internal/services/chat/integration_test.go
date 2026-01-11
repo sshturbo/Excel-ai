@@ -48,7 +48,7 @@ func TestAllTools(t *testing.T) {
 			cmd = ToolCommand{Type: ToolTypeAction, Payload: fullPayload}
 		}
 
-		res, err := chatSvc.ExecuteTool(cmd)
+		res, err := chatSvc.ExecuteTool(cmd, nil)
 		if err != nil {
 			fmt.Printf("FAIL ❌ (%v)\n", err)
 			t.Errorf("Falha em %s: %v", name, err)

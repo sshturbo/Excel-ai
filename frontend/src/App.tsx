@@ -21,10 +21,14 @@ import { MessageBubble } from '@/components/chat/MessageBubble'
 import { EmptyState } from '@/components/chat/EmptyState'
 import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer'
 import { DataPreview } from '@/components/excel/DataPreview'
+import { HandsontableViewer } from '@/components/excel/HandsontableViewer'
 import { ChartViewer } from '@/components/excel/ChartViewer'
-import { PendingActions, type ActionState } from '@/components/excel/PendingActions'
+import { ActionState, PendingActions } from '@/components/excel/PendingActions'
 import { Toolbar } from '@/components/excel/Toolbar'
 import { ExportDialog } from '@/components/ExportDialog'
+import { SaveConfirmationDialog } from '@/components/excel/SaveConfirmationDialog'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 // Services
 import { executeExcelAction } from '@/services/excelActions'
@@ -52,6 +56,9 @@ export default function App() {
     const { theme, toggleTheme } = useTheme()
     const { isFullscreen, toggleFullscreen } = useFullscreen()
 
+    // Sidebar state
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+
     // Settings state
     const [showSettings, setShowSettings] = useState(false)
     const [showExportDialog, setShowExportDialog] = useState(false)
@@ -66,6 +73,7 @@ export default function App() {
     // View state
     const [showPreview, setShowPreview] = useState(false)
     const [showChart, setShowChart] = useState(false)
+    const [showSaveConfirm, setShowSaveConfirm] = useState(false)
 
     // Action execution state
     const [actionState, setActionState] = useState<ActionState>('pending')
@@ -322,6 +330,12 @@ export default function App() {
                     return newMsgs
                 })
 
+                // Atualizar preview automaticamente após modificações da IA
+                if (excelUpload.sessionId) {
+                    await excelUpload.refreshPreview()
+                    toast.success('Preview atualizado com as modificações')
+                }
+
                 // Add AI continuation response to chat if there is one
                 if (response && response.trim()) {
                     const { processAIResponse } = await import("@/services/aiProcessor")
@@ -566,30 +580,40 @@ export default function App() {
                 onToggleChart={() => { setShowChart(!showChart); setShowPreview(false); }}
                 onUndo={handleUndo}
                 onOpenExportDialog={() => setShowExportDialog(true)}
+                onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
             />
 
             {/* Main - Unified interface for both COM and Upload modes */}
-            <main className="flex flex-1 overflow-hidden">
-                {/* Sidebar */}
-                <Sidebar
-                    workbooks={workbooks}
-                    connected={!!excelUpload.sessionId}
-                    selectedWorkbook={excelUpload.previewData?.fileName || ''}
-                    selectedSheets={activeSheet ? [activeSheet] : []}
-                    expandedWorkbook={excelUpload.previewData?.fileName || null}
-                    contextLoaded={excelUpload.sessionId ? `Arquivo: ${excelUpload.previewData?.fileName || 'carregado'}` : ''}
-                    onExpandWorkbook={() => { }}
-                    onSelectSheet={async (_wbName, sheetName) => {
-                        console.log('[DEBUG App.tsx] onSelectSheet chamado com sheet:', sheetName)
-                        await excelUpload.loadSheetData(sheetName)
-                    }}
-                    conversations={conversations.conversations}
-                    isLoadingConversations={conversations.isLoading}
-                    onLoadConversations={conversations.loadConversations}
-                    onLoadConversation={handleLoadConversation}
-                    onDeleteConversation={conversations.handleDeleteConversation}
-                    onCloseSession={excelUpload.closeSession}
-                />
+            <main className="flex flex-1 overflow-hidden relative">
+                {/* Collapsible Sidebar Wrapper */}
+                <div
+                    className={cn(
+                        "shrink-0 transition-all duration-300 ease-in-out overflow-hidden bg-card border-r border-border",
+                        isSidebarOpen ? "w-72 opacity-100" : "w-0 opacity-0 border-none"
+                    )}
+                >
+                    <div className="w-72 h-full">
+                        <Sidebar
+                            workbooks={workbooks}
+                            connected={!!excelUpload.sessionId}
+                            selectedWorkbook={excelUpload.previewData?.fileName || ''}
+                            selectedSheets={activeSheet ? [activeSheet] : []}
+                            expandedWorkbook={excelUpload.previewData?.fileName || null}
+                            contextLoaded={excelUpload.sessionId ? `Arquivo: ${excelUpload.previewData?.fileName || 'carregado'}` : ''}
+                            onExpandWorkbook={() => { }}
+                            onSelectSheet={async (_wbName, sheetName) => {
+                                console.log('[DEBUG App.tsx] onSelectSheet chamado com sheet:', sheetName)
+                                await excelUpload.loadSheetData(sheetName)
+                            }}
+                            conversations={conversations.conversations}
+                            isLoadingConversations={conversations.isLoading}
+                            onLoadConversations={conversations.loadConversations}
+                            onLoadConversation={handleLoadConversation}
+                            onDeleteConversation={conversations.handleDeleteConversation}
+                            onCloseSession={excelUpload.closeSession}
+                        />
+                    </div>
+                </div>
 
                 {/* Chat Area - same for both modes */}
                 <section className="flex-1 flex flex-col bg-linear-to-b from-background to-muted/20">
@@ -604,17 +628,29 @@ export default function App() {
                             activeSheet={activeSheet}
                             onSwitchSheet={async (sheet) => { await excelUpload.loadSheetData(sheet); }}
                             onRefresh={excelUpload.refreshPreview}
+                            onOpenNative={excelUpload.handleOpenFileNative}
+                            onSaveNative={() => setShowSaveConfirm(true)}
+                            isSaving={excelUpload.downloading}
                         />
                     )}
 
-                    {/* Data Preview - shows COM preview or Excelize sheet data */}
-                    {showPreview && previewData && (
-                        <DataPreview previewData={previewData} />
+                    {/* Data Preview - Handsontable for Excel-like experience */}
+                    {showPreview && excelUpload.sessionId && (
+                        <div className="flex-1 overflow-hidden w-full relative">
+                            <HandsontableViewer
+                                sessionId={excelUpload.sessionId}
+                                activeSheet={excelUpload.activeSheet || 'Planilha1'}
+                                sheetData={excelUpload.sheetData}
+                                loading={excelUpload.loadingSheet}
+                            />
+                        </div>
                     )}
 
                     {/* Chart View */}
                     {showChart && previewData && previewData.headers && previewData.headers.length > 0 && (
-                        <ChartViewer previewData={previewData} />
+                        <div className="flex-1 flex flex-col overflow-hidden">
+                            <ChartViewer previewData={previewData} />
+                        </div>
                     )}
 
                     {/* Pending Actions Banner */}
@@ -633,7 +669,10 @@ export default function App() {
                     {!showPreview && !showChart && (
                         <div className="flex-1 overflow-y-auto p-6 space-y-6">
                             {chat.messages.length === 0 ? (
-                                <EmptyState selectedSheets={selectedSheets} />
+                                <EmptyState
+                                    selectedSheets={selectedSheets}
+                                    onOpenNative={excelUpload.handleOpenFileNative}
+                                />
                             ) : (
                                 <>
                                     {chat.messages
@@ -684,6 +723,14 @@ export default function App() {
                 onOpenChange={setShowExportDialog}
                 messages={chat.messages}
                 conversationTitle="Conversa"
+            />
+
+            {/* Save Confirmation Dialog */}
+            <SaveConfirmationDialog
+                open={showSaveConfirm}
+                onOpenChange={setShowSaveConfirm}
+                onConfirm={excelUpload.handleSaveNative}
+                fileName={excelUpload.previewData?.fileName || 'arquivo'}
             />
         </div>
     )

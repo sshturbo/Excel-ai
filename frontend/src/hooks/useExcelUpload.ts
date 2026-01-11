@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
+import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime'
 
 interface PreviewData {
   sessionId: string
@@ -66,6 +67,20 @@ export function useExcelUpload() {
       throw err
     }
   }, [])
+
+  // Listen for auto-loaded files from backend (e.g. when switching conversations)
+  useEffect(() => {
+    const handleNativeFileLoaded = (data: { sessionId: string, fileName: string }) => {
+      console.log('[DEBUG useExcelUpload] Evento native:file-loaded recebido:', data)
+      setSessionId(data.sessionId)
+      loadPreview(data.sessionId)
+    }
+
+    EventsOn('native:file-loaded', handleNativeFileLoaded)
+    return () => {
+      EventsOff('native:file-loaded')
+    }
+  }, [loadPreview])
 
   // Carregar dados de uma planilha
   const loadSheetData = useCallback(async (sheetName: string) => {
@@ -148,10 +163,72 @@ export function useExcelUpload() {
     }
   }, [sessionId])
 
+  // Abrir arquivo nativo (System Dialog)
+  const handleOpenFileNative = useCallback(async () => {
+    setUploading(true)
+    try {
+      const { OpenFileNative } = await import('../../wailsjs/go/app/App')
+      const newSessionId = await OpenFileNative()
+
+      if (newSessionId) {
+        setSessionId(newSessionId)
+        toast.success(`Arquivo aberto com sucesso!`)
+        await loadPreview(newSessionId)
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err)
+      toast.error('Erro ao abrir arquivo: ' + errorMsg)
+    } finally {
+      setUploading(false)
+    }
+  }, [loadPreview])
+
+  // Salvar arquivo nativo (Sobrescrever original)
+  const handleSaveNative = useCallback(async () => {
+    if (!sessionId) return
+
+    setDownloading(true)
+    try {
+      const { SaveFileNative } = await import('../../wailsjs/go/app/App')
+      await SaveFileNative()
+      toast.success('Alterações salvas no arquivo original!')
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err)
+      toast.error('Erro ao salvar arquivo: ' + errorMsg)
+    } finally {
+      setDownloading(false)
+    }
+  }, [sessionId])
+
   // Refresh do preview
   const refreshPreview = useCallback(async () => {
     if (!sessionId) return
-    await loadPreview(sessionId)
+
+    // Recarregar meta dados
+    const newPreview = await loadPreview(sessionId)
+
+    // Usar o estado mais recente da aba ativa
+    // Se não tivermos no estado, tentamos pegar do novo preview
+    setActiveSheet(currentActive => {
+      const targetSheet = currentActive || newPreview?.activeSheet
+      if (targetSheet) {
+        // Disparar o carregamento dos dados da aba de forma assíncrona
+        // mas fora do ciclo de atualização do estado para evitar avisos de renderização
+        setTimeout(async () => {
+          try {
+            setLoadingSheet(true)
+            const { GetSheetData } = await import('../../wailsjs/go/app/App')
+            const data = await GetSheetData(sessionId, targetSheet)
+            setSheetData(data)
+          } catch (err) {
+            console.error('Erro ao recarregar dados da aba ativa:', err)
+          } finally {
+            setLoadingSheet(false)
+          }
+        }, 0)
+      }
+      return currentActive
+    })
   }, [sessionId, loadPreview])
 
   return {
@@ -165,6 +242,8 @@ export function useExcelUpload() {
     handleUpload,
     loadSheetData,
     handleDownload,
+    handleOpenFileNative,
+    handleSaveNative,
     closeSession,
     refreshPreview,
     setSheetData

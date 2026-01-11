@@ -190,7 +190,7 @@ func (s *Service) ExecuteTool(cmd ToolCommand, onChunk func(string) error) (stri
 	}
 }
 
-func (s *Service) executeQuery(params map[string]interface{}, onChunk func(string) error) (string, error) {
+func (s *Service) executeQuery(params map[string]interface{}, _ func(string) error) (string, error) {
 	queryType, _ := params["type"].(string)
 
 	switch queryType {

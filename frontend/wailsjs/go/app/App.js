@@ -246,6 +246,10 @@ export function NewConversation() {
   return window['go']['app']['App']['NewConversation']();
 }
 
+export function OpenFileNative() {
+  return window['go']['app']['App']['OpenFileNative']();
+}
+
 export function OrchestratorHealthCheck() {
   return window['go']['app']['App']['OrchestratorHealthCheck']();
 }
@@ -264,6 +268,10 @@ export function RejectPendingAction() {
 
 export function RenameSheet(arg1, arg2) {
   return window['go']['app']['App']['RenameSheet'](arg1, arg2);
+}
+
+export function SaveFileNative() {
+  return window['go']['app']['App']['SaveFileNative']();
 }
 
 export function SendErrorFeedback(arg1) {
@@ -360,6 +368,10 @@ export function UndoLastChange() {
 
 export function UnmergeCells(arg1, arg2) {
   return window['go']['app']['App']['UnmergeCells'](arg1, arg2);
+}
+
+export function UpdateCellValue(arg1, arg2, arg3) {
+  return window['go']['app']['App']['UpdateCellValue'](arg1, arg2, arg3);
 }
 
 export function UpdateConfig(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10) {

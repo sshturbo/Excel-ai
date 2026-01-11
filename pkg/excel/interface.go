@@ -92,4 +92,5 @@ type ExcelClient interface {
 	Close()
 	Write() ([]byte, error)
 	SaveAs(path string) error
+	GetFilePath() string
 }

@@ -22,6 +22,8 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tailwindcss/vite": "^4.1.18",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "ag-grid-community": "^35.0.0",
+    "ag-grid-react": "^35.0.0",
     "chart.js": "^4.5.1",
     "chartjs-plugin-datalabels": "^2.2.0",
     "class-variance-authority": "^0.7.1",

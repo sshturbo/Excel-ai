@@ -129,6 +129,8 @@ export function MergeCells(arg1:string,arg2:string):Promise<void>;
 
 export function NewConversation():Promise<string>;
 
+export function OpenFileNative():Promise<string>;
+
 export function OrchestratorHealthCheck():Promise<Record<string, any>>;
 
 export function QueryExcel(arg1:string,arg2:Record<string, string>):Promise<app.QueryResult>;
@@ -138,6 +140,8 @@ export function RefreshWorkbooks():Promise<dto.ExcelStatus>;
 export function RejectPendingAction():Promise<void>;
 
 export function RenameSheet(arg1:string,arg2:string):Promise<void>;
+
+export function SaveFileNative():Promise<void>;
 
 export function SendErrorFeedback(arg1:string):Promise<string>;
 
@@ -186,6 +190,8 @@ export function UndoByConversation(arg1:string):Promise<number>;
 export function UndoLastChange():Promise<void>;
 
 export function UnmergeCells(arg1:string,arg2:string):Promise<void>;
+
+export function UpdateCellValue(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function UpdateConfig(arg1:number,arg2:number,arg3:number,arg4:boolean,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string):Promise<void>;
 

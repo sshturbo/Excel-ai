@@ -6,6 +6,7 @@ import (
 	apperrors "excel-ai/pkg/errors"
 	"excel-ai/pkg/logger"
 	"fmt"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -87,7 +88,7 @@ func (a *App) SendErrorFeedback(errorMessage string) (string, error) {
 // DeleteLastMessages remove mensagens
 func (a *App) DeleteLastMessages(count int) error {
 	logger.ChatInfo(fmt.Sprintf("Removendo %d últimas mensagens", count))
-	
+
 	err := a.chatService.DeleteLastMessages(count)
 	if err != nil {
 		logger.ChatError("Erro ao remover mensagens: " + err.Error())
@@ -98,7 +99,7 @@ func (a *App) DeleteLastMessages(count int) error {
 // EditMessage edita uma mensagem usando o índice visível e remove mensagens subsequentes
 func (a *App) EditMessage(visibleIndex int, newContent string) error {
 	logger.ChatInfo(fmt.Sprintf("Editando mensagem na posição %d", visibleIndex))
-	
+
 	err := a.chatService.EditMessageAtVisibleIndex(visibleIndex, newContent)
 	if err != nil {
 		logger.ChatError("Erro ao editar mensagem: " + err.Error())
@@ -109,7 +110,22 @@ func (a *App) EditMessage(visibleIndex int, newContent string) error {
 // NewConversation nova conversa
 func (a *App) NewConversation() string {
 	logger.ChatInfo("Criando nova conversa")
-	return a.chatService.NewConversation()
+	convID := a.chatService.NewConversation()
+
+	// Se houver um arquivo aberto via path, vincular à nova conversa
+	client, err := a.excelService.GetExcelClient()
+	if err == nil && client != nil {
+		path := client.GetFilePath()
+		if path != "" && a.storage != nil {
+			if err := a.storage.SetConversationExcelPath(convID, path); err != nil {
+				logger.AppWarn("Falha ao vincular path à nova conversa: " + err.Error())
+			} else {
+				logger.AppInfo("Caminho do Excel vinculado à nova conversa " + convID)
+			}
+		}
+	}
+
+	return convID
 }
 
 // ListConversations lista conversas
@@ -119,9 +135,37 @@ func (a *App) ListConversations() ([]dto.ConversationInfo, error) {
 }
 
 // LoadConversation carrega conversa
+// LoadConversation carrega conversa e tenta carregar planilha vinculada
 func (a *App) LoadConversation(id string) ([]dto.ChatMessage, error) {
 	logger.ChatInfo("Carregando conversa: " + id)
-	return a.chatService.LoadConversation(id)
+	messages, err := a.chatService.LoadConversation(id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Tentar carregar a planilha vinculada se houver storage
+	if a.storage != nil {
+		path, err := a.storage.GetConversationExcelPath(id)
+		if err == nil && path != "" {
+			logger.AppInfo("Auto-carregando planilha vinculada: " + path)
+			sessionID := fmt.Sprintf("session_load_%d", time.Now().UnixNano())
+
+			// Tenta carregar. Se falhar (ex: arquivo deletado), apenas loga e segue
+			if err := a.excelService.ConnectFilePath(sessionID, path); err != nil {
+				logger.AppWarn(fmt.Sprintf("Falha ao auto-carregar planilha (pode ter sido movida): %v", err))
+			} else {
+				// Emitir evento para o frontend atualizar o preview
+				fileName := a.excelService.GetCurrentFileName()
+				runtime.EventsEmit(a.ctx, "native:file-loaded", map[string]string{
+					"sessionId": sessionID,
+					"fileName":  fileName,
+				})
+				logger.AppInfo("Planilha auto-carregada com sucesso")
+			}
+		}
+	}
+
+	return messages, nil
 }
 
 // DeleteConversation remove conversa
@@ -148,7 +192,7 @@ func (a *App) HasPendingAction() bool {
 // ConfirmPendingAction confirma e executa a ação pendente, retomando a IA
 func (a *App) ConfirmPendingAction() string {
 	logger.ChatInfo("Confirmando ação pendente")
-	
+
 	response, err := a.chatService.ConfirmPendingAction(func(chunk string) error {
 		runtime.EventsEmit(a.ctx, "chat:chunk", chunk)
 		return nil
@@ -158,7 +202,7 @@ func (a *App) ConfirmPendingAction() string {
 		logger.ChatError("Erro ao confirmar ação: " + err.Error())
 		return "Error: " + err.Error()
 	}
-	
+
 	logger.ChatInfo("Ação confirmada com sucesso")
 	return response
 }

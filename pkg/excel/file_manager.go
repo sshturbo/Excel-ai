@@ -22,18 +22,38 @@ func NewFileManager() *FileManager {
 func (fm *FileManager) LoadFile(sessionID string, data []byte) error {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
-	
+
 	// Fechar sessão anterior se existir
 	if existingClient, exists := fm.sessions[sessionID]; exists && existingClient != nil {
 		existingClient.Close()
 	}
-	
+
 	// Criar novo cliente
 	client, err := NewExcelizeClient(data)
 	if err != nil {
 		return fmt.Errorf("failed to load Excel file: %w", err)
 	}
-	
+
+	fm.sessions[sessionID] = client
+	return nil
+}
+
+// LoadFileFromPath carrega um arquivo a partir de um caminho no disco
+func (fm *FileManager) LoadFileFromPath(sessionID string, path string) error {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+
+	// Fechar sessão anterior se existir
+	if existingClient, exists := fm.sessions[sessionID]; exists && existingClient != nil {
+		existingClient.Close()
+	}
+
+	// Criar novo cliente a partir do caminho
+	client, err := NewExcelizeClientFromPath(path)
+	if err != nil {
+		return fmt.Errorf("failed to load Excel file from path: %w", err)
+	}
+
 	fm.sessions[sessionID] = client
 	return nil
 }
@@ -42,16 +62,16 @@ func (fm *FileManager) LoadFile(sessionID string, data []byte) error {
 func (fm *FileManager) GetClient(sessionID string) (*ExcelizeClient, error) {
 	fm.mu.RLock()
 	defer fm.mu.RUnlock()
-	
+
 	client, exists := fm.sessions[sessionID]
 	if !exists {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
-	
+
 	if client == nil {
 		return nil, fmt.Errorf("client is nil for session: %s", sessionID)
 	}
-	
+
 	return client, nil
 }
 
@@ -61,7 +81,7 @@ func (fm *FileManager) Export(sessionID string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return client.Write()
 }
 
@@ -69,7 +89,7 @@ func (fm *FileManager) Export(sessionID string) ([]byte, error) {
 func (fm *FileManager) Close(sessionID string) {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
-	
+
 	if client, exists := fm.sessions[sessionID]; exists && client != nil {
 		client.Close()
 		delete(fm.sessions, sessionID)
@@ -80,7 +100,7 @@ func (fm *FileManager) Close(sessionID string) {
 func (fm *FileManager) ListSessions() []string {
 	fm.mu.RLock()
 	defer fm.mu.RUnlock()
-	
+
 	sessions := make([]string, 0, len(fm.sessions))
 	for id := range fm.sessions {
 		sessions = append(sessions, id)
@@ -92,7 +112,7 @@ func (fm *FileManager) ListSessions() []string {
 func (fm *FileManager) SessionExists(sessionID string) bool {
 	fm.mu.RLock()
 	defer fm.mu.RUnlock()
-	
+
 	_, exists := fm.sessions[sessionID]
 	return exists
 }
@@ -101,7 +121,7 @@ func (fm *FileManager) SessionExists(sessionID string) bool {
 func (fm *FileManager) CloseAll() {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
-	
+
 	for id, client := range fm.sessions {
 		if client != nil {
 			client.Close()

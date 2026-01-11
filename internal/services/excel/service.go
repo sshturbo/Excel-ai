@@ -199,6 +199,73 @@ func (s *Service) ConnectFileWithName(sessionID, fileName string, data []byte) e
 	return err
 }
 
+// ConnectFilePath carrega um arquivo a partir de um caminho no disco
+func (s *Service) ConnectFilePath(sessionID, path string) error {
+	logger.ExcelInfo(fmt.Sprintf("Carregando arquivo do disco: %s (sessionID: %s)", path, sessionID))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.fileManager.LoadFileFromPath(sessionID, path); err != nil {
+		logger.ExcelError("Erro ao carregar arquivo do disco: " + err.Error())
+		return fmt.Errorf("erro ao carregar arquivo do disco: %w", err)
+	}
+
+	s.currentSessionID = sessionID
+
+	// Extrair nome do arquivo do path
+	parts := strings.Split(path, "\\")
+	if len(parts) == 1 {
+		parts = strings.Split(path, "/")
+	}
+	s.currentFileName = parts[len(parts)-1]
+
+	// Obter primeira planilha como padrão
+	client, err := s.fileManager.GetClient(sessionID)
+	if err == nil {
+		sheets := client.ListSheets()
+		if len(sheets) > 0 {
+			s.currentSheet = sheets[0]
+		}
+	}
+
+	logger.ExcelInfo("Arquivo carregado via path com sucesso")
+	return nil
+}
+
+// SaveToDisk salva as alterações de volta ao disco
+func (s *Service) SaveToDisk() error {
+	logger.ExcelInfo("Salvando alterações no disco")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.fileManager == nil || s.currentSessionID == "" {
+		return fmt.Errorf("nenhum arquivo carregado")
+	}
+
+	client, err := s.fileManager.GetClient(s.currentSessionID)
+	if err != nil {
+		return err
+	}
+
+	path := client.GetFilePath()
+	if path == "" {
+		return fmt.Errorf("o arquivo não tem um caminho de disco associado. Use ExportFile em vez disso.")
+	}
+
+	if err := client.SaveAs(path); err != nil {
+		logger.ExcelError("Erro ao salvar no disco: " + err.Error())
+		// Fornecer mensagem mais amigável se o arquivo estiver bloqueado
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "process cannot access") || strings.Contains(errMsg, "used by another process") || strings.Contains(errMsg, "permission denied") {
+			return fmt.Errorf("o arquivo está aberto em outro programa (como o Excel). Por favor, feche o arquivo no outro programa e tente salvar novamente")
+		}
+		return fmt.Errorf("erro ao salvar no disco: %w", err)
+	}
+
+	logger.ExcelInfo("Arquivo salvo no disco com sucesso em: " + path)
+	return nil
+}
+
 // ExportFile exporta o arquivo atual como bytes
 func (s *Service) ExportFile() ([]byte, error) {
 	logger.ExcelInfo("Exportando arquivo")
